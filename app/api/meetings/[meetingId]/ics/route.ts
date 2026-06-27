@@ -1,0 +1,28 @@
+import { fetchConfirmedSlot, fetchMeeting } from "@/lib/data";
+import { buildIcs } from "@/lib/ics";
+
+export const dynamic = "force-dynamic";
+
+export async function GET(
+  _req: Request,
+  { params }: { params: { meetingId: string } },
+) {
+  const meeting = await fetchMeeting(params.meetingId);
+  if (!meeting || !meeting.confirmedSlotId) {
+    return new Response("아직 확정된 회의가 없습니다.", { status: 404 });
+  }
+
+  const slot = await fetchConfirmedSlot(meeting.confirmedSlotId);
+  if (!slot) {
+    return new Response("아직 확정된 회의가 없습니다.", { status: 404 });
+  }
+
+  const ics = buildIcs(meeting, slot);
+  return new Response(ics, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/calendar; charset=utf-8",
+      "Content-Disposition": 'attachment; filename="modu-meeting.ics"',
+    },
+  });
+}

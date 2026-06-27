@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: "TossFace";
+  src: url("/fonts/TossFaceFontMac.ttf") format("truetype");
+  font-display: swap;
+  unicode-range:
+    U+00A9, U+00AE, U+200D, U+203C, U+2049, U+20E3, U+2122, U+2139,
+    U+2194-21AA, U+231A-23FF, U+24C2, U+25AA-25FE, U+2600-27BF,
+    U+2934-2935, U+2B05-2B55, U+3030, U+303D, U+3297, U+3299,
+    U+FE0E-FE0F, U+1F000-1FAFF;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+body {
+  font-family:
+    "TossFace",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 시간표 셀 등에서 텍스트 선택이 드래그를 방해하지 않도록 */
+.no-select {
+  -webkit-user-select: none;
+  user-select: none;
+}
