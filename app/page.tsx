@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { ArrowRight, ShieldCheck } from "lucide-react";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { Button } from "@/components/ui/Button";
 
@@ -8,37 +7,34 @@ export default function LandingPage() {
     <div className="flex min-h-screen flex-col bg-slate-50">
       <SiteHeader />
 
-      <main className="flex flex-1 items-center justify-center px-4 py-20">
+      <main className="flex flex-1 flex-col items-center justify-center px-4 py-20 pb-28 sm:pb-20">
         <div className="mx-auto max-w-xl text-center">
           <h1 className="text-balance text-3xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-4xl">
-            6명의 조건을 비교해,
+            모두의 시간,
             <br />
-            모두가 납득할 수 있는 1시간을 찾아요.
+            모두의 회의
           </h1>
           <p className="mt-4 text-pretty text-sm text-slate-500">
-            필수 참석자 구분 · 선호/불가능 시간 비교 · 후보 투표와 다수결 확정
+            회의를 생성하여 참여자들에게 링크를 전달하세요.
           </p>
 
-          <div className="mt-8 flex flex-col items-center justify-center gap-2 sm:flex-row">
-            <Link href="/meetings/new" className="w-full sm:w-auto">
-              <Button size="lg" className="w-full sm:w-auto">
-                회의 만들기
-                <ArrowRight size={18} />
-              </Button>
-            </Link>
-            <Link href="/sample" className="w-full sm:w-auto">
-              <Button size="lg" variant="secondary" className="w-full sm:w-auto">
-                샘플 회의 체험하기
-              </Button>
+          {/* 데스크톱: 중앙 CTA */}
+          <div className="mt-8 hidden justify-center sm:flex">
+            <Link href="/meetings/new">
+              <Button size="lg">회의 만들기</Button>
             </Link>
           </div>
-
-          <p className="mt-8 inline-flex items-center gap-1.5 text-xs text-slate-400">
-            <ShieldCheck size={13} />
-            상세 일정명은 저장하지 않고, 가능 여부와 선호 상태만 사용해요.
-          </p>
         </div>
       </main>
+
+      {/* 모바일: 하단 고정 CTA */}
+      <div className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/95 p-4 backdrop-blur sm:hidden">
+        <Link href="/meetings/new" className="block">
+          <Button size="lg" className="w-full">
+            회의 만들기
+          </Button>
+        </Link>
+      </div>
     </div>
   );
 }

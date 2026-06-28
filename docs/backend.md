@@ -273,8 +273,11 @@ grant all on meeting_votes to service_role;
 
 - `createMeeting`
   - 회의명, 안건, 장소, 회의 마감 날짜, 회의 길이, 참석자를 생성한다.
-  - 회의 길이는 시간과 분 입력값을 합산해 `duration_minutes`로 저장한다.
+  - 모든 항목이 필수다. 회의명·안건·장소가 비어 있으면 각각 에러를 반환하고, 참석자는 최소 2명 이상이어야 한다.
+  - 회의 길이는 `durationHours`(시간)와 `durationMinutePart`(분) 입력값을 합산해 `duration_minutes`로 저장한다. 분은 0~59 정수여야 한다.
+  - 회의 마감 날짜(`deadlineDate`)는 `date_end`로 저장하고, `date_start`는 생성 시점의 오늘(KST) 날짜로 채운다. 마감 날짜가 오늘 이전이면 에러를 반환한다.
   - 주최자에게 근무 시작/종료 시간과 점심 시간은 받지 않고 서버 기본값을 저장한다.
+  - 참석자 기본 `attendance_type`은 클라이언트에서 `required`로 전달되며(필수참석), 서버는 `required`가 아니면 `optional`로 정규화한다.
   - `meetingId`, `adminToken`, 참석자별 `participantToken`을 생성한다.
   - 생성 후 공유 화면으로 이동한다.
 
@@ -293,7 +296,7 @@ grant all on meeting_votes to service_role;
 
 - `loadCalendarSnapshot`
   - 참석자 `participantToken`을 검증한다.
-  - 응답 제출 후 참석자용 시간축 캘린더에 필요한 참석자 목록과 가능 여부 블록을 반환한다.
+  - 응답 제출 후 참석자용 회의 캘린더에 필요한 참석자 목록과 가능 여부 블록을 반환한다.
   - 참석자별 상세 메모와 블록 note 원문은 반환하지 않는다.
   - 반환 데이터는 가능/선호/불가능/미응답 집계를 만들기 위한 최소 정보로 제한한다.
 
@@ -319,10 +322,6 @@ grant all on meeting_votes to service_role;
   - 모든 참석자가 응답하고 모든 참석자의 후보 투표가 모였는지 검증한다.
   - 최다 득표 후보를 `confirmed_slots`에 저장한다. 동률이면 주최자가 고른 후보를 저장한다.
   - `meetings.confirmed_slot_id`를 업데이트한다.
-
-- `createSampleMeeting`
-  - 샘플 회의, 참석자, 응답 데이터를 생성한다.
-  - 생성된 admin 결과 화면으로 이동한다.
 
 Route Handler:
 

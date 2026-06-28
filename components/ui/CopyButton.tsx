@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy } from "lucide-react";
 import { Button, type ButtonProps } from "@/components/ui/Button";
 
 interface CopyButtonProps extends Omit<ButtonProps, "onClick" | "children"> {
@@ -42,7 +41,6 @@ export function CopyButton({
 
   return (
     <Button variant={variant} onClick={handleCopy} aria-live="polite" {...props}>
-      {copied ? <Check size={16} /> : <Copy size={16} />}
       {copied ? copiedLabel : label}
     </Button>
   );

@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Link2 } from "lucide-react";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { CopyButton } from "@/components/ui/CopyButton";
+import { Emoji } from "@/components/ui/Emoji";
 
 interface Props {
   meetingId: string;
@@ -22,7 +22,7 @@ export function ShareLinksPanel({ meetingId }: Props) {
   return (
     <Card className="space-y-3">
       <div className="flex items-center gap-2">
-        <Link2 size={18} className="text-brand-600" />
+        <Emoji symbol="🔗" size={18} />
         <CardTitle>참석자 링크</CardTitle>
       </div>
       <div className="break-all rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">

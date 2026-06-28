@@ -1,6 +1,5 @@
 "use server";
 
-import { randomUUID } from "crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
@@ -23,8 +22,7 @@ import {
 import { buildShareText } from "@/lib/share";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { generateToken } from "@/lib/tokens";
-import { addDaysToDateStr, kstWallToIso, parseHm, todayDateStrKst } from "@/lib/time";
-import { buildSampleMeetingPlan } from "@/lib/sample";
+import { parseHm, todayDateStrKst } from "@/lib/time";
 import { mapMeeting, type MeetingRow, type ParticipantRow } from "@/lib/types";
 import type {
   ConfirmSlotArgs,
@@ -106,6 +104,8 @@ export async function createMeeting(
 
   // 검증
   if (!title) return { error: "회의명을 입력해 주세요." };
+  if (!agenda) return { error: "회의 안건을 입력해 주세요." };
+  if (!location) return { error: "회의 장소를 입력해 주세요." };
   if (participants.length < 2) return { error: "참석자는 최소 2명 이상이어야 합니다." };
   if (!deadlineDate) {
     return { error: "회의 마감 날짜를 선택해 주세요." };
@@ -651,65 +651,4 @@ export async function confirmSlot(args: ConfirmSlotArgs): Promise<SimpleResult |
 
   revalidatePath(`/admin/${args.meetingId}/${args.adminToken}`);
   redirect(`/meetings/${args.meetingId}/confirmed`);
-}
-
-// ---- 샘플 회의 생성 ----
-
-export async function createSampleMeeting(): Promise<void> {
-  const sb = getSupabaseAdmin();
-  const plan = buildSampleMeetingPlan(new Date());
-  const adminToken = generateToken();
-
-  const { data: meetingData, error: meetingError } = await sb
-    .from("meetings")
-    .insert({
-      title: plan.title,
-      agenda: plan.agenda,
-      location: plan.location,
-      duration_minutes: plan.durationMinutes,
-      date_start: plan.dateStart,
-      date_end: plan.dateEnd,
-      workday_start: plan.workdayStart,
-      workday_end: plan.workdayEnd,
-      lunch_start: plan.lunchStart,
-      lunch_end: plan.lunchEnd,
-      admin_token: adminToken,
-    })
-    .select("id")
-    .single();
-  if (meetingError || !meetingData) {
-    throw new Error("샘플 회의 생성에 실패했습니다.");
-  }
-  const meetingId = meetingData.id as string;
-
-  const participantRows = plan.participants.map((sp) => ({
-    id: randomUUID(),
-    meeting_id: meetingId,
-    name: sp.name,
-    role: sp.role,
-    attendance_type: sp.attendanceType,
-    response_status: sp.responseStatus,
-    participant_token: generateToken(),
-  }));
-
-  const { error: pErr } = await sb.from("participants").insert(participantRows);
-  if (pErr) throw new Error("샘플 참석자 생성에 실패했습니다.");
-
-  const blockRows = plan.participants.flatMap((sp, index) =>
-    sp.blocks.map((b) => ({
-      meeting_id: meetingId,
-      participant_id: participantRows[index].id,
-      start_at: kstWallToIso(addDaysToDateStr(plan.dateStart, b.dayOffset), parseHm(b.startHm)),
-      end_at: kstWallToIso(addDaysToDateStr(plan.dateStart, b.dayOffset), parseHm(b.endHm)),
-      status: b.status,
-      note: b.note ?? null,
-    })),
-  );
-
-  if (blockRows.length > 0) {
-    const { error: bErr } = await sb.from("availability_blocks").insert(blockRows);
-    if (bErr) throw new Error("샘플 응답 생성에 실패했습니다.");
-  }
-
-  redirect(`/admin/${meetingId}/${adminToken}`);
 }

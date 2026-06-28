@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CalendarCheck2 } from "lucide-react";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { ExpiryNotice } from "@/components/layout/ExpiryNotice";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
+import { Emoji } from "@/components/ui/Emoji";
 import { ParticipantResponseList } from "@/components/scheduler/ParticipantResponseList";
 import { RecommendationList } from "@/components/scheduler/RecommendationList";
 import { AvailabilitySummaryCalendar } from "@/components/scheduler/AvailabilitySummaryCalendar";
@@ -75,7 +75,7 @@ export default async function AdminPage({
         {meeting.confirmedSlotId && (
           <Link href={`/meetings/${meeting.id}/confirmed`} className="block">
             <Card className="flex items-center gap-3 border-green-200 bg-green-50">
-              <CalendarCheck2 className="shrink-0 text-green-600" size={20} />
+              <Emoji symbol="📅" size={20} className="shrink-0" />
               <div className="text-sm">
                 <p className="font-semibold text-green-800">이미 확정된 회의예요</p>
                 <p className="text-green-700">

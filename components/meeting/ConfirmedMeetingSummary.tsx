@@ -1,7 +1,7 @@
-import { CalendarDays, Clock, Download, MapPin, ShieldCheck, Users } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { CopyButton } from "@/components/ui/CopyButton";
+import { Emoji } from "@/components/ui/Emoji";
 import { formatKoreanDate, formatKoreanTimeRange } from "@/lib/time";
 import type { ConfirmedSlot, Meeting } from "@/lib/types";
 
@@ -37,32 +37,32 @@ export function ConfirmedMeetingSummary({
           )}
           {meeting.location && (
             <div className="flex items-center gap-3">
-              <MapPin size={18} className="text-slate-400" />
+              <Emoji symbol="📍" size={18} />
               <dt className="sr-only">장소</dt>
               <dd className="font-medium text-slate-800">{meeting.location}</dd>
             </div>
           )}
           <div className="flex items-center gap-3">
-            <CalendarDays size={18} className="text-slate-400" />
+            <Emoji symbol="📅" size={18} />
             <dt className="sr-only">날짜</dt>
             <dd className="font-medium text-slate-800">{formatKoreanDate(slot.startAt)}</dd>
           </div>
           <div className="flex items-center gap-3">
-            <Clock size={18} className="text-slate-400" />
+            <Emoji symbol="🕐" size={18} />
             <dt className="sr-only">시간</dt>
             <dd className="font-medium text-slate-800">
               {formatKoreanTimeRange(slot.startAt, slot.endAt)} · {meeting.durationMinutes}분
             </dd>
           </div>
           <div className="flex items-center gap-3">
-            <Users size={18} className="text-slate-400" />
+            <Emoji symbol="👥" size={18} />
             <dt className="sr-only">참석 대상</dt>
             <dd className="font-medium text-slate-800">
               필수 {requiredCount}명 · 선택 {optionalCount}명
             </dd>
           </div>
           <div className="flex items-center gap-3">
-            <ShieldCheck size={18} className="text-slate-400" />
+            <Emoji symbol="🛡️" size={18} />
             <dt className="sr-only">필수 참석자 충족 여부</dt>
             <dd>
               <Badge tone={requiredAllAvailable ? "green" : "amber"}>
@@ -77,7 +77,7 @@ export function ConfirmedMeetingSummary({
 
       <Card className="space-y-3">
         <CardTitle className="text-base">공유 문구</CardTitle>
-        <pre className="whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-sm leading-relaxed text-slate-700">
+        <pre className="whitespace-pre-wrap rounded-xl bg-slate-50 p-4 font-sans text-sm leading-relaxed text-slate-700">
           {slot.summaryText}
         </pre>
         <div className="flex flex-wrap gap-2">
@@ -86,7 +86,6 @@ export function ConfirmedMeetingSummary({
             href={`/api/meetings/${meeting.id}/ics`}
             className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-50"
           >
-            <Download size={16} />
             캘린더 파일(.ics) 받기
           </a>
         </div>

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2 } from "lucide-react";
 import { confirmSlot } from "@/app/actions/meetings";
 import { Button } from "@/components/ui/Button";
 
@@ -33,7 +32,6 @@ export function ConfirmSlotButton({ meetingId, adminToken, startAt, endAt, label
   if (!confirming) {
     return (
       <Button onClick={() => setConfirming(true)}>
-        <CheckCircle2 size={16} />
         {label ?? "이 시간으로 확정"}
       </Button>
     );

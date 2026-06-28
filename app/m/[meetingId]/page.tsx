@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { CalendarCheck2, ShieldCheck } from "lucide-react";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { ExpiryNotice } from "@/components/layout/ExpiryNotice";
 import { ResponseForm } from "@/components/scheduler/ResponseForm";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { Emoji } from "@/components/ui/Emoji";
 import { fetchMeeting, fetchParticipants, toPublicParticipant } from "@/lib/data";
 import { eachDateInRange } from "@/lib/time";
 
@@ -25,7 +25,7 @@ export default async function ParticipantPage({
   return (
     <div className="min-h-screen bg-slate-50">
       <SiteHeader />
-      <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
+      <main className="mx-auto w-full max-w-screen-2xl px-4 py-8 sm:px-6">
         <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
           {meeting.title}
         </h1>
@@ -39,14 +39,14 @@ export default async function ParticipantPage({
           </div>
         )}
         <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-slate-500">
-          <ShieldCheck size={14} />
+          <Emoji symbol="🛡️" size={14} />
           가능 여부와 선호 상태만 저장해요.
         </p>
 
         <div className="mt-6">
           {meeting.confirmedSlotId ? (
             <Card className="space-y-4 text-center">
-              <CalendarCheck2 size={36} className="mx-auto text-green-500" />
+              <Emoji symbol="📅" size={36} className="mx-auto" />
               <div>
                 <CardTitle>회의 시간이 확정되었어요</CardTitle>
                 <p className="mt-2 text-sm text-slate-600">

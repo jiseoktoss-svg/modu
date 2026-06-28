@@ -1,9 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, ArrowLeft, CalendarDays, RefreshCw, X } from "lucide-react";
 import {
-  loadCalendarSnapshot,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
+import { Emoji } from "@/components/ui/Emoji";
+import {
   loadVotingOptions,
   loadParticipantResponse,
   submitAvailability,
@@ -15,7 +20,6 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Input, Label } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Textarea } from "@/components/ui/Textarea";
 import { cn } from "@/lib/cn";
 import {
   blocksToCells,
@@ -23,7 +27,6 @@ import {
   cellsToBlocks,
   GRID_STEP_MINUTES,
 } from "@/lib/grid";
-import { MAX_MEMO_LENGTH } from "@/lib/scheduler/validate";
 import {
   describeDateStr,
   formatHm,
@@ -32,13 +35,14 @@ import {
   kstWallToIso,
   parseHm,
 } from "@/lib/time";
+import { MOCK_EMPLOYEES } from "@/data/mockEmployees";
 import type { PublicParticipant } from "@/lib/data";
 import type {
   CalendarSnapshotBlock,
   CalendarSnapshotParticipant,
   VoteOption,
 } from "@/lib/actionTypes";
-import type { CellStatus } from "@/lib/types";
+import type { AttendanceType, AvailabilityStatus, CellStatus } from "@/lib/types";
 
 interface Props {
   meetingId: string;
@@ -267,6 +271,55 @@ function groupedParticipantsForSlot(
   return groups;
 }
 
+// 데모용 더미 응답: 6명이 선호/불가를 입력한 상태를 결정적으로 생성한다.
+const DUMMY_PEOPLE = MOCK_EMPLOYEES.slice(0, 6);
+
+function buildDummySnapshot(
+  dates: string[],
+  rows: number[],
+): { participants: CalendarSnapshotParticipant[]; blocks: CalendarSnapshotBlock[] } {
+  const participants: CalendarSnapshotParticipant[] = DUMMY_PEOPLE.map((e, i) => ({
+    id: `dummy-${e.id}`,
+    name: e.name,
+    role: e.role,
+    attendanceType: (i < 4 ? "required" : "optional") as AttendanceType,
+    responseStatus: "submitted",
+  }));
+
+  if (dates.length === 0 || rows.length === 0) return { participants, blocks: [] };
+
+  const minM = rows[0];
+  const maxM = rows[rows.length - 1] + GRID_STEP_MINUTES;
+  const clamp = (m: number) => Math.min(Math.max(m, minM), maxM);
+
+  const blocks: CalendarSnapshotBlock[] = [];
+  const add = (i: number, date: string, startM: number, endM: number, status: AvailabilityStatus) => {
+    const s = clamp(startM);
+    const e = clamp(endM);
+    if (s >= e) return;
+    blocks.push({
+      participantId: `dummy-${DUMMY_PEOPLE[i].id}`,
+      startAt: kstWallToIso(date, s),
+      endAt: kstWallToIso(date, e),
+      status,
+    });
+  };
+
+  DUMMY_PEOPLE.forEach((_, i) => {
+    // 선호: 오후 시간대 (사람마다 30분씩 어긋나게)
+    const prefDate = dates[i % dates.length];
+    const prefStart = 13 * 60 + 30 + (i % 3) * 30; // 13:30 / 14:00 / 14:30
+    add(i, prefDate, prefStart, prefStart + 60, "preferred");
+
+    // 불가: 오전 시간대
+    const busyDate = dates[(i + 2) % dates.length];
+    const busyStart = 9 * 60 + (i % 2) * 60; // 09:00 / 10:00
+    add(i, busyDate, busyStart, busyStart + 90, "busy");
+  });
+
+  return { participants, blocks };
+}
+
 export function ResponseForm(props: Props) {
   const { meetingId, dates, workdayStart, workdayEnd } = props;
   const participants = props.initialParticipants;
@@ -279,12 +332,12 @@ export function ResponseForm(props: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [cells, setCells] = useState<Record<string, CellStatus>>({});
-  const [memo, setMemo] = useState("");
   const [role, setRole] = useState("");
   const [identityName, setIdentityName] = useState("");
   const [identityRole, setIdentityRole] = useState("");
-  const [editingDateIndex, setEditingDateIndex] = useState<number | null>(null);
-  const [activeStatus, setActiveStatus] = useState<CellStatus>("busy");
+  const [commonStatus, setCommonStatus] = useState<CellStatus>("preferred");
+  const [commonStart, setCommonStart] = useState(workdayStart);
+  const [commonEnd, setCommonEnd] = useState(workdayEnd);
   const [submitting, setSubmitting] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -322,7 +375,6 @@ export function ResponseForm(props: Props) {
       .then((res) => {
         if (res.ok) {
           setCells(blocksToCells(res.blocks, dates));
-          setMemo(res.memo ?? "");
           const found = participants.find((p) => p.id === identity.participantId);
           setRole(found?.role ?? "");
           setIdentityName(found?.name ?? "");
@@ -368,12 +420,25 @@ export function ResponseForm(props: Props) {
     });
   }
 
-  function paintSlot(dateIndex: number, minute: number, status: CellStatus) {
+  function applyCommonRange() {
+    const s = parseHm(commonStart);
+    const e = parseHm(commonEnd);
+    if (!(s < e)) {
+      setError("공통 시간의 시작은 종료보다 빨라야 해요.");
+      return;
+    }
+    setError(null);
     setCells((prev) => {
       const next = { ...prev };
-      const key = cellKey(dateIndex, minute);
-      if (status === "available") delete next[key];
-      else next[key] = status;
+      for (let dateIndex = 0; dateIndex < dates.length; dateIndex += 1) {
+        for (const minute of rows) {
+          if (minute >= s && minute + GRID_STEP_MINUTES <= e) {
+            const key = cellKey(dateIndex, minute);
+            if (commonStatus === "available") delete next[key];
+            else next[key] = commonStatus;
+          }
+        }
+      }
       return next;
     });
   }
@@ -409,11 +474,9 @@ export function ResponseForm(props: Props) {
       });
       if (loaded.ok) {
         setCells(blocksToCells(loaded.blocks, dates));
-        setMemo(loaded.memo ?? "");
       }
     } else {
       setCells({});
-      setMemo("");
     }
 
     setStep("fill");
@@ -429,7 +492,6 @@ export function ResponseForm(props: Props) {
       participantId: selectedId,
       token,
       role,
-      memo,
       blocks,
     });
     setSubmitting(false);
@@ -512,9 +574,6 @@ export function ResponseForm(props: Props) {
     );
   }
 
-  const editingDate = editingDateIndex === null ? null : dates[editingDateIndex];
-  const editingDateLabel = editingDate ? describeDateStr(editingDate) : null;
-
   return (
     <div className="mx-auto max-w-2xl space-y-3 pb-24">
       <div className="flex items-center justify-between">
@@ -527,10 +586,61 @@ export function ResponseForm(props: Props) {
           )}
         </div>
         <Button variant="ghost" size="sm" onClick={() => setStep("select")}>
-          <ArrowLeft size={16} />
           다시 확인
         </Button>
       </div>
+
+      <Card className="space-y-3 p-4">
+        <div>
+          <CardTitle className="text-base">공통 시간 일괄 적용</CardTitle>
+          <p className="mt-1 text-sm text-slate-500">
+            선택한 시간대를 모든 날짜에 한 번에 적용해요.
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-1.5">
+          {STATUS_OPTIONS.map((option) => (
+            <button
+              key={option.status}
+              type="button"
+              onClick={() => setCommonStatus(option.status)}
+              aria-pressed={commonStatus === option.status}
+              className={cn(
+                "rounded-xl border px-3 py-2 text-sm font-bold transition-colors",
+                commonStatus === option.status
+                  ? option.className
+                  : "border-slate-200 bg-white text-slate-500",
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <Input
+            type="time"
+            step={1800}
+            value={commonStart}
+            onChange={(e) => setCommonStart(e.target.value)}
+            aria-label="공통 시작 시간"
+          />
+          <span className="shrink-0 text-slate-400">~</span>
+          <Input
+            type="time"
+            step={1800}
+            value={commonEnd}
+            onChange={(e) => setCommonEnd(e.target.value)}
+            aria-label="공통 종료 시간"
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            className="shrink-0"
+            onClick={applyCommonRange}
+          >
+            적용
+          </Button>
+        </div>
+      </Card>
 
       <Card className="space-y-4 p-4">
         <div className="flex flex-wrap gap-2">
@@ -546,32 +656,11 @@ export function ResponseForm(props: Props) {
             const summary = summaries[index];
             return (
               <div key={date} className="rounded-xl border border-slate-200 bg-white p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="font-bold text-slate-900">{monthDay}</p>
-                    <p className="text-xs text-slate-500">{weekdayKo}요일</p>
-                  </div>
-                  <span
-                    className={cn(
-                      "rounded-full border px-2.5 py-0.5 text-xs font-bold",
-                      SUMMARY_STYLE[summary.status],
-                    )}
-                  >
-                    {SUMMARY_LABEL[summary.status]}
-                  </span>
+                <div className="mb-3 flex items-baseline gap-2">
+                  <p className="font-bold text-slate-900">{monthDay}</p>
+                  <p className="text-xs text-slate-500">{weekdayKo}요일</p>
                 </div>
-                {summary.status === "mixed" && (
-                  <p className="mt-2 text-xs text-slate-500">
-                    {[
-                      summary.preferred > 0 ? `선호 ${summary.preferred}칸` : null,
-                      summary.busy > 0 ? `불가 ${summary.busy}칸` : null,
-                      summary.avoid > 0 ? `피함 ${summary.avoid}칸` : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                )}
-                <div className="mt-3 grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-3 gap-1.5">
                   {STATUS_OPTIONS.map((option) => (
                     <button
                       key={option.status}
@@ -588,30 +677,10 @@ export function ResponseForm(props: Props) {
                     </button>
                   ))}
                 </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  className="mt-2 w-full"
-                  onClick={() => setEditingDateIndex(index)}
-                >
-                  시간 편집
-                </Button>
               </div>
             );
           })}
         </div>
-      </Card>
-
-      <Card className="p-4">
-        <Textarea
-          aria-label="메모 (선택)"
-          rows={2}
-          maxLength={MAX_MEMO_LENGTH}
-          placeholder="메모 (선택)"
-          value={memo}
-          onChange={(e) => setMemo(e.target.value)}
-        />
       </Card>
 
       {error && (
@@ -619,76 +688,8 @@ export function ResponseForm(props: Props) {
           role="alert"
           className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700"
         >
-          <AlertCircle size={16} />
+          <Emoji symbol="⚠️" size={16} />
           {error}
-        </div>
-      )}
-
-      {editingDateIndex !== null && editingDateLabel && (
-        <div className="fixed inset-0 z-30 flex items-end bg-slate-900/40 p-0 sm:items-center sm:p-6">
-          <div className="mx-auto max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl">
-            <div className="mb-4 flex items-start justify-between gap-4">
-              <h3 className="text-lg font-bold text-slate-900">
-                {editingDateLabel.monthDay} {editingDateLabel.weekdayKo}요일
-              </h3>
-              <button
-                type="button"
-                onClick={() => setEditingDateIndex(null)}
-                className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                aria-label="시간 편집 닫기"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="mb-4 grid grid-cols-3 gap-1.5">
-              {STATUS_OPTIONS.map((option) => (
-                <button
-                  key={option.status}
-                  type="button"
-                  onClick={() => setActiveStatus(option.status)}
-                  aria-pressed={activeStatus === option.status}
-                  className={cn(
-                    "rounded-xl border px-3 py-2 text-sm font-bold transition-colors",
-                    activeStatus === option.status
-                      ? option.className
-                      : "border-slate-200 bg-white text-slate-500",
-                  )}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {rows.map((minute) => {
-                const status = cells[cellKey(editingDateIndex, minute)] ?? "available";
-                const selectedOption = statusOption(status);
-                return (
-                  <button
-                    key={minute}
-                    type="button"
-                    onClick={() => paintSlot(editingDateIndex, minute, activeStatus)}
-                    className={cn(
-                      "min-h-12 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition-colors",
-                      selectedOption.className,
-                    )}
-                  >
-                    <span className="block tabular-nums">{slotLabel(minute)}</span>
-                    <span className="mt-1 block text-xs opacity-80">
-                      {selectedOption.label}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="mt-5 flex justify-end">
-              <Button type="button" onClick={() => setEditingDateIndex(null)}>
-                선택 완료
-              </Button>
-            </div>
-          </div>
         </div>
       )}
 
@@ -703,12 +704,58 @@ export function ResponseForm(props: Props) {
   );
 }
 
+// 참석자별 이름 칩 색상 (사람마다 다르게).
+const PERSON_COLORS = [
+  "bg-rose-100 text-rose-700",
+  "bg-amber-100 text-amber-700",
+  "bg-sky-100 text-sky-700",
+  "bg-violet-100 text-violet-700",
+  "bg-teal-100 text-teal-700",
+  "bg-orange-100 text-orange-700",
+  "bg-fuchsia-100 text-fuchsia-700",
+  "bg-cyan-100 text-cyan-700",
+];
+
 function LegendDot({ className, label }: { className: string; label: string }) {
   return (
     <span className="flex items-center gap-1.5">
       <span className={cn("h-2.5 w-2.5 rounded-full", className)} />
       {label}
     </span>
+  );
+}
+
+// 가능/불가능 상태로 참석자 이름 pill 들을 한 번 더 감싸는 그룹.
+function StatusGroup({
+  tone,
+  label,
+  people,
+}: {
+  tone: "green" | "red";
+  label: string;
+  people: { name: string; colorClass: string }[];
+}) {
+  const box = tone === "green" ? "border-green-300 bg-green-50" : "border-red-300 bg-red-50";
+  const head = tone === "green" ? "text-green-700" : "text-red-700";
+  return (
+    <div className={cn("rounded-lg border p-1", box)}>
+      <p className={cn("mb-1 px-0.5 text-[10px] font-bold", head)}>
+        {label} {people.length}
+      </p>
+      <div className="flex flex-wrap gap-1">
+        {people.map((p) => (
+          <span
+            key={p.name}
+            className={cn(
+              "max-w-full truncate rounded-full px-2 py-0.5 text-[10px] font-semibold",
+              p.colorClass,
+            )}
+          >
+            {p.name}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -729,112 +776,86 @@ function SubmittedCalendarScreen({
   rows: number[];
   onEdit: () => void;
 }) {
-  const [participants, setParticipants] = useState<CalendarSnapshotParticipant[]>([]);
-  const [blocks, setBlocks] = useState<CalendarSnapshotBlock[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedSlot, setSelectedSlot] = useState<{ date: string; minute: number } | null>(
-    dates[0] && rows[0] !== undefined ? { date: dates[0], minute: rows[0] } : null,
+  // 데모 단계: 항상 더미 6명 응답으로 캘린더를 채운다.
+  const { participants, blocks } = useMemo(
+    () => buildDummySnapshot(dates, rows),
+    [dates, rows],
   );
-  const [activeDateIndex, setActiveDateIndex] = useState(0);
 
-  async function refreshSnapshot(showRefreshing = false) {
-    if (!participantId || !token) {
-      setError("본인 확인 정보가 없어 캘린더를 불러올 수 없어요.");
-      setLoading(false);
-      return;
-    }
+  // 마우스로 잡고 끌어 가로 스크롤.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const drag = useRef({ active: false, startX: 0, startScroll: 0 });
 
-    if (showRefreshing) setRefreshing(true);
-    setError(null);
-    const res = await loadCalendarSnapshot({ meetingId, participantId, token });
-    if (res.ok) {
-      setParticipants(res.participants);
-      setBlocks(res.blocks);
-    } else {
-      setError(res.error);
-    }
-    setLoading(false);
-    setRefreshing(false);
+  function onDragStart(e: ReactMouseEvent) {
+    if (!scrollRef.current) return;
+    drag.current = {
+      active: true,
+      startX: e.pageX,
+      startScroll: scrollRef.current.scrollLeft,
+    };
+  }
+  function onDragMove(e: ReactMouseEvent) {
+    if (!drag.current.active || !scrollRef.current) return;
+    e.preventDefault();
+    scrollRef.current.scrollLeft = drag.current.startScroll - (e.pageX - drag.current.startX);
+  }
+  function onDragEnd() {
+    drag.current.active = false;
   }
 
+  // 마우스 휠(세로)을 가로 스크롤로 변환한다.
   useEffect(() => {
-    void refreshSnapshot();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [meetingId, participantId, token]);
-
-  const submittedCount = participants.filter((p) => p.responseStatus === "submitted").length;
-  const allSubmitted = participants.length > 0 && submittedCount === participants.length;
-  const selectedSummary =
-    selectedSlot && participants.length > 0
-      ? summarizeCalendarSlot(participants, blocks, selectedSlot.date, selectedSlot.minute)
-      : null;
-  const selectedGroups =
-    selectedSlot && participants.length > 0
-      ? groupedParticipantsForSlot(participants, blocks, selectedSlot.date, selectedSlot.minute)
-      : null;
-
-  const gridTemplateColumns = `72px repeat(${dates.length}, minmax(128px, 1fr))`;
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY === 0 || el.scrollWidth <= el.clientWidth) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <CalendarDays size={22} className="text-brand-600" />
+            <Emoji symbol="📅" size={22} />
             <h2 className="text-xl font-extrabold text-slate-900">회의 캘린더</h2>
           </div>
           <p className="mt-1 text-sm text-slate-600">
-            {selectedName ? `${selectedName}님의 시간표가 반영된 전체 일정이에요.` : "전체 일정을 확인해 주세요."}
+            모든 참석자의 선호·불가 시간을 시간대별로 모았어요.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Badge tone={allSubmitted ? "green" : "gray"}>
-            {submittedCount}/{participants.length || "-"} 응답
-          </Badge>
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            onClick={() => void refreshSnapshot(true)}
-            disabled={refreshing}
-          >
-            <RefreshCw size={15} className={refreshing ? "animate-spin" : undefined} />
-            새로고침
-          </Button>
+          <Badge tone="green">{participants.length}명 응답</Badge>
           <Button type="button" size="sm" variant="secondary" onClick={onEdit}>
             응답 수정
           </Button>
         </div>
       </div>
 
-      {error && (
-        <div
-          role="alert"
-          className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700"
-        >
-          <AlertCircle size={16} />
-          {error}
-        </div>
-      )}
-
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-slate-500">
-        <LegendDot className="bg-green-400" label="가능" />
-        <LegendDot className="bg-blue-400" label="선호" />
+        <LegendDot className="bg-green-400" label="선호" />
         <LegendDot className="bg-red-400" label="불가능" />
-        <LegendDot className="bg-slate-300" label="미응답" />
+        <span className="text-slate-400">칸 안의 이름 색은 참석자별로 달라요.</span>
       </div>
 
-      {/* 데스크톱: 요일 × 시간 히트맵 그리드 */}
-      <Card className="hidden overflow-hidden p-0 sm:block">
-        <div className="overflow-x-auto">
-          <div className="min-w-[760px]">
-            <div
-              className="grid border-b border-slate-200 bg-slate-50"
-              style={{ gridTemplateColumns }}
-            >
-              <div className="sticky left-0 z-20 border-r border-slate-200 bg-slate-50 px-2 py-3 text-xs font-semibold text-slate-400">
+      {/* 일주일 그리드 — 마우스로 잡고 끌어 가로 스크롤 */}
+      <Card className="overflow-hidden p-0">
+        <div
+          ref={scrollRef}
+          onMouseDown={onDragStart}
+          onMouseMove={onDragMove}
+          onMouseUp={onDragEnd}
+          onMouseLeave={onDragEnd}
+          className="cursor-grab select-none overflow-x-auto active:cursor-grabbing"
+        >
+          <div className="w-max">
+            {/* 날짜 헤더 행 */}
+            <div className="flex border-b border-slate-200 bg-slate-50">
+              <div className="sticky left-0 z-10 w-16 shrink-0 border-r border-slate-200 bg-slate-50 px-2 py-2 text-[11px] font-semibold text-slate-400">
                 KST
               </div>
               {dates.map((date) => {
@@ -842,7 +863,7 @@ function SubmittedCalendarScreen({
                 return (
                   <div
                     key={date}
-                    className="border-r border-slate-200 px-3 py-3 last:border-r-0"
+                    className="w-52 shrink-0 border-r border-slate-200 px-3 py-2 last:border-r-0"
                   >
                     <p className="text-sm font-bold text-slate-900">{monthDay}</p>
                     <p className="text-xs text-slate-500">{weekdayKo}요일</p>
@@ -851,55 +872,37 @@ function SubmittedCalendarScreen({
               })}
             </div>
 
+            {/* 시간 행 — 모든 칸 동일한 최소 높이 */}
             {rows.map((minute) => (
               <div
                 key={minute}
-                className="grid border-b border-slate-100 last:border-b-0"
-                style={{ gridTemplateColumns }}
+                className="flex min-h-[3.5rem] border-b border-slate-100 last:border-b-0"
               >
-                <div className="sticky left-0 z-10 border-r border-slate-200 bg-white px-2 py-2 text-right text-xs font-medium tabular-nums text-slate-400">
+                <div className="sticky left-0 z-10 w-16 shrink-0 border-r border-slate-200 bg-white px-2 py-1.5 text-right text-[11px] font-medium tabular-nums text-slate-400">
                   {minute % 60 === 0 ? formatHm(minute) : ""}
                 </div>
                 {dates.map((date) => {
-                  const summary = participants.length
-                    ? summarizeCalendarSlot(participants, blocks, date, minute)
-                    : null;
-                  const dominant = summary?.dominant ?? "pending";
-                  const isSelected =
-                    selectedSlot?.date === date && selectedSlot.minute === minute;
-                  const count = summary ? summary[dominant] : 0;
+                  const slotStart = epoch(kstWallToIso(date, minute));
+                  const slotEnd = epoch(kstWallToIso(date, minute + GRID_STEP_MINUTES));
+                  const evaluated = participants.map((p, idx) => ({
+                    name: p.name,
+                    colorClass: PERSON_COLORS[idx % PERSON_COLORS.length],
+                    status: participantStatusForSlot(p, blocks, slotStart, slotEnd),
+                  }));
+                  const preferred = evaluated.filter((e) => e.status === "preferred");
+                  const busy = evaluated.filter((e) => e.status === "busy");
                   return (
-                    <button
-                      key={`${date}-${minute}`}
-                      type="button"
-                      onClick={() => setSelectedSlot({ date, minute })}
-                      className={cn(
-                        "min-h-12 border-r border-slate-100 px-2 py-1.5 text-left transition-colors last:border-r-0 focus:outline-none focus:ring-2 focus:ring-brand-300",
-                        CALENDAR_CELL_STYLE[dominant],
-                        isSelected && "relative z-0 ring-2 ring-brand-400",
-                      )}
-                      aria-label={`${date} ${slotLabel(minute)} ${CALENDAR_STATUS_LABEL[dominant]}`}
+                    <div
+                      key={date}
+                      className="w-52 shrink-0 space-y-1 border-r border-slate-100 p-1.5 last:border-r-0"
                     >
-                      {loading ? (
-                        <span className="block h-4 w-14 rounded bg-slate-200" />
-                      ) : (
-                        <>
-                          <span className="block text-xs font-bold">
-                            {CALENDAR_STATUS_LABEL[dominant]} {count > 0 ? count : ""}
-                          </span>
-                          {summary && dominant === "busy" && summary.preferred > 0 && (
-                            <span className="mt-0.5 block text-[11px] opacity-80">
-                              선호 {summary.preferred}
-                            </span>
-                          )}
-                          {summary && dominant === "preferred" && summary.busy === 0 && (
-                            <span className="mt-0.5 block text-[11px] opacity-80">
-                              가능 {summary.available}
-                            </span>
-                          )}
-                        </>
+                      {preferred.length > 0 && (
+                        <StatusGroup tone="green" label="선호" people={preferred} />
                       )}
-                    </button>
+                      {busy.length > 0 && (
+                        <StatusGroup tone="red" label="불가능" people={busy} />
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -907,124 +910,6 @@ function SubmittedCalendarScreen({
           </div>
         </div>
       </Card>
-
-      {/* 모바일: 날짜 탭 + 시간 히트맵 리스트 */}
-      <div className="space-y-3 sm:hidden">
-        <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
-          {dates.map((date, i) => {
-            const { weekdayKo, monthDay } = describeDateStr(date);
-            const active = i === activeDateIndex;
-            return (
-              <button
-                key={date}
-                type="button"
-                onClick={() => {
-                  setActiveDateIndex(i);
-                  setSelectedSlot({ date, minute: rows[0] });
-                }}
-                aria-pressed={active}
-                className={cn(
-                  "shrink-0 rounded-xl border px-3.5 py-2 text-center transition-colors",
-                  active
-                    ? "border-brand-400 bg-brand-50 text-brand-700"
-                    : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50",
-                )}
-              >
-                <span className="block text-sm font-bold leading-none">{weekdayKo}</span>
-                <span className="mt-1 block text-[11px] leading-none">{monthDay}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        <Card className="space-y-1 p-3">
-          {rows.map((minute) => {
-            const date = dates[activeDateIndex];
-            const summary = participants.length
-              ? summarizeCalendarSlot(participants, blocks, date, minute)
-              : null;
-            const dominant = summary?.dominant ?? "pending";
-            const isSelected =
-              selectedSlot?.date === date && selectedSlot.minute === minute;
-            const total = participants.length || 1;
-            const segment = (count: number, color: string) =>
-              count > 0 ? (
-                <span className={color} style={{ width: `${(count / total) * 100}%` }} />
-              ) : null;
-            return (
-              <button
-                key={minute}
-                type="button"
-                onClick={() => setSelectedSlot({ date, minute })}
-                aria-label={`${slotLabel(minute)} ${CALENDAR_STATUS_LABEL[dominant]}`}
-                className={cn(
-                  "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors",
-                  isSelected
-                    ? "border-brand-400 bg-brand-50"
-                    : "border-slate-100 hover:bg-slate-50",
-                )}
-              >
-                <span className="w-12 shrink-0 text-xs font-medium tabular-nums text-slate-500">
-                  {formatHm(minute)}
-                </span>
-                <span className="flex h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100">
-                  {summary && (
-                    <>
-                      {segment(summary.available, "bg-green-400")}
-                      {segment(summary.preferred, "bg-blue-400")}
-                      {segment(summary.busy, "bg-red-400")}
-                      {segment(summary.avoid, "bg-amber-400")}
-                      {segment(summary.pending, "bg-slate-300")}
-                    </>
-                  )}
-                </span>
-                <Badge tone={CALENDAR_BADGE_TONE[dominant]} className="shrink-0">
-                  {CALENDAR_STATUS_LABEL[dominant]}
-                  {summary && summary[dominant] > 0 ? ` ${summary[dominant]}` : ""}
-                </Badge>
-              </button>
-            );
-          })}
-        </Card>
-      </div>
-
-      {selectedSlot && selectedSummary && selectedGroups && (
-        <Card className="space-y-3 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="text-sm font-bold text-slate-900">
-                {describeDateStr(selectedSlot.date).monthDay}{" "}
-                {describeDateStr(selectedSlot.date).weekdayKo}요일{" "}
-                {slotLabel(selectedSlot.minute)}
-              </p>
-              <p className="mt-1 text-xs text-slate-500">상세 사유는 표시하지 않아요.</p>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {(["available", "preferred", "busy", "pending"] as CalendarStatus[]).map(
-                (status) => (
-                  <Badge key={status} tone={CALENDAR_BADGE_TONE[status]}>
-                    {CALENDAR_STATUS_LABEL[status]} {selectedSummary[status]}
-                  </Badge>
-                ),
-              )}
-            </div>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {(["preferred", "busy", "available", "pending"] as CalendarStatus[]).map((status) => (
-              <div key={status} className="rounded-xl border border-slate-200 px-3 py-2">
-                <p className="text-xs font-bold text-slate-500">
-                  {CALENDAR_STATUS_LABEL[status]}
-                </p>
-                <p className="mt-1 text-sm text-slate-700">
-                  {selectedGroups[status].length > 0
-                    ? selectedGroups[status].join(", ")
-                    : "-"}
-                </p>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
 
       {participantId && token && (
         <section className="space-y-2">

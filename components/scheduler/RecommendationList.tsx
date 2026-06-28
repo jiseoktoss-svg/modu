@@ -1,5 +1,5 @@
-import { Info, SearchX } from "lucide-react";
 import { Card, CardTitle } from "@/components/ui/Card";
+import { Emoji } from "@/components/ui/Emoji";
 import { RecommendationCard } from "@/components/scheduler/RecommendationCard";
 import type { SlotCandidate } from "@/lib/scheduler";
 
@@ -27,7 +27,7 @@ export function RecommendationList({
   if (candidates.length === 0) {
     return (
       <Card className="space-y-2 text-center">
-        <SearchX size={32} className="mx-auto text-slate-300" />
+        <Emoji symbol="🗓️" size={32} className="mx-auto" />
         <CardTitle>추천할 수 있는 시간이 없어요</CardTitle>
         <p className="text-sm text-slate-600">
           필수 참석자가 모두 가능한 시간이 아직 없어요. 다른 회의 날짜로 새로 만들거나,
@@ -41,7 +41,7 @@ export function RecommendationList({
     <div className="space-y-4">
       {candidates.length < 3 && (
         <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          <Info size={16} className="mt-0.5 shrink-0" />
+          <Emoji symbol="ℹ️" size={16} className="mt-0.5" />
           조건을 만족하는 후보가 {candidates.length}개뿐이에요. 다른 회의 날짜로 새로
           만들거나 필수 참석자를 조정하면 후보가 늘어날 수 있어요.
         </p>

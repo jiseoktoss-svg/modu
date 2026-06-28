@@ -1,10 +1,16 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @font-face {
   font-family: "TossFace";
-  src: url("/fonts/TossFaceFontMac.ttf") format("truetype");
+  /* Web(COLR/CPAL) 파일을 우선 사용 — 전 브라우저(윈도우/맥)에서 컬러 렌더링됨.
+     없으면 Mac(sbix) 파일로 폴백(Safari/macOS 전용 컬러). */
+  src:
+    url("/fonts/TossFaceFontWeb.otf") format("opentype"),
+    url("/fonts/TossFaceFontMac.ttf") format("truetype");
   font-display: swap;
   unicode-range:
     U+00A9, U+00AE, U+200D, U+203C, U+2049, U+20E3, U+2122, U+2139,
@@ -24,8 +30,11 @@ body {
 }
 
 body {
+  /* TossFace 는 unicode-range 로 이모지에만 적용되고, 본문 텍스트는 Pretendard 가 담당한다. */
   font-family:
     "TossFace",
+    "Pretendard Variable",
+    Pretendard,
     ui-sans-serif,
     system-ui,
     -apple-system,
