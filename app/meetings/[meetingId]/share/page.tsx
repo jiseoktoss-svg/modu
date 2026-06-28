@@ -1,9 +1,7 @@
 import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/layout/SiteHeader";
-import { ExpiryNotice } from "@/components/layout/ExpiryNotice";
-import { ShareLinksPanel } from "@/components/meeting/ShareLinksPanel";
-import { Emoji } from "@/components/ui/Emoji";
-import { fetchMeeting } from "@/lib/data";
+import { MeetingCreatedPanel } from "@/components/meeting/MeetingCreatedPanel";
+import { fetchMeeting, fetchParticipants } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
@@ -14,21 +12,13 @@ export default async function SharePage({
 }) {
   const meeting = await fetchMeeting(params.meetingId);
   if (!meeting) notFound();
+  const participants = await fetchParticipants(meeting.id);
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="flex min-h-screen flex-col bg-white/95">
       <SiteHeader />
-      <main className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6">
-        <div className="mb-6 flex items-center gap-2">
-          <Emoji symbol="🎉" size={22} />
-          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
-            회의가 만들어졌어요
-          </h1>
-        </div>
-
-        <ShareLinksPanel meetingId={meeting.id} />
-
-        <ExpiryNotice className="mt-10" />
+      <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 sm:px-6">
+        <MeetingCreatedPanel meeting={meeting} participants={participants} />
       </main>
     </div>
   );

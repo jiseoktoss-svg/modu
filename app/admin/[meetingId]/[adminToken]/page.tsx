@@ -51,7 +51,7 @@ export default async function AdminPage({
     meeting.dateStart === meeting.dateEnd ? start.monthDay : `${start.monthDay}~${end.monthDay}`;
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-white/95">
       <SiteHeader />
       <main className="mx-auto w-full max-w-2xl space-y-6 px-4 py-8 sm:px-6">
         <header>

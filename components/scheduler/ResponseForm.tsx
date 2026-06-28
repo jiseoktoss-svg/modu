@@ -5,7 +5,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from "react";
 import { Emoji } from "@/components/ui/Emoji";
 import {
@@ -16,17 +18,14 @@ import {
   verifyParticipantIdentity,
 } from "@/app/actions/meetings";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
-import { Card, CardTitle } from "@/components/ui/Card";
+import { Card } from "@/components/ui/Card";
 import { Input, Label } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
+import { TDSButton } from "@/components/ui/TDSButton";
+import { MeetingSummarySentence } from "@/components/meeting/MeetingSummarySentence";
+import { ExpiryNotice } from "@/components/layout/ExpiryNotice";
 import { cn } from "@/lib/cn";
-import {
-  blocksToCells,
-  cellKey,
-  cellsToBlocks,
-  GRID_STEP_MINUTES,
-} from "@/lib/grid";
+import { cellKey, cellsToBlocks, GRID_STEP_MINUTES } from "@/lib/grid";
 import {
   describeDateStr,
   formatHm,
@@ -47,6 +46,10 @@ import type { AttendanceType, AvailabilityStatus, CellStatus } from "@/lib/types
 interface Props {
   meetingId: string;
   meetingTitle: string;
+  agenda: string;
+  location: string;
+  deadlineDate: string;
+  durationMinutes: number;
   dates: string[];
   workdayStart: string;
   workdayEnd: string;
@@ -55,69 +58,9 @@ interface Props {
   initialParticipants: PublicParticipant[];
 }
 
-type Step = "loading" | "select" | "fill" | "done";
+type Step = "loading" | "intro" | "identity" | "availability" | "done";
 type DateSummaryStatus = "available" | "preferred" | "busy" | "mixed";
 type CalendarStatus = "available" | "preferred" | "avoid" | "busy" | "pending";
-
-const STATUS_OPTIONS: Array<{
-  status: CellStatus;
-  label: string;
-  className: string;
-}> = [
-  {
-    status: "available",
-    label: "가능",
-    className: "border-green-200 bg-green-50 text-green-700",
-  },
-  {
-    status: "preferred",
-    label: "선호",
-    className: "border-blue-200 bg-blue-50 text-blue-700",
-  },
-  {
-    status: "busy",
-    label: "불가능",
-    className: "border-red-200 bg-red-50 text-red-700",
-  },
-];
-
-const SUMMARY_STYLE: Record<DateSummaryStatus, string> = {
-  available: "border-green-200 bg-green-50 text-green-700",
-  preferred: "border-blue-200 bg-blue-50 text-blue-700",
-  busy: "border-red-200 bg-red-50 text-red-700",
-  mixed: "border-amber-200 bg-amber-50 text-amber-700",
-};
-
-const SUMMARY_LABEL: Record<DateSummaryStatus, string> = {
-  available: "가능",
-  preferred: "선호",
-  busy: "불가능",
-  mixed: "시간 조정",
-};
-
-const CALENDAR_STATUS_LABEL: Record<CalendarStatus, string> = {
-  available: "가능",
-  preferred: "선호",
-  avoid: "피함",
-  busy: "불가",
-  pending: "미응답",
-};
-
-const CALENDAR_CELL_STYLE: Record<CalendarStatus, string> = {
-  available: "border-slate-100 bg-white text-slate-500 hover:bg-slate-50",
-  preferred: "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100",
-  avoid: "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100",
-  busy: "border-red-200 bg-red-50 text-red-700 hover:bg-red-100",
-  pending: "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100",
-};
-
-const CALENDAR_BADGE_TONE: Record<CalendarStatus, "gray" | "green" | "red" | "amber" | "blue"> = {
-  available: "green",
-  preferred: "blue",
-  avoid: "amber",
-  busy: "red",
-  pending: "gray",
-};
 
 function storageKey(meetingId: string) {
   return `modu:p:${meetingId}`;
@@ -159,29 +102,6 @@ function summarizeDate(
   return { status, available, preferred, busy, avoid };
 }
 
-function slotLabel(minute: number) {
-  return `${formatHm(minute)}~${formatHm(minute + GRID_STEP_MINUTES)}`;
-}
-
-function statusOption(status: CellStatus) {
-  return (
-    STATUS_OPTIONS.find((option) => option.status === status) ?? {
-      status,
-      label: "피함",
-      className: "border-amber-200 bg-amber-50 text-amber-700",
-    }
-  );
-}
-
-interface CalendarSlotSummary {
-  available: number;
-  preferred: number;
-  avoid: number;
-  busy: number;
-  pending: number;
-  dominant: CalendarStatus;
-}
-
 function epoch(iso: string) {
   return Date.parse(iso);
 }
@@ -210,65 +130,6 @@ function participantStatusForSlot(
   if (statuses.includes("avoid")) return "avoid";
   if (statuses.includes("preferred")) return "preferred";
   return "available";
-}
-
-function dominantStatus(summary: Omit<CalendarSlotSummary, "dominant">): CalendarStatus {
-  if (summary.busy > 0) return "busy";
-  if (summary.preferred > 0) return "preferred";
-  if (summary.avoid > 0) return "avoid";
-  if (summary.pending > 0) return "pending";
-  return "available";
-}
-
-function summarizeCalendarSlot(
-  participants: CalendarSnapshotParticipant[],
-  blocks: CalendarSnapshotBlock[],
-  date: string,
-  minute: number,
-): CalendarSlotSummary {
-  const slotStart = epoch(kstWallToIso(date, minute));
-  const slotEnd = epoch(kstWallToIso(date, minute + GRID_STEP_MINUTES));
-  const summary = {
-    available: 0,
-    preferred: 0,
-    avoid: 0,
-    busy: 0,
-    pending: 0,
-  };
-
-  for (const participant of participants) {
-    const status = participantStatusForSlot(participant, blocks, slotStart, slotEnd);
-    summary[status] += 1;
-  }
-
-  return {
-    ...summary,
-    dominant: dominantStatus(summary),
-  };
-}
-
-function groupedParticipantsForSlot(
-  participants: CalendarSnapshotParticipant[],
-  blocks: CalendarSnapshotBlock[],
-  date: string,
-  minute: number,
-) {
-  const slotStart = epoch(kstWallToIso(date, minute));
-  const slotEnd = epoch(kstWallToIso(date, minute + GRID_STEP_MINUTES));
-  const groups: Record<CalendarStatus, string[]> = {
-    available: [],
-    preferred: [],
-    avoid: [],
-    busy: [],
-    pending: [],
-  };
-
-  for (const participant of participants) {
-    const status = participantStatusForSlot(participant, blocks, slotStart, slotEnd);
-    groups[status].push(participant.name);
-  }
-
-  return groups;
 }
 
 // 데모용 더미 응답: 6명이 선호/불가를 입력한 상태를 결정적으로 생성한다.
@@ -320,8 +181,245 @@ function buildDummySnapshot(
   return { participants, blocks };
 }
 
+// 빈 값 자리표시: 회색 dot 3개 파도타기 애니메이션(생성 화면과 동일).
+function DotWave() {
+  return (
+    <span aria-hidden="true" className="inline-flex items-center gap-1.5 leading-none">
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="inline-block h-2 w-2 rounded-full bg-slate-400 animate-dot-wave motion-reduce:animate-none"
+          style={{ animationDelay: `${i * 0.16}s` }}
+        />
+      ))}
+    </span>
+  );
+}
+
+// 상단 문장에서 클릭하면 해당 단계로 돌아가 수정할 수 있는 값(파란 강조).
+function EditValue({
+  fieldLabel,
+  onEdit,
+  children,
+}: {
+  fieldLabel: string;
+  onEdit: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onEdit}
+      aria-label={`${fieldLabel} 수정`}
+      className="inline rounded font-semibold text-brand-600 decoration-brand-400 decoration-2 underline-offset-4 transition-colors hover:text-brand-700 hover:underline focus:outline-none focus-visible:underline focus-visible:ring-2 focus-visible:ring-brand-200"
+    >
+      {children}
+    </button>
+  );
+}
+
+// 한글 받침 유무(서술격조사 이에요/예요 선택용).
+function hasBatchim(s: string): boolean {
+  const t = s.trim();
+  if (!t) return false;
+  const c = t.charCodeAt(t.length - 1);
+  if (c < 0xac00 || c > 0xd7a3) return false; // 한글 음절이 아니면 받침 없음으로 처리
+  return (c - 0xac00) % 28 !== 0;
+}
+
+// 시간대: 모든 입력은 30분 단위 분(minute) 범위로 환원한다.
+type TimeRange = { start: number; end: number };
+
+function fmtTime(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m === 0 ? `${h}시` : `${h}시 ${m}분`;
+}
+function fmtRange(r: TimeRange): string {
+  return `${fmtTime(r.start)}~${fmtTime(r.end)}`;
+}
+function fmtMD(ds: string): string {
+  const [, m, d] = ds.split("-").map(Number);
+  return `${m}/${d}`;
+}
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : `${n}`;
+}
+
+const CAL_WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+
+// 월 이동 화살표 아이콘(DatePicker 와 동일 톤).
+function CalChevron({ dir }: { dir: "left" | "right" }) {
+  return (
+    <svg viewBox="0 0 12 12" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+      <path
+        d={dir === "left" ? "M7.5 3 4.5 6l3 3" : "M4.5 3 7.5 6l-3 3"}
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+// 한 번에 한 달만 보여주고 < > 로 월을 이동하는 달력(유효 날짜가 있는 월 범위 안에서만).
+function MonthCalendar({
+  dates,
+  selected,
+  onToggle,
+  tone,
+  blockedDates,
+}: {
+  dates: string[];
+  selected: Set<string>;
+  onToggle: (ds: string) => void;
+  tone: "busy" | "pref";
+  blockedDates?: Set<string>;
+}) {
+  const validSet = new Set(dates);
+  // 유효 날짜가 들어있는 월 목록(정렬). 이 안에서만 이동한다.
+  const months = useMemo(() => {
+    const map = new Map<string, { y: number; m: number }>();
+    for (const ds of dates) {
+      const [y, m] = ds.split("-").map(Number);
+      map.set(`${y}-${m}`, { y, m });
+    }
+    return Array.from(map.values()).sort((a, b) => a.y - b.y || a.m - b.m);
+  }, [dates]);
+
+  const [monthIdx, setMonthIdx] = useState(0);
+  const safeIdx = months.length === 0 ? 0 : Math.min(monthIdx, months.length - 1);
+  const cur = months[safeIdx];
+
+  const selStyle =
+    tone === "busy"
+      ? "border-red-300 bg-red-100 text-red-700"
+      : "border-blue-300 bg-blue-100 text-blue-700";
+
+  if (!cur) return null;
+
+  const { y, m } = cur;
+  const lead = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
+  const daysIn = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const grid: (number | null)[] = [];
+  for (let i = 0; i < lead; i += 1) grid.push(null);
+  for (let d = 1; d <= daysIn; d += 1) grid.push(d);
+
+  return (
+    <div className="w-full max-w-[18rem]">
+      {/* 월 이동 헤더 */}
+      <div className="mb-1.5 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => setMonthIdx(safeIdx - 1)}
+          disabled={safeIdx === 0}
+          aria-label="이전 달"
+          className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30"
+        >
+          <CalChevron dir="left" />
+        </button>
+        <span className="text-sm font-bold text-slate-700">
+          {y}년 {m}월
+        </span>
+        <button
+          type="button"
+          onClick={() => setMonthIdx(safeIdx + 1)}
+          disabled={safeIdx === months.length - 1}
+          aria-label="다음 달"
+          className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30"
+        >
+          <CalChevron dir="right" />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1 text-center">
+        {CAL_WEEKDAYS.map((w, i) => (
+          <span
+            key={w}
+            className={cn(
+              "py-0.5 text-xs font-bold",
+              i === 0 ? "text-red-400" : i === 6 ? "text-blue-400" : "text-slate-400",
+            )}
+          >
+            {w}
+          </span>
+        ))}
+        {grid.map((d, i) => {
+          if (d == null) return <span key={`b${i}`} />;
+          const ds = `${y}-${pad2(m)}-${pad2(d)}`;
+          const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+          const isWeekend = dow === 0 || dow === 6;
+          const blocked = blockedDates?.has(ds) ?? false;
+          const inRange = validSet.has(ds) && !isWeekend;
+          const enabled = inRange && !blocked;
+          const isSel = selected.has(ds);
+          return (
+            <button
+              key={ds}
+              type="button"
+              disabled={!enabled}
+              onClick={() => onToggle(ds)}
+              aria-pressed={isSel}
+              aria-label={blocked ? `${m}월 ${d}일 — 불가능한 날짜` : undefined}
+              className={cn(
+                "relative flex aspect-square flex-col items-center justify-center rounded-lg border text-sm font-semibold leading-none transition-colors",
+                blocked
+                  ? "cursor-not-allowed border-red-200 bg-red-50 text-red-400"
+                  : !inRange
+                    ? "cursor-not-allowed border-transparent text-slate-300"
+                    : isSel
+                      ? selStyle
+                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+              )}
+            >
+              <span className={cn(blocked && "line-through")}>{d}</span>
+              {blocked && (
+                <span className="mt-0.5 text-[8px] font-bold leading-none text-red-500">
+                  불가
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// 토스트: 앱 공통 패턴(상단 고정 pill + 아이콘 + 자동 사라짐).
+function Toast({ open, message, icon = "⚠️" }: { open: boolean; message: string; icon?: string }) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className={cn(
+        "fixed left-1/2 top-5 z-50 inline-flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white shadow-[0_8px_20px_rgba(15,23,42,0.18)] transition-all duration-200 ease-out",
+        open
+          ? "translate-y-0 opacity-100 blur-0"
+          : "pointer-events-none -translate-y-2 opacity-0 blur-sm",
+      )}
+    >
+      <Emoji symbol={icon} size={16} />
+      <span className="break-keep">{message}</span>
+    </div>
+  );
+}
+
 export function ResponseForm(props: Props) {
-  const { meetingId, dates, workdayStart, workdayEnd } = props;
+  const {
+    meetingId,
+    meetingTitle,
+    agenda,
+    location,
+    deadlineDate,
+    durationMinutes,
+    dates,
+    workdayStart,
+    workdayEnd,
+    lunchStart,
+    lunchEnd,
+  } = props;
   const participants = props.initialParticipants;
   const rows = useMemo(
     () => buildRows(workdayStart, workdayEnd),
@@ -331,31 +429,55 @@ export function ResponseForm(props: Props) {
   const [step, setStep] = useState<Step>("loading");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  const [cells, setCells] = useState<Record<string, CellStatus>>({});
   const [role, setRole] = useState("");
   const [identityName, setIdentityName] = useState("");
   const [identityRole, setIdentityRole] = useState("");
-  const [commonStatus, setCommonStatus] = useState<CellStatus>("preferred");
-  const [commonStart, setCommonStart] = useState(workdayStart);
-  const [commonEnd, setCommonEnd] = useState(workdayEnd);
   const [submitting, setSubmitting] = useState(false);
   const [verifying, setVerifying] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // 본인확인 문장 빌더 단계: 0=이름, 1=직무.
+  const [formStep, setFormStep] = useState(0);
+  const [maxFormStep, setMaxFormStep] = useState(0);
+  const skipFormFocus = useRef(true); // 본인확인 진입 시 자동 포커스(스크롤 점프) 방지
+  // 가능 시간 입력(문장 빌더): 0=피하고싶은시간,1=선호시간,2=불가날짜,3=선호날짜,4=특정날짜+시간.
+  const [availStep, setAvailStep] = useState(0);
+  const [maxAvailStep, setMaxAvailStep] = useState(0);
+  const [commonAvoid, setCommonAvoid] = useState<TimeRange[]>([]);
+  const [commonPref, setCommonPref] = useState<TimeRange[]>([]);
+  const [busyDates, setBusyDates] = useState<Set<string>>(() => new Set());
+  const [prefDates, setPrefDates] = useState<Set<string>>(() => new Set());
+  const [dateTimeBusy, setDateTimeBusy] = useState<Record<string, TimeRange[]>>({});
+  const [dtDate, setDtDate] = useState<string | null>(null); // 5단계에서 시간 입력 중인 날짜
+  const [draftStart, setDraftStart] = useState(workdayStart);
+  const [draftEnd, setDraftEnd] = useState(workdayEnd);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
 
   const selected = participants.find((p) => p.id === selectedId) ?? null;
   const roleOptions = Array.from(
     new Set(participants.map((p) => p.role.trim()).filter(Boolean)),
   );
-  const summaries = dates.map((_, index) => summarizeDate(index, rows, cells));
-  const preferredDateCount = summaries.filter((s) => s.status === "preferred").length;
-  const busyDateCount = summaries.filter((s) => s.status === "busy").length;
-  const adjustedDateCount = summaries.filter((s) => s.status === "mixed").length;
-  const availableDateCount = dates.length - preferredDateCount - busyDateCount - adjustedDateCount;
+  // 본인확인 빌더: 0=이름, 1=직무(마지막).
+  const IDENTITY_LAST_STEP = 1;
+  const formValid = (s: number) =>
+    s === 0 ? identityName.trim().length > 0 : identityRole.trim().length > 0;
+  const clauseVisible = (i: number) => i <= maxFormStep;
+
+  // 가능 시간 빌더: 0~4 (마지막=4). 도달한 단계까지 문장에 노출.
+  const AVAIL_LAST_STEP = 4;
+  const availClauseVisible = (i: number) => i <= maxAvailStep;
+  const personName = selected?.name ?? identityName;
+  const AVAIL_QUESTIONS = [
+    `${personName}님, 특별히 공통적으로 피하고 싶은 시간대가 있으신가요? (예: 점심시간)`,
+    `${personName}님이 특별히 선호하시는 시간이 있나요?`,
+    "회의가 불가능한 날짜가 있나요?",
+    "선호하는 날짜가 있나요?",
+    "특별히 이 날 이 시간엔 안 되는 경우가 있나요?",
+  ];
 
   useEffect(() => {
     const raw = window.localStorage.getItem(storageKey(meetingId));
     if (!raw) {
-      setStep("select");
+      setStep("intro");
       return;
     }
     let parsed: { participantId?: string; token?: string } | null = null;
@@ -365,7 +487,7 @@ export function ResponseForm(props: Props) {
       parsed = null;
     }
     if (!parsed?.participantId || !parsed.token) {
-      setStep("select");
+      setStep("intro");
       return;
     }
     const identity = { participantId: parsed.participantId, token: parsed.token };
@@ -374,7 +496,6 @@ export function ResponseForm(props: Props) {
     loadParticipantResponse({ meetingId, ...identity })
       .then((res) => {
         if (res.ok) {
-          setCells(blocksToCells(res.blocks, dates));
           const found = participants.find((p) => p.id === identity.participantId);
           setRole(found?.role ?? "");
           setIdentityName(found?.name ?? "");
@@ -384,10 +505,10 @@ export function ResponseForm(props: Props) {
           window.localStorage.removeItem(storageKey(meetingId));
           setSelectedId(null);
           setToken(null);
-          setStep("select");
+          setStep("intro");
         }
       })
-      .catch(() => setStep("select"));
+      .catch(() => setStep("intro"));
     // 최초 1회만 실행.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -408,44 +529,215 @@ export function ResponseForm(props: Props) {
     }
   }
 
-  function setWholeDate(dateIndex: number, status: CellStatus) {
-    setCells((prev) => {
-      const next = { ...prev };
+  const showToast = (message: string) => {
+    setToast(message);
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 2600);
+  };
+
+  // 구조화된 입력(공통 시간대 + 불가/선호 날짜 + 특정 날짜+시간)을 우선순위로 cells → blocks 환원.
+  function buildBlocks() {
+    const cells: Record<string, CellStatus> = {};
+    const lunchS = parseHm(lunchStart);
+    const lunchE = parseHm(lunchEnd);
+    const covers = (ranges: TimeRange[], minute: number) =>
+      ranges.some((r) => minute >= r.start && minute + GRID_STEP_MINUTES <= r.end);
+    dates.forEach((ds, dIdx) => {
+      const dt = dateTimeBusy[ds] ?? [];
       for (const minute of rows) {
-        const key = cellKey(dateIndex, minute);
-        if (status === "available") delete next[key];
-        else next[key] = status;
+        // 점심시간과 겹치는 셀은 제외(서버가 점심 겹침 블록을 거부함)
+        if (minute < lunchE && lunchS < minute + GRID_STEP_MINUTES) continue;
+        let status: CellStatus | null = null;
+        if (covers(dt, minute)) status = "busy"; // 특정 날짜+시간(가장 우선)
+        else if (busyDates.has(ds)) status = "busy"; // 불가 날짜(하루)
+        else if (prefDates.has(ds)) status = "preferred"; // 선호 날짜(하루)
+        else if (covers(commonAvoid, minute)) status = "avoid"; // 공통 피하고 싶은 시간
+        else if (covers(commonPref, minute)) status = "preferred"; // 공통 선호 시간
+        if (status) cells[cellKey(dIdx, minute)] = status;
       }
-      return next;
     });
+    return cellsToBlocks(cells, dates);
   }
 
-  function applyCommonRange() {
-    const s = parseHm(commonStart);
-    const e = parseHm(commonEnd);
-    if (!(s < e)) {
-      setError("공통 시간의 시작은 종료보다 빨라야 해요.");
+  const addDraftRange = (target: "avoid" | "pref" | "dt") => {
+    const s = parseHm(draftStart);
+    const e = parseHm(draftEnd);
+    if (!(e > s)) {
+      showToast("시작 시간이 종료보다 빨라야 해요.");
       return;
     }
-    setError(null);
-    setCells((prev) => {
-      const next = { ...prev };
-      for (let dateIndex = 0; dateIndex < dates.length; dateIndex += 1) {
-        for (const minute of rows) {
-          if (minute >= s && minute + GRID_STEP_MINUTES <= e) {
-            const key = cellKey(dateIndex, minute);
-            if (commonStatus === "available") delete next[key];
-            else next[key] = commonStatus;
-          }
-        }
-      }
+    // 근무시간 밖은 선택 불가.
+    if (s < parseHm(workdayStart) || e > parseHm(workdayEnd)) {
+      showToast(`근무시간 ${workdayStart}~${workdayEnd} 안에서 선택해 주세요.`);
+      return;
+    }
+    // 선호 시간이 '피하고 싶은 시간'과 겹치면 추가 불가.
+    if (target === "pref" && commonAvoid.some((a) => overlaps(s, e, a.start, a.end))) {
+      showToast("피하고 싶은 시간과 겹쳐요. 다른 시간을 골라 주세요.");
+      return;
+    }
+    const r: TimeRange = { start: s, end: e };
+    if (target === "avoid") setCommonAvoid((p) => [...p, r]);
+    else if (target === "pref") setCommonPref((p) => [...p, r]);
+    else if (dtDate) setDateTimeBusy((p) => ({ ...p, [dtDate]: [...(p[dtDate] ?? []), r] }));
+  };
+
+  const removeRange = (target: "avoid" | "pref" | "dt", index: number, ds?: string) => {
+    if (target === "avoid") setCommonAvoid((p) => p.filter((_, i) => i !== index));
+    else if (target === "pref") setCommonPref((p) => p.filter((_, i) => i !== index));
+    else if (ds)
+      setDateTimeBusy((p) => {
+        const rest = (p[ds] ?? []).filter((_, i) => i !== index);
+        const next = { ...p };
+        if (rest.length) next[ds] = rest;
+        else delete next[ds];
+        return next;
+      });
+  };
+
+  const toggleBusyDate = (ds: string) => {
+    setBusyDates((prev) => {
+      const next = new Set(prev);
+      if (next.has(ds)) next.delete(ds);
+      else next.add(ds);
       return next;
     });
-  }
+    // 불가능으로 고른 날짜는 선호 날짜에서 제외(겹침 방지).
+    setPrefDates((prev) => {
+      if (!prev.has(ds)) return prev;
+      const n = new Set(prev);
+      n.delete(ds);
+      return n;
+    });
+  };
+  const togglePrefDate = (ds: string) =>
+    setPrefDates((prev) => {
+      const next = new Set(prev);
+      if (next.has(ds)) next.delete(ds);
+      else next.add(ds);
+      return next;
+    });
+
+  const goAvail = (next: number) => {
+    setAvailStep(next);
+    setMaxAvailStep((m) => Math.max(m, next));
+  };
+  const editAvailStep = (i: number) => setAvailStep(i);
+  const handleAvailNext = () => {
+    if (availStep < AVAIL_LAST_STEP) goAvail(availStep + 1);
+    else void handleSubmit();
+  };
+
+  // 시간 범위 추가 입력(시작~종료 + 추가) + 추가된 범위 칩 목록.
+  const renderTimeAdder = (
+    target: "avoid" | "pref" | "dt",
+    ranges: TimeRange[],
+    tone: "blue" | "red",
+    onRemove: (i: number) => void,
+  ) => (
+    <div>
+      <div className="flex items-center gap-2">
+        <Input
+          type="time"
+          step={1800}
+          min={workdayStart}
+          max={workdayEnd}
+          value={draftStart}
+          onChange={(e) => setDraftStart(e.target.value)}
+          aria-label="시작 시간"
+        />
+        <span className="shrink-0 text-slate-400">~</span>
+        <Input
+          type="time"
+          step={1800}
+          min={workdayStart}
+          max={workdayEnd}
+          value={draftEnd}
+          onChange={(e) => setDraftEnd(e.target.value)}
+          aria-label="종료 시간"
+        />
+        <TDSButton
+          type="button"
+          tone="secondary"
+          size="md"
+          className="shrink-0"
+          onClick={() => addDraftRange(target)}
+        >
+          추가
+        </TDSButton>
+      </div>
+      {ranges.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {ranges.map((r, i) => (
+            <span
+              key={`${r.start}-${r.end}-${i}`}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-bold",
+                tone === "blue" ? "bg-blue-50 text-blue-700" : "bg-red-50 text-red-700",
+              )}
+            >
+              {fmtRange(r)}
+              <button
+                type="button"
+                onClick={() => onRemove(i)}
+                aria-label={`${fmtRange(r)} 삭제`}
+                className="ml-0.5 opacity-60 hover:opacity-100"
+              >
+                <Emoji symbol="❌" size={11} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const goToForm = (next: number) => {
+    setFormStep(next);
+    setMaxFormStep((m) => Math.max(m, next));
+  };
+
+  const editFormStep = (i: number) => setFormStep(i);
+
+  const handleFormNext = () => {
+    if (formStep === IDENTITY_LAST_STEP) {
+      void handleVerifyIdentity();
+    } else {
+      goToForm(formStep + 1);
+    }
+  };
+
+  const onFormFieldKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (formValid(formStep)) handleFormNext();
+    }
+  };
+
+  // 값이 있으면 파란 EditValue, 없으면 dot 자리표시(클릭 시 해당 단계로 이동).
+  const valueSlot = (
+    empty: boolean,
+    fieldLabel: string,
+    onEdit: () => void,
+    value: ReactNode,
+  ) =>
+    empty ? (
+      <button
+        type="button"
+        onClick={onEdit}
+        aria-label={`${fieldLabel} 입력`}
+        className="mx-1.5 inline-flex items-center rounded align-middle leading-none focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+      >
+        <DotWave />
+      </button>
+    ) : (
+      <EditValue fieldLabel={fieldLabel} onEdit={onEdit}>
+        {value}
+      </EditValue>
+    );
 
   async function handleVerifyIdentity() {
     setVerifying(true);
-    setError(null);
     const saved = storedIdentity();
     const res = await verifyParticipantIdentity({
       meetingId,
@@ -456,8 +748,17 @@ export function ResponseForm(props: Props) {
     setVerifying(false);
 
     if (!res.ok) {
-      setError(res.error);
+      showToast(res.error); // 유효성 오류는 아이콘 토스트로
       return;
+    }
+
+    // 다른 사람으로 확인되면 입력값 초기화(가능 시간은 새로 받는다).
+    if (res.participantId !== selectedId) {
+      setCommonAvoid([]);
+      setCommonPref([]);
+      setBusyDates(new Set());
+      setPrefDates(new Set());
+      setDateTimeBusy({});
     }
 
     setSelectedId(res.participantId);
@@ -466,27 +767,15 @@ export function ResponseForm(props: Props) {
     setIdentityRole(res.role);
     setRole(res.role);
 
-    if (res.responseStatus === "submitted") {
-      const loaded = await loadParticipantResponse({
-        meetingId,
-        participantId: res.participantId,
-        token: res.token,
-      });
-      if (loaded.ok) {
-        setCells(blocksToCells(loaded.blocks, dates));
-      }
-    } else {
-      setCells({});
-    }
-
-    setStep("fill");
+    setAvailStep(0);
+    setMaxAvailStep(0);
+    setStep("availability"); // 본인확인 완료 → 다음 화면
   }
 
   async function handleSubmit() {
     if (!selectedId) return;
     setSubmitting(true);
-    setError(null);
-    const blocks = cellsToBlocks(cells, dates);
+    const blocks = buildBlocks();
     const res = await submitAvailability({
       meetingId,
       participantId: selectedId,
@@ -496,13 +785,23 @@ export function ResponseForm(props: Props) {
     });
     setSubmitting(false);
     if (!res.ok) {
-      setError(res.error);
+      showToast(res.error);
       return;
     }
     setToken(res.token);
     persistIdentity(res.participantId, res.token);
     setStep("done");
   }
+
+  // 본인확인 단계가 바뀌면 입력에 포커스(최초 진입은 건너뜀, 스크롤 점프 방지).
+  useEffect(() => {
+    if (step !== "identity") return;
+    if (skipFormFocus.current) {
+      skipFormFocus.current = false;
+      return;
+    }
+    document.getElementById(formStep === 0 ? "pName" : "pRole")?.focus({ preventScroll: true });
+  }, [formStep, step]);
 
   if (step === "loading") {
     return (
@@ -512,195 +811,313 @@ export function ResponseForm(props: Props) {
     );
   }
 
+  if (step === "intro") {
+    return (
+      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
+        <div className="flex-1">
+          <p className="text-sm font-medium text-slate-400">회의 안내</p>
+          <MeetingSummarySentence
+            className="mt-3"
+            title={meetingTitle}
+            agenda={agenda}
+            location={location}
+            deadlineDate={deadlineDate}
+            durationMinutes={durationMinutes}
+          />
+        </div>
+        <div className="mt-8 pb-8 pt-5">
+          <TDSButton
+            size="xl"
+            display="block"
+            onClick={() => {
+              setFormStep(0);
+              setMaxFormStep(0);
+              setStep("identity");
+            }}
+          >
+            시간 정하러 가기
+          </TDSButton>
+        </div>
+      </div>
+    );
+  }
+
   if (step === "done") {
     return (
-      <SubmittedCalendarScreen
-        meetingId={meetingId}
-        participantId={selectedId}
-        token={token}
-        selectedName={selected?.name ?? identityName}
-        dates={dates}
-        rows={rows}
-        onEdit={() => setStep("fill")}
-      />
+      <>
+        <SubmittedCalendarScreen
+          meetingId={meetingId}
+          participantId={selectedId}
+          token={token}
+          selectedName={selected?.name ?? identityName}
+          dates={dates}
+          rows={rows}
+          onEdit={() => {
+            // 본인은 이미 확인됨 → 가능 시간 화면 처음부터 다시.
+            setAvailStep(0);
+            setMaxAvailStep(0);
+            setStep("availability");
+          }}
+        />
+        <ExpiryNotice className="mt-8" />
+      </>
     );
   }
 
-  if (step === "select") {
+  // step === "identity": 본인확인(이름 → 직무) 문장 빌더.
+  if (step === "identity") {
     return (
-      <Card className="mx-auto max-w-2xl space-y-4">
-        <CardTitle>본인 확인</CardTitle>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="identityName">이름</Label>
-            <Input
-              id="identityName"
-              value={identityName}
-              onChange={(e) => setIdentityName(e.target.value)}
-              placeholder="이름 입력"
-              autoComplete="name"
-            />
-          </div>
-          <div>
-            <Label htmlFor="identityRole">직무</Label>
-            <Select
-              id="identityRole"
-              value={identityRole}
-              onChange={(e) => setIdentityRole(e.target.value)}
+      <>
+        <Toast open={toast !== null} message={toast ?? ""} />
+        <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
+          <div className="flex-1">
+            <p className="text-sm font-medium text-slate-400">본인 확인</p>
+            <div
+              aria-live="polite"
+              className="mt-3 break-keep text-left text-2xl leading-relaxed text-slate-800 sm:text-3xl sm:leading-relaxed"
             >
-              <option value="">직무 선택</option>
-              {roleOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </Select>
+              <p>
+                {clauseVisible(0) && (
+                  <span className="animate-fade-in motion-reduce:animate-none">
+                    저는{" "}
+                    {valueSlot(identityName.trim() === "", "이름", () => editFormStep(0), identityName)}
+                    이고,{" "}
+                  </span>
+                )}
+                {clauseVisible(1) && (
+                  <span className="animate-fade-in motion-reduce:animate-none">
+                    직무는{" "}
+                    {valueSlot(identityRole.trim() === "", "직무", () => editFormStep(1), identityRole)}
+                    {hasBatchim(identityRole) ? "이에요." : "예요."}
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-8 pb-8 pt-5">
+            <div key={formStep} className="animate-fade-up motion-reduce:animate-none">
+              {formStep === 0 ? (
+                <>
+                  <Label htmlFor="pName" className="text-lg">이름을 입력해주세요</Label>
+                  <Input
+                    id="pName"
+                    value={identityName}
+                    onChange={(e) => setIdentityName(e.target.value)}
+                    onKeyDown={onFormFieldKeyDown}
+                    placeholder="이름 입력"
+                    autoComplete="name"
+                  />
+                </>
+              ) : (
+                <>
+                  <Label htmlFor="pRole" className="text-lg">직무를 선택해주세요</Label>
+                  <Select
+                    id="pRole"
+                    value={identityRole}
+                    onChange={(e) => setIdentityRole(e.target.value)}
+                  >
+                    <option value="">직무 선택</option>
+                    {roleOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </Select>
+                </>
+              )}
+            </div>
+
+            <div className="mt-4">
+              {formStep === IDENTITY_LAST_STEP ? (
+                <TDSButton
+                  size="xl"
+                  display="block"
+                  onClick={handleFormNext}
+                  disabled={!formValid(1) || verifying}
+                  loading={verifying}
+                >
+                  {verifying ? "확인 중..." : "확인하고 다음"}
+                </TDSButton>
+              ) : (
+                <TDSButton
+                  size="xl"
+                  display="block"
+                  onClick={handleFormNext}
+                  disabled={!formValid(formStep)}
+                >
+                  다음
+                </TDSButton>
+              )}
+            </div>
           </div>
         </div>
-        {error && (
-          <p className="text-sm font-medium text-red-600" role="alert">
-            {error}
-          </p>
-        )}
-        <div className="flex justify-end">
-          <Button
-            onClick={handleVerifyIdentity}
-            disabled={!identityName.trim() || !identityRole || verifying}
-          >
-            {verifying ? "확인 중..." : "확인하고 다음"}
-          </Button>
-        </div>
-      </Card>
+      </>
     );
   }
 
+  // step === "availability": 가능 시간 문장 빌더(5단계).
   return (
-    <div className="mx-auto max-w-2xl space-y-3 pb-24">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-bold text-slate-900">{selected?.name}</h2>
-          {selected && (
-            <Badge tone={selected.attendanceType === "required" ? "brand" : "gray"}>
-              {selected.attendanceType === "required" ? "필수" : "선택"}
-            </Badge>
+    <>
+      <Toast open={toast !== null} message={toast ?? ""} />
+      <div className="mx-auto w-full max-w-2xl pb-28">
+        {/* 상단: 답변이 쌓이는 문장 */}
+        <p className="pt-2 text-sm font-medium text-slate-400">가능 시간</p>
+        <div
+          aria-live="polite"
+          className="mt-3 break-keep text-left text-xl leading-relaxed text-slate-800 sm:text-2xl sm:leading-relaxed"
+        >
+          {availClauseVisible(0) && (
+            <span className="animate-fade-in motion-reduce:animate-none">
+              저는 모든 요일 공통적으로{" "}
+              {commonAvoid.length > 0 ? (
+                <>
+                  <EditValue fieldLabel="피하고 싶은 시간" onEdit={() => editAvailStep(0)}>
+                    {commonAvoid.map(fmtRange).join(", ")}
+                  </EditValue>
+                  는 피하고 싶어요.{" "}
+                </>
+              ) : (
+                <EditValue fieldLabel="피하고 싶은 시간" onEdit={() => editAvailStep(0)}>
+                  특별히 피하고 싶은 시간은 없어요.
+                </EditValue>
+              )}{" "}
+            </span>
+          )}
+          {availClauseVisible(1) && (
+            <span className="animate-fade-in motion-reduce:animate-none">
+              {commonPref.length > 0 ? (
+                <>
+                  <EditValue fieldLabel="선호 시간" onEdit={() => editAvailStep(1)}>
+                    {commonPref.map(fmtRange).join(", ")}
+                  </EditValue>
+                  는 선호해요!{" "}
+                </>
+              ) : (
+                <EditValue fieldLabel="선호 시간" onEdit={() => editAvailStep(1)}>
+                  특별히 선호하는 시간은 없어요.
+                </EditValue>
+              )}{" "}
+            </span>
+          )}
+          {availClauseVisible(2) && (
+            <span className="animate-fade-in motion-reduce:animate-none">
+              {busyDates.size > 0 ? (
+                <>
+                  <EditValue fieldLabel="불가능한 날짜" onEdit={() => editAvailStep(2)}>
+                    {[...busyDates].sort().map(fmtMD).join(", ")}
+                  </EditValue>
+                  에는 회의가 불가능해요.{" "}
+                </>
+              ) : (
+                <EditValue fieldLabel="불가능한 날짜" onEdit={() => editAvailStep(2)}>
+                  불가능한 날짜는 없어요.
+                </EditValue>
+              )}{" "}
+            </span>
+          )}
+          {availClauseVisible(3) && (
+            <span className="animate-fade-in motion-reduce:animate-none">
+              {prefDates.size > 0 ? (
+                <>
+                  <EditValue fieldLabel="선호하는 날짜" onEdit={() => editAvailStep(3)}>
+                    {[...prefDates].sort().map(fmtMD).join(", ")}
+                  </EditValue>
+                  는 선호해요!{" "}
+                </>
+              ) : (
+                <EditValue fieldLabel="선호하는 날짜" onEdit={() => editAvailStep(3)}>
+                  특별히 선호하는 날짜는 없어요.
+                </EditValue>
+              )}{" "}
+            </span>
+          )}
+          {availClauseVisible(4) && (
+            <span className="animate-fade-in motion-reduce:animate-none">
+              {Object.keys(dateTimeBusy).length > 0 ? (
+                <>
+                  <EditValue fieldLabel="특정 날짜 시간" onEdit={() => editAvailStep(4)}>
+                    {Object.entries(dateTimeBusy)
+                      .sort(([a], [b]) => a.localeCompare(b))
+                      .map(([ds, rs]) => `${fmtMD(ds)} ${rs.map(fmtRange).join("·")}`)
+                      .join(", ")}
+                  </EditValue>
+                  에는 안 돼요.
+                </>
+              ) : (
+                <EditValue fieldLabel="특정 날짜 시간" onEdit={() => editAvailStep(4)}>
+                  특정 시간에 안 되는 날은 없어요.
+                </EditValue>
+              )}
+            </span>
           )}
         </div>
-        <Button variant="ghost" size="sm" onClick={() => setStep("select")}>
-          다시 확인
-        </Button>
+
+        {/* 질문 + 단계별 입력 */}
+        <div key={availStep} className="mt-6 animate-fade-up motion-reduce:animate-none">
+          <p className="text-lg font-bold text-slate-800">{AVAIL_QUESTIONS[availStep]}</p>
+          <div className="mt-3">
+            {availStep === 0 &&
+              renderTimeAdder("avoid", commonAvoid, "red", (i) => removeRange("avoid", i))}
+            {availStep === 1 &&
+              renderTimeAdder("pref", commonPref, "blue", (i) => removeRange("pref", i))}
+            {availStep === 2 && (
+              <MonthCalendar dates={dates} selected={busyDates} onToggle={toggleBusyDate} tone="busy" />
+            )}
+            {availStep === 3 && (
+              <MonthCalendar
+                dates={dates}
+                selected={prefDates}
+                onToggle={togglePrefDate}
+                tone="pref"
+                blockedDates={busyDates}
+              />
+            )}
+            {availStep === 4 && (
+              <div className="space-y-3">
+                <MonthCalendar
+                  dates={dates}
+                  selected={new Set([...Object.keys(dateTimeBusy), ...(dtDate ? [dtDate] : [])])}
+                  onToggle={(ds) => setDtDate((cur) => (cur === ds ? null : ds))}
+                  tone="busy"
+                />
+                {dtDate && (
+                  <div className="rounded-2xl bg-slate-50 p-3">
+                    <p className="text-sm font-bold text-slate-700">{fmtMD(dtDate)} 안 되는 시간</p>
+                    <div className="mt-2">
+                      {renderTimeAdder("dt", dateTimeBusy[dtDate] ?? [], "red", (i) =>
+                        removeRange("dt", i, dtDate),
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
-      <Card className="space-y-3 p-4">
-        <div>
-          <CardTitle className="text-base">공통 시간 일괄 적용</CardTitle>
-          <p className="mt-1 text-sm text-slate-500">
-            선택한 시간대를 모든 날짜에 한 번에 적용해요.
-          </p>
-        </div>
-        <div className="grid grid-cols-3 gap-1.5">
-          {STATUS_OPTIONS.map((option) => (
-            <button
-              key={option.status}
-              type="button"
-              onClick={() => setCommonStatus(option.status)}
-              aria-pressed={commonStatus === option.status}
-              className={cn(
-                "rounded-xl border px-3 py-2 text-sm font-bold transition-colors",
-                commonStatus === option.status
-                  ? option.className
-                  : "border-slate-200 bg-white text-slate-500",
-              )}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          <Input
-            type="time"
-            step={1800}
-            value={commonStart}
-            onChange={(e) => setCommonStart(e.target.value)}
-            aria-label="공통 시작 시간"
-          />
-          <span className="shrink-0 text-slate-400">~</span>
-          <Input
-            type="time"
-            step={1800}
-            value={commonEnd}
-            onChange={(e) => setCommonEnd(e.target.value)}
-            aria-label="공통 종료 시간"
-          />
-          <Button
-            type="button"
-            variant="secondary"
-            className="shrink-0"
-            onClick={applyCommonRange}
-          >
-            적용
-          </Button>
-        </div>
-      </Card>
-
-      <Card className="space-y-4 p-4">
-        <div className="flex flex-wrap gap-2">
-          <Badge tone="green">가능 {availableDateCount}일</Badge>
-          <Badge tone="blue">선호 {preferredDateCount}일</Badge>
-          <Badge tone="red">불가능 {busyDateCount}일</Badge>
-          {adjustedDateCount > 0 && <Badge tone="amber">시간 조정 {adjustedDateCount}일</Badge>}
-        </div>
-
-        <div className="grid gap-2 sm:grid-cols-2">
-          {dates.map((date, index) => {
-            const { weekdayKo, monthDay } = describeDateStr(date);
-            const summary = summaries[index];
-            return (
-              <div key={date} className="rounded-xl border border-slate-200 bg-white p-3">
-                <div className="mb-3 flex items-baseline gap-2">
-                  <p className="font-bold text-slate-900">{monthDay}</p>
-                  <p className="text-xs text-slate-500">{weekdayKo}요일</p>
-                </div>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {STATUS_OPTIONS.map((option) => (
-                    <button
-                      key={option.status}
-                      type="button"
-                      onClick={() => setWholeDate(index, option.status)}
-                      className={cn(
-                        "rounded-lg border px-2 py-1.5 text-xs font-bold transition-colors hover:bg-slate-50",
-                        summary.status === option.status
-                          ? option.className
-                          : "border-slate-200 bg-white text-slate-500",
-                      )}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </Card>
-
-      {error && (
-        <div
-          role="alert"
-          className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700"
-        >
-          <Emoji symbol="⚠️" size={16} />
-          {error}
-        </div>
-      )}
-
+      {/* 하단 고정 CTA */}
       <div className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto w-full max-w-2xl px-4 py-3 sm:px-6">
-          <Button size="lg" className="w-full" onClick={handleSubmit} disabled={submitting}>
-            {submitting ? "저장 중..." : token ? "수정 저장하기" : "응답 제출하기"}
-          </Button>
+          <TDSButton
+            size="xl"
+            display="block"
+            onClick={handleAvailNext}
+            disabled={availStep === AVAIL_LAST_STEP && submitting}
+            loading={availStep === AVAIL_LAST_STEP && submitting}
+          >
+            {availStep === AVAIL_LAST_STEP
+              ? submitting
+                ? "저장 중..."
+                : token
+                  ? "수정 저장하기"
+                  : "응답 제출하기"
+              : "다음"}
+          </TDSButton>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -830,9 +1247,9 @@ function SubmittedCalendarScreen({
         </div>
         <div className="flex flex-wrap gap-2">
           <Badge tone="green">{participants.length}명 응답</Badge>
-          <Button type="button" size="sm" variant="secondary" onClick={onEdit}>
+          <TDSButton type="button" size="sm" tone="secondary" onClick={onEdit}>
             응답 수정
-          </Button>
+          </TDSButton>
         </div>
       </div>
 
@@ -980,15 +1397,15 @@ function VotingPanel({
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
         <p>{error ?? "아직 투표할 수 있는 후보 시간대가 없어요."}</p>
-        <Button
+        <TDSButton
           type="button"
           size="sm"
-          variant="secondary"
+          tone="secondary"
           className="mt-2"
           onClick={() => void load()}
         >
           후보 다시 확인
-        </Button>
+        </TDSButton>
       </div>
     );
   }

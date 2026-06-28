@@ -1,10 +1,9 @@
-import Link from "next/link";
 import { SiteHeader } from "@/components/layout/SiteHeader";
-import { Button } from "@/components/ui/Button";
+import { TDSButton } from "@/components/ui/TDSButton";
 
 export default function LandingPage() {
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
+    <div className="flex min-h-screen flex-col bg-white/95">
       <SiteHeader />
 
       <main className="flex flex-1 flex-col items-center justify-center px-4 py-20 pb-28 sm:pb-20">
@@ -20,20 +19,18 @@ export default function LandingPage() {
 
           {/* 데스크톱: 중앙 CTA */}
           <div className="mt-8 hidden justify-center sm:flex">
-            <Link href="/meetings/new">
-              <Button size="lg">회의 만들기</Button>
-            </Link>
+            <TDSButton as="a" href="/meetings/new" size="xl">
+              회의 만들기
+            </TDSButton>
           </div>
         </div>
       </main>
 
       {/* 모바일: 하단 고정 CTA */}
       <div className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/95 p-4 backdrop-blur sm:hidden">
-        <Link href="/meetings/new" className="block">
-          <Button size="lg" className="w-full">
-            회의 만들기
-          </Button>
-        </Link>
+        <TDSButton as="a" href="/meetings/new" size="xl" display="block">
+          회의 만들기
+        </TDSButton>
       </div>
     </div>
   );

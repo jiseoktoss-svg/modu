@@ -25,7 +25,7 @@
 
 html,
 body {
-  background-color: #f8fafc;
+  background-color: rgb(255 255 255 / 0.95);
   color: #0f172a;
 }
 
@@ -49,4 +49,157 @@ body {
 .no-select {
   -webkit-user-select: none;
   user-select: none;
+}
+
+/* 배지(원판 + 외곽선 + 체크)가 스프링으로 통통 튀며 등장 */
+.completion-badge {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: completion-pop 560ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* 체크는 배지가 자리잡은 뒤 그려진다 */
+.completion-lottie-check {
+  stroke-dasharray: 42;
+  stroke-dashoffset: 42;
+  animation: completion-check 320ms cubic-bezier(0.65, 0, 0.35, 1) 360ms forwards;
+}
+
+/* 한 번 퍼지며 사라지는 헤일로 링 */
+.completion-halo {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: completion-halo 720ms ease-out 420ms forwards;
+}
+
+/* 성공 버스트 점들(개별 지연은 인라인) */
+.completion-burst circle {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: completion-spark 620ms ease-out both;
+}
+
+@keyframes completion-pop {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+
+  60% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes completion-check {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes completion-halo {
+  0% {
+    transform: scale(0.7);
+    opacity: 0;
+  }
+
+  25% {
+    opacity: 0.5;
+  }
+
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+@keyframes completion-spark {
+  0% {
+    transform: translate(0, 0) scale(0);
+    opacity: 0;
+  }
+
+  30% {
+    opacity: 1;
+  }
+
+  65% {
+    transform: translate(var(--tx), var(--ty)) scale(1);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translate(calc(var(--tx) * 1.18), calc(var(--ty) * 1.18)) scale(0.2);
+    opacity: 0;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .modu-tds-button {
+    transition: filter 140ms ease;
+  }
+
+  .modu-tds-button:not(:disabled):hover {
+    filter: brightness(0.97);
+  }
+
+  .modu-tds-button[data-tone="primary"]:not(:disabled):hover {
+    filter: brightness(0.94);
+  }
+
+  .modu-tds-button[data-tone="dark"]:not(:disabled):hover {
+    filter: brightness(0.92);
+  }
+
+  .modu-secondary-cta:not(:disabled):hover,
+  .modu-secondary-cta:hover button,
+  .modu-secondary-cta:hover [role="button"] {
+    background-color: #f2f4f6 !important;
+    filter: none;
+  }
+
+  .modu-tds-button[data-tone="danger"]:not(:disabled):hover {
+    filter: brightness(0.94);
+  }
+
+  .modu-tds-button:not(:disabled):active {
+    filter: brightness(0.92);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modu-tds-button {
+    transition: none;
+  }
+
+  .completion-badge {
+    animation: none;
+  }
+
+  .completion-lottie-check {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+
+  .completion-halo,
+  .completion-burst circle {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* 참석자 모달 검색창(TDS SearchField) 높이 축소.
+   루트(.tds-mobile-search-field)엔 높이가 없고 내부 row(div>div)가 높이를 결정하므로
+   그 row를 더 낮게 고정한다. 자식 결합자로 specificity가 Emotion 클래스를 이기므로 !important 불필요. */
+.tds-mobile-search-field > div > div {
+  min-height: 0;
+  height: 40px;
+  padding-top: 0;
+  padding-bottom: 0;
 }

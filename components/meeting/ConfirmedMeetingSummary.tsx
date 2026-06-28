@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { Emoji } from "@/components/ui/Emoji";
+import { TDSButton } from "@/components/ui/TDSButton";
 import { formatKoreanDate, formatKoreanTimeRange } from "@/lib/time";
 import type { ConfirmedSlot, Meeting } from "@/lib/types";
 
@@ -82,12 +83,14 @@ export function ConfirmedMeetingSummary({
         </pre>
         <div className="flex flex-wrap gap-2">
           <CopyButton value={slot.summaryText} label="공유 문구 복사" variant="primary" />
-          <a
+          <TDSButton
+            as="a"
             href={`/api/meetings/${meeting.id}/ics`}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-50"
+            tone="secondary"
+            size="lg"
           >
             캘린더 파일(.ics) 받기
-          </a>
+          </TDSButton>
         </div>
         <p className="text-xs text-slate-500">
           실제 이메일이나 캘린더 초대는 보내지 않아요. 문구와 파일을 직접 공유해 주세요.

@@ -94,6 +94,9 @@ export async function createMeeting(
   const deadlineDate = String(
     formData.get("deadlineDate") ?? formData.get("meetingDate") ?? "",
   ).trim();
+  const editMeetingId = String(formData.get("meetingId") ?? "").trim();
+  const editAdminToken = String(formData.get("adminToken") ?? "").trim();
+  const isEditing = editMeetingId.length > 0 || editAdminToken.length > 0;
   const dateStart = todayDateStrKst(new Date());
   const dateEnd = deadlineDate;
   const workdayStart = DEFAULT_WORKDAY_START;
@@ -106,6 +109,9 @@ export async function createMeeting(
   if (!title) return { error: "회의명을 입력해 주세요." };
   if (!agenda) return { error: "회의 안건을 입력해 주세요." };
   if (!location) return { error: "회의 장소를 입력해 주세요." };
+  if (isEditing && (!editMeetingId || !editAdminToken)) {
+    return { error: "수정 권한 정보가 올바르지 않습니다." };
+  }
   if (participants.length < 2) return { error: "참석자는 최소 2명 이상이어야 합니다." };
   if (!deadlineDate) {
     return { error: "회의 마감 날짜를 선택해 주세요." };
@@ -133,6 +139,69 @@ export async function createMeeting(
   if (durationMinutes > we - ws) return { error: "회의 길이가 근무 시간보다 깁니다." };
 
   const sb = getSupabaseAdmin();
+
+  if (isEditing) {
+    const meeting = await fetchMeeting(editMeetingId);
+    if (!meeting || meeting.adminToken !== editAdminToken) {
+      return { error: "수정 권한이 없습니다." };
+    }
+    if (meeting.confirmedSlotId) {
+      return { error: "이미 확정된 회의는 수정할 수 없습니다." };
+    }
+
+    const existingParticipants = await fetchParticipants(editMeetingId);
+    if (existingParticipants.some((participant) => participant.responseStatus === "submitted")) {
+      return { error: "이미 응답이 있는 회의는 생성 화면에서 수정할 수 없어요." };
+    }
+
+    const { error: meetingError } = await sb
+      .from("meetings")
+      .update({
+        title,
+        agenda,
+        location,
+        duration_minutes: durationMinutes,
+        date_start: meeting.dateStart,
+        date_end: dateEnd,
+        workday_start: workdayStart,
+        workday_end: workdayEnd,
+        lunch_start: lunchStart,
+        lunch_end: lunchEnd,
+      })
+      .eq("id", editMeetingId)
+      .eq("admin_token", editAdminToken);
+
+    if (meetingError) {
+      return { error: "회의 수정에 실패했습니다. 잠시 후 다시 시도해 주세요." };
+    }
+
+    const { error: deleteParticipantError } = await sb
+      .from("participants")
+      .delete()
+      .eq("meeting_id", editMeetingId);
+    if (deleteParticipantError) {
+      return { error: "참석자 수정에 실패했습니다. 잠시 후 다시 시도해 주세요." };
+    }
+
+    const participantRows = participants.map((p) => ({
+      meeting_id: editMeetingId,
+      name: p.name,
+      role: p.role,
+      attendance_type: p.attendanceType,
+      participant_token: generateToken(),
+    }));
+
+    const { error: participantError } = await sb.from("participants").insert(participantRows);
+    if (participantError) {
+      return { error: "참석자 수정에 실패했습니다. 잠시 후 다시 시도해 주세요." };
+    }
+
+    revalidatePath(`/meetings/${editMeetingId}/share`);
+    revalidatePath(`/meetings/${editMeetingId}/share/${editAdminToken}`);
+    revalidatePath(`/m/${editMeetingId}`);
+    redirect(`/meetings/${editMeetingId}/share/${editAdminToken}`);
+  }
+
   const adminToken = generateToken();
 
   const { data: meetingData, error: meetingError } = await sb

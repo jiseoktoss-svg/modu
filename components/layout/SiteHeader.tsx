@@ -3,7 +3,7 @@ import { Container } from "@/components/ui/Container";
 
 export function SiteHeader() {
   return (
-    <header className="border-b border-slate-200 bg-white">
+    <header className="border-b border-slate-200 bg-white/95">
       <Container className="flex h-14 items-center">
         <Link
           href="/"

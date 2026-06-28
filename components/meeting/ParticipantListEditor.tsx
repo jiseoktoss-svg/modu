@@ -6,10 +6,10 @@ import {
   type DragEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import { SearchField } from "@toss/tds-mobile";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/Badge";
 import { Emoji } from "@/components/ui/Emoji";
-import { Input } from "@/components/ui/Input";
 import { MOCK_EMPLOYEES } from "@/data/mockEmployees";
 import type { AttendanceType } from "@/lib/types";
 
@@ -166,22 +166,17 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
   }
 
   return (
-    <div className="flex h-full flex-col gap-4">
-      {/* 검색 (왼쪽) */}
-      <label className="relative block max-w-sm shrink-0">
-        <Emoji
-          symbol="🔍"
-          size={16}
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
-        />
-        <Input
+    <div className="flex h-full flex-col gap-2">
+      {/* 검색 (TDS SearchField) */}
+      <div className="max-w-sm shrink-0">
+        <SearchField
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          onDeleteClick={() => setQuery("")}
           placeholder="이름 또는 직책 검색"
-          className="pl-9"
           aria-label="직원 검색"
         />
-      </label>
+      </div>
 
       {/* 직원 목록 — 클릭으로 추가/해제 토글 (위아래 페이드 + 스크롤) */}
       <div className="relative h-64 shrink-0">
@@ -327,10 +322,6 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
             />
           )}
         </div>
-
-        {participants.length < MIN_PARTICIPANTS && (
-          <p className="shrink-0 text-xs text-slate-500">참석자는 최소 2명 이상 선택해 주세요.</p>
-        )}
       </div>
     </div>
   );

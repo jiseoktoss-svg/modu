@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { confirmSlot } from "@/app/actions/meetings";
-import { Button } from "@/components/ui/Button";
+import { TDSButton } from "@/components/ui/TDSButton";
 
 interface Props {
   meetingId: string;
@@ -31,9 +31,9 @@ export function ConfirmSlotButton({ meetingId, adminToken, startAt, endAt, label
 
   if (!confirming) {
     return (
-      <Button onClick={() => setConfirming(true)}>
+      <TDSButton onClick={() => setConfirming(true)} display="block">
         {label ?? "이 시간으로 확정"}
-      </Button>
+      </TDSButton>
     );
   }
 
@@ -46,12 +46,17 @@ export function ConfirmSlotButton({ meetingId, adminToken, startAt, endAt, label
         </p>
       )}
       <div className="flex gap-2">
-        <Button onClick={doConfirm} disabled={loading}>
+        <TDSButton onClick={doConfirm} disabled={loading} loading={loading} size="lg">
           {loading ? "확정 중…" : "네, 확정할게요"}
-        </Button>
-        <Button variant="ghost" onClick={() => setConfirming(false)} disabled={loading}>
+        </TDSButton>
+        <TDSButton
+          tone="ghost"
+          size="lg"
+          onClick={() => setConfirming(false)}
+          disabled={loading}
+        >
           취소
-        </Button>
+        </TDSButton>
       </div>
     </div>
   );

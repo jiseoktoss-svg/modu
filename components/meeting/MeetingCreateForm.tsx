@@ -4,15 +4,17 @@ import {
   useEffect,
   useRef,
   useState,
+  type ChangeEvent as ReactChangeEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
 import { useFormState, useFormStatus } from "react-dom";
+import { IconButton, NumericSpinner } from "@toss/tds-mobile";
 import { createMeeting } from "@/app/actions/meetings";
-import { Button } from "@/components/ui/Button";
 import { Emoji } from "@/components/ui/Emoji";
 import { Input, Label } from "@/components/ui/Input";
 import { DatePicker } from "@/components/ui/DatePicker";
+import { TDSButton } from "@/components/ui/TDSButton";
 import {
   ParticipantListEditor,
   type ParticipantDraft,
@@ -22,6 +24,16 @@ import type { FormState } from "@/lib/actionTypes";
 interface Props {
   defaultDeadlineDate: string;
   minDeadlineDate: string;
+  initialMeeting?: {
+    id: string;
+    adminToken: string;
+    title: string;
+    agenda: string;
+    location: string;
+    deadlineDate: string;
+    durationMinutes: number;
+    participants: ParticipantDraft[];
+  };
 }
 
 const INITIAL_PARTICIPANTS: ParticipantDraft[] = [];
@@ -84,40 +96,62 @@ function EditValue({
   );
 }
 
-function SubmitButton({ disabled }: { disabled?: boolean }) {
+function SubmitButton({ disabled, isEditing }: { disabled?: boolean; isEditing?: boolean }) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" size="lg" disabled={pending || disabled} className="w-full">
-      {pending ? "회의 만드는 중…" : "회의 만들기"}
-    </Button>
+    <TDSButton
+      type="submit"
+      size="xl"
+      display="block"
+      disabled={pending || disabled}
+      loading={pending}
+    >
+      {pending
+        ? isEditing
+          ? "수정 저장 중…"
+          : "회의 만드는 중…"
+        : isEditing
+          ? "수정 저장하기"
+          : "회의 만들기"}
+    </TDSButton>
   );
 }
 
-export function MeetingCreateForm({ defaultDeadlineDate, minDeadlineDate }: Props) {
+export function MeetingCreateForm({
+  defaultDeadlineDate,
+  minDeadlineDate,
+  initialMeeting,
+}: Props) {
   const [state, formAction] = useFormState<FormState, FormData>(createMeeting, {
     error: null,
   });
+  const isEditing = Boolean(initialMeeting);
+  const initialDurationMinutes = initialMeeting?.durationMinutes ?? 60;
+  const initialDurationHours = Math.floor(initialDurationMinutes / 60);
+  const initialDurationMinute = initialDurationMinutes % 60;
 
-  const [title, setTitle] = useState("");
-  const [agenda, setAgenda] = useState("");
-  const [location, setLocation] = useState("");
-  const [deadlineDate, setDeadlineDate] = useState(defaultDeadlineDate);
+  const [title, setTitle] = useState(initialMeeting?.title ?? "");
+  const [agenda, setAgenda] = useState(initialMeeting?.agenda ?? "");
+  const [location, setLocation] = useState(initialMeeting?.location ?? "");
+  const [deadlineDate, setDeadlineDate] = useState(
+    initialMeeting?.deadlineDate ?? defaultDeadlineDate,
+  );
   // 시간/분은 문자열로 보관해 타이핑 중 빈 칸을 허용한다(즉시 0으로 튀지 않게).
-  const [durationHours, setDurationHours] = useState("1");
-  const [durationMinute, setDurationMinute] = useState("0");
+  const [durationHours, setDurationHours] = useState(String(initialDurationHours));
+  const [durationMinute, setDurationMinute] = useState(String(initialDurationMinute));
   const [participants, setParticipants] = useState<ParticipantDraft[]>(
-    INITIAL_PARTICIPANTS,
+    initialMeeting?.participants ?? INITIAL_PARTICIPANTS,
   );
   const [showParticipantModal, setShowParticipantModal] = useState(false);
+  const [participantError, setParticipantError] = useState<string | null>(null);
 
   // step: 하단에 표시 중인 입력 단계. maxStep: 지금까지 도달한 가장 먼 단계.
-  const [step, setStep] = useState(0);
-  const [maxStep, setMaxStep] = useState(0);
+  const [step, setStep] = useState(isEditing ? LAST_STEP : 0);
+  const [maxStep, setMaxStep] = useState(isEditing ? LAST_STEP : 0);
 
   // 포커스 제어용 ref.
   const skipInitialFocus = useRef(true); // 최초 마운트 자동 포커스(스크롤 점프) 방지
   const focusOverride = useRef<string | null>(null); // 특정 입력으로 포커스 강제
-  const closeModalBtnRef = useRef<HTMLButtonElement>(null);
   const modalPanelRef = useRef<HTMLDivElement>(null);
   const backdropDownRef = useRef(false); // backdrop 에서 mousedown 시작했는지
 
@@ -161,11 +195,19 @@ export function MeetingCreateForm({ defaultDeadlineDate, minDeadlineDate }: Prop
     setMaxStep((m) => Math.max(m, next));
   };
   const handleNext = () => {
-    if (step < LAST_STEP && valid[step]) goTo(step + 1);
+    if (step < LAST_STEP && valid[step]) {
+      goTo(step + 1);
+      // 시간 입력(4) 다음 → 참석자 선택 모달을 바로 연다.
+      if (step + 1 === 5) setShowParticipantModal(true);
+    }
   };
   const editStep = (i: number, focusId?: string) => {
     focusOverride.current = focusId ?? null;
     setStep(i);
+  };
+  const openParticipantModal = () => {
+    editStep(5);
+    setShowParticipantModal(true);
   };
 
   // 값이 있으면 파란 EditValue, 없으면 dot 자리표시(클릭 시 해당 항목으로 이동).
@@ -198,6 +240,48 @@ export function MeetingCreateForm({ defaultDeadlineDate, minDeadlineDate }: Prop
     }
   };
 
+  const handleDurationHoursChange = (nextHours: number) => {
+    setDurationHours(String(nextHours));
+    if (nextHours >= WORKDAY_MINUTES / 60) {
+      setDurationMinute("0");
+    }
+  };
+
+  const normalizeDurationMinute = (minute: number) => {
+    const maxMinute = hoursNum >= WORKDAY_MINUTES / 60 ? 0 : 55;
+    return Math.min(maxMinute, Math.max(0, Math.round(minute / 5) * 5));
+  };
+
+  const handleDurationMinuteChange = (nextMinute: number) => {
+    const currentMinute = minOk ? minNum : 0;
+    const directionAdjustedMinute =
+      nextMinute > currentMinute
+        ? currentMinute + 5
+        : nextMinute < currentMinute
+          ? currentMinute - 5
+          : nextMinute;
+    setDurationMinute(String(normalizeDurationMinute(directionAdjustedMinute)));
+  };
+
+  // 스피너 가운데 숫자 위 투명 input: 탭 후 직접 타이핑. 숫자만, 최대 2자리, 빈 칸 허용.
+  const handleDurationHoursInput = (e: ReactChangeEvent<HTMLInputElement>) => {
+    const digits = e.target.value.replace(/\D/g, "").slice(0, 2);
+    if (digits === "") {
+      setDurationHours("");
+      return;
+    }
+    handleDurationHoursChange(Number(digits));
+  };
+
+  const handleDurationMinuteInput = (e: ReactChangeEvent<HTMLInputElement>) => {
+    const digits = e.target.value.replace(/\D/g, "").slice(0, 2);
+    if (digits === "") {
+      setDurationMinute("");
+      return;
+    }
+    setDurationMinute(String(normalizeDurationMinute(Number(digits))));
+  };
+
   // 단계가 바뀌면 해당 입력에 포커스(최초 마운트는 건너뜀, 스크롤 점프 방지).
   useEffect(() => {
     if (skipInitialFocus.current) {
@@ -212,6 +296,7 @@ export function MeetingCreateForm({ defaultDeadlineDate, minDeadlineDate }: Prop
   // 참석자 모달 접근성: Esc 닫기 + 열림 시 포커스 이동 + 닫힘 시 트리거로 복원.
   useEffect(() => {
     if (!showParticipantModal) return;
+    setParticipantError(null);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setShowParticipantModal(false);
@@ -235,7 +320,7 @@ export function MeetingCreateForm({ defaultDeadlineDate, minDeadlineDate }: Prop
       }
     };
     document.addEventListener("keydown", onKey);
-    closeModalBtnRef.current?.focus();
+    modalPanelRef.current?.focus();
     return () => {
       document.removeEventListener("keydown", onKey);
       document.getElementById("participantSelect")?.focus({ preventScroll: true });
@@ -251,7 +336,7 @@ export function MeetingCreateForm({ defaultDeadlineDate, minDeadlineDate }: Prop
         <p className="text-sm font-medium text-slate-400">회의 만들기</p>
         <div
           aria-live="polite"
-          className="mt-3 break-keep text-2xl leading-relaxed text-slate-800 sm:text-3xl sm:leading-relaxed"
+          className="mt-3 break-keep text-left text-2xl leading-relaxed text-slate-800 sm:text-3xl sm:leading-relaxed"
         >
           <p>
             {clauseVisible(0) && (
@@ -311,18 +396,21 @@ export function MeetingCreateForm({ defaultDeadlineDate, minDeadlineDate }: Prop
             )}
           </p>
           {clauseVisible(5) && (
-            <p className="mt-4 animate-fade-up motion-reduce:animate-none">
+            <p className="mt-4 animate-fade-up text-left motion-reduce:animate-none">
               회의 참석자 명단은{" "}
               {valueSlot(
                 filledParticipants.length === 0,
                 "참석자",
-                () => {
-                  editStep(5);
-                  setShowParticipantModal(true);
-                },
+                openParticipantModal,
                 participantNames,
               )}{" "}
-              {filledParticipants.length > 0 && <>총 {filledParticipants.length}명{" "}</>}
+              {filledParticipants.length > 0 && (
+                <>
+                  <EditValue fieldLabel="참석자" onEdit={openParticipantModal}>
+                    총 {filledParticipants.length}명
+                  </EditValue>{" "}
+                </>
+              )}
               입니다.
             </p>
           )}
@@ -336,6 +424,12 @@ export function MeetingCreateForm({ defaultDeadlineDate, minDeadlineDate }: Prop
       <input type="hidden" name="deadlineDate" value={deadlineDate} />
       <input type="hidden" name="durationHours" value={hoursOk ? hoursNum : 0} />
       <input type="hidden" name="durationMinutePart" value={minOk ? minNum : 0} />
+      {initialMeeting && (
+        <>
+          <input type="hidden" name="meetingId" value={initialMeeting.id} />
+          <input type="hidden" name="adminToken" value={initialMeeting.adminToken} />
+        </>
+      )}
       <input
         type="hidden"
         name="participants"
@@ -401,67 +495,87 @@ export function MeetingCreateForm({ defaultDeadlineDate, minDeadlineDate }: Prop
           {step === 4 && (
             <>
               <Label htmlFor="durationHours" className="text-lg">예상 회의 진행 시간을 입력해주세요</Label>
-              <div className="grid grid-cols-[1fr_1fr] gap-2">
-                <div className="relative">
-                  <Input
-                    id="durationHours"
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    step={1}
-                    value={durationHours}
-                    onChange={(e) => setDurationHours(e.target.value)}
-                    onKeyDown={onFieldKeyDown}
-                    className="pr-9"
-                  />
-                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-500">
-                    시간
-                  </span>
+              <div className="grid grid-cols-2 gap-3">
+                <div
+                  id="durationHours"
+                  tabIndex={-1}
+                  className="flex items-center justify-start gap-2 rounded-2xl bg-slate-50 p-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+                >
+                  {/* 외형은 그대로 두고, 가운데 숫자 위에 투명 input을 겹쳐 직접 타이핑 허용 */}
+                  <div className="relative">
+                    <NumericSpinner
+                      size="large"
+                      number={hoursOk ? hoursNum : 0}
+                      minNumber={0}
+                      maxNumber={WORKDAY_MINUTES / 60}
+                      onNumberChange={handleDurationHoursChange}
+                      a11yProps={{
+                        minusButtonAriaLabel: "회의 시간 줄이기",
+                        plusButtonAriaLabel: "회의 시간 늘리기",
+                      }}
+                    />
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      aria-label="회의 진행 시간(시간) 직접 입력"
+                      value={durationHours}
+                      onChange={handleDurationHoursInput}
+                      onFocus={(e) => e.target.select()}
+                      onKeyDown={onFieldKeyDown}
+                      className="absolute inset-y-0 left-1/2 w-12 -translate-x-1/2 cursor-text bg-transparent text-center text-transparent caret-transparent outline-none"
+                    />
+                  </div>
+                  <span className="shrink-0 text-sm font-bold text-slate-700">시간</span>
                 </div>
-                <div className="relative">
-                  <Input
-                    id="durationMinutePart"
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    max={59}
-                    step={1}
-                    value={durationMinute}
-                    onChange={(e) => setDurationMinute(e.target.value)}
-                    onKeyDown={onFieldKeyDown}
-                    className="pr-7"
-                  />
-                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-500">
-                    분
-                  </span>
+                <div
+                  id="durationMinutePart"
+                  tabIndex={-1}
+                  className="flex items-center justify-start gap-2 rounded-2xl bg-slate-50 p-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+                >
+                  {/* 외형은 그대로 두고, 가운데 숫자 위에 투명 input을 겹쳐 직접 타이핑 허용 */}
+                  <div className="relative">
+                    <NumericSpinner
+                      size="large"
+                      number={minOk ? minNum : 0}
+                      minNumber={0}
+                      maxNumber={hoursNum >= WORKDAY_MINUTES / 60 ? 0 : 55}
+                      onNumberChange={handleDurationMinuteChange}
+                      a11yProps={{
+                        minusButtonAriaLabel: "회의 분 줄이기",
+                        plusButtonAriaLabel: "회의 분 늘리기",
+                      }}
+                    />
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      aria-label="회의 진행 시간(분) 직접 입력"
+                      value={durationMinute}
+                      onChange={handleDurationMinuteInput}
+                      onFocus={(e) => e.target.select()}
+                      onKeyDown={onFieldKeyDown}
+                      className="absolute inset-y-0 left-1/2 w-12 -translate-x-1/2 cursor-text bg-transparent text-center text-transparent caret-transparent outline-none"
+                    />
+                  </div>
+                  <span className="shrink-0 text-sm font-bold text-slate-700">분</span>
                 </div>
               </div>
-              {!durationOk && (durationHours.trim() !== "" || durationMinute.trim() !== "") && (
+              {!durationOk && (
                 <p className="mt-2 text-xs text-slate-500">
-                  {durationTotal > WORKDAY_MINUTES
-                    ? "회의 길이는 9시간(근무시간) 이내로 입력해 주세요."
-                    : "시간은 0 이상, 분은 0~59 사이로 입력해 주세요."}
+                  {durationTotal === 0
+                    ? "적절한 시간값을 입력해주세요."
+                    : durationTotal > WORKDAY_MINUTES
+                      ? "회의 길이는 9시간(근무시간) 이내로 입력해 주세요."
+                      : "시간은 0 이상, 분은 0~59 사이로 입력해 주세요."}
                 </p>
               )}
             </>
           )}
           {step === 5 && filledParticipants.length < 2 && (
-            <>
-              <Label htmlFor="participantSelect" className="text-lg">참석자를 선택해주세요</Label>
-              <Button
-                id="participantSelect"
-                type="button"
-                variant="secondary"
-                size="lg"
-                className="w-full"
-                onClick={() => setShowParticipantModal(true)}
-              >
-                참석자 선택하기
-              </Button>
-              <p className="mt-2 text-xs text-slate-500">
-                참석자는 최소 2명 이상 선택해 주세요.
-              </p>
-            </>
+            <Label htmlFor="participantSelect" className="text-lg">
+              본인 포함 참석자를 선택해주세요
+            </Label>
           )}
         </div>
 
@@ -477,17 +591,27 @@ export function MeetingCreateForm({ defaultDeadlineDate, minDeadlineDate }: Prop
 
         <div className="mt-4">
           {step === LAST_STEP && allValid && !showParticipantModal ? (
-            <SubmitButton />
-          ) : step < LAST_STEP ? (
-            <Button
+            <SubmitButton isEditing={isEditing} />
+          ) : step === LAST_STEP && filledParticipants.length < 2 ? (
+            <TDSButton
+              id="participantSelect"
               type="button"
-              size="lg"
-              className="w-full"
+              size="xl"
+              display="block"
+              onClick={() => setShowParticipantModal(true)}
+            >
+              참석자 선택하기
+            </TDSButton>
+          ) : step < LAST_STEP ? (
+            <TDSButton
+              type="button"
+              size="xl"
+              display="block"
               onClick={handleNext}
               disabled={!valid[step]}
             >
               다음
-            </Button>
+            </TDSButton>
           ) : null}
         </div>
       </div>
@@ -510,27 +634,49 @@ export function MeetingCreateForm({ defaultDeadlineDate, minDeadlineDate }: Prop
         >
           <div
             ref={modalPanelRef}
-            className="mx-auto flex h-[90vh] w-full max-w-2xl flex-col rounded-t-3xl bg-white p-5 shadow-xl sm:h-[680px] sm:rounded-3xl"
+            tabIndex={-1}
+            className="mx-auto flex h-[90vh] w-full max-w-2xl flex-col rounded-t-3xl bg-white p-5 shadow-xl focus:outline-none sm:h-[680px] sm:rounded-3xl"
           >
-            <div className="mb-2 flex shrink-0 items-start justify-between gap-4">
+            <div className="mb-1 flex shrink-0 items-start justify-between gap-4">
               <h3 className="text-lg font-bold text-slate-900">참석자 선택</h3>
-              <button
-                ref={closeModalBtnRef}
-                type="button"
-                onClick={() => setShowParticipantModal(false)}
-                className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              <IconButton
+                name="icon-x-circle-mono"
                 aria-label="참석자 선택 닫기"
-              >
-                <Emoji symbol="❌" size={18} />
-              </button>
+                variant="clear"
+                iconSize={24}
+                color="#8b95a1"
+                onClick={() => setShowParticipantModal(false)}
+              />
             </div>
             <div className="min-h-0 flex-1">
               <ParticipantListEditor participants={participants} onChange={setParticipants} />
             </div>
-            <div className="mt-4 flex shrink-0 justify-end">
-              <Button type="button" onClick={() => setShowParticipantModal(false)}>
-                선택 완료
-              </Button>
+            <div className="mt-4 shrink-0">
+              {participantError && participants.length < 2 && (
+                <div
+                  role="alert"
+                  className="mb-2 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700"
+                >
+                  <Emoji symbol="⚠️" size={14} />
+                  {participantError}
+                </div>
+              )}
+              <div className="flex justify-end">
+                <TDSButton
+                  type="button"
+                  size="lg"
+                  onClick={() => {
+                    if (participants.length < 2) {
+                      setParticipantError("참석자는 최소 2명 이상 선택해 주세요.");
+                      return;
+                    }
+                    setParticipantError(null);
+                    setShowParticipantModal(false);
+                  }}
+                >
+                  선택 완료
+                </TDSButton>
+              </div>
             </div>
           </div>
         </div>

@@ -1,13 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { Button, type ButtonProps } from "@/components/ui/Button";
+import { TDSButton, type TDSButtonProps } from "@/components/ui/TDSButton";
 
-interface CopyButtonProps extends Omit<ButtonProps, "onClick" | "children"> {
+type CopyButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+
+interface CopyButtonProps extends Omit<TDSButtonProps, "onClick" | "children" | "tone"> {
   value: string;
   label?: string;
   copiedLabel?: string;
+  variant?: CopyButtonVariant;
 }
+
+const TONE_BY_VARIANT: Record<CopyButtonVariant, TDSButtonProps["tone"]> = {
+  primary: "primary",
+  secondary: "secondary",
+  ghost: "ghost",
+  danger: "danger",
+};
 
 export function CopyButton({
   value,
@@ -40,8 +50,8 @@ export function CopyButton({
   }
 
   return (
-    <Button variant={variant} onClick={handleCopy} aria-live="polite" {...props}>
+    <TDSButton tone={TONE_BY_VARIANT[variant]} onClick={handleCopy} aria-live="polite" {...props}>
       {copied ? copiedLabel : label}
-    </Button>
+    </TDSButton>
   );
 }
