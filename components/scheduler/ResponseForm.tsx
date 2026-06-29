@@ -1339,7 +1339,7 @@ export function ResponseForm(props: Props) {
   return (
     <>
       <Toast open={toast !== null} message={toast ?? ""} />
-      <div className="mx-auto w-full max-w-2xl pb-28">
+      <div className="mx-auto w-full max-w-2xl">
         {/* 상단: 답변이 쌓이는 문장 */}
         <p className="pt-2 text-sm font-medium text-slate-400">가능 시간</p>
         <div

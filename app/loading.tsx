@@ -2,7 +2,7 @@ import { SiteHeader } from "@/components/layout/SiteHeader";
 
 export default function Loading() {
   return (
-    <div className="min-h-screen bg-white/95">
+    <div className="min-h-dvh bg-white/95">
       <SiteHeader />
       <main
         className="mx-auto w-full max-w-2xl space-y-5 px-4 py-8 sm:px-6"

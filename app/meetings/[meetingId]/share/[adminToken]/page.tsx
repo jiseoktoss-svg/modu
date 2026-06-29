@@ -17,7 +17,7 @@ export default async function SharePage({
   } catch (error) {
     console.error("[share:admin] failed to load meeting", error);
     return (
-      <div className="flex min-h-screen flex-col bg-white/95">
+      <div className="flex min-h-dvh flex-col bg-white/95">
         <SiteHeader />
         <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 sm:px-6">
           <MeetingShareError />
@@ -32,7 +32,7 @@ export default async function SharePage({
   } catch (error) {
     console.error("[share:admin] failed to load participants", error);
     return (
-      <div className="flex min-h-screen flex-col bg-white/95">
+      <div className="flex min-h-dvh flex-col bg-white/95">
         <SiteHeader />
         <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 sm:px-6">
           <MeetingShareError />
@@ -42,7 +42,7 @@ export default async function SharePage({
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-white/95">
+    <div className="flex min-h-dvh flex-col bg-white/95">
       <SiteHeader />
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 sm:px-6">
         <MeetingCreatedPanel meeting={meeting} participants={participants} />

@@ -22,7 +22,7 @@ export default async function ParticipantPage({
   const dates = eachDateInRange(meeting.dateStart, meeting.dateEnd);
 
   return (
-    <div className="flex min-h-screen flex-col bg-white/95">
+    <div className="flex min-h-dvh flex-col bg-white/95">
       <SiteHeader />
       <main className="mx-auto flex w-full max-w-screen-2xl flex-1 flex-col px-4 pt-8 sm:px-6">
         {meeting.confirmedSlotId ? (
