@@ -32,31 +32,9 @@
   }
 
   @media (max-width: 639px) {
-    html:has(.modu-mobile-sticky-action),
-    body:has(.modu-mobile-sticky-action) {
-      height: 100%;
-      max-height: 100dvh;
-      overflow: hidden;
-      overscroll-behavior: none;
-    }
-
-    body:has(.modu-mobile-sticky-action) > * {
-      height: 100dvh;
-      max-height: 100dvh;
-      overflow: hidden;
-    }
-
-    body:has(.modu-mobile-sticky-action) main {
-      min-height: 0;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-
-    body:has(.modu-mobile-sticky-action) main,
     .modu-mobile-sticky-action {
       overscroll-behavior: contain;
     }
-
   }
 
   @media (min-width: 640px) {

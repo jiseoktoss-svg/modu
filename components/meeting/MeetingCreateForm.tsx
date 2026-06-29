@@ -97,7 +97,7 @@ function EditValue({
       type="button"
       onClick={onEdit}
       aria-label={`${fieldLabel} 수정`}
-      className="inline rounded text-left align-baseline font-semibold text-brand-600 decoration-brand-400 decoration-2 underline-offset-4 transition-colors hover:text-brand-700 hover:underline focus:outline-none focus-visible:underline focus-visible:ring-2 focus-visible:ring-brand-200"
+      className="inline whitespace-normal break-all rounded text-left align-baseline font-semibold text-brand-600 decoration-brand-400 decoration-2 underline-offset-4 transition-colors hover:text-brand-700 hover:underline focus:outline-none focus-visible:underline focus-visible:ring-2 focus-visible:ring-brand-200"
     >
       {children}
     </button>
@@ -441,10 +441,10 @@ export function MeetingCreateForm({
   return (
     <form
       action={formAction}
-      className="flex min-h-0 flex-1 flex-col overflow-hidden sm:overflow-visible"
+      className="flex flex-1 flex-col"
     >
       {/* 상단: 입력에 따라 완성되는 안내 문장 */}
-      <div className="min-h-0 flex-1 overflow-y-auto pt-6 pr-1 sm:overflow-visible sm:pt-8 sm:pr-0">
+      <div className="flex-1 pt-6 sm:pt-8">
         <p className="text-sm font-medium text-slate-400">회의 만들기</p>
         <div
           aria-live="polite"
