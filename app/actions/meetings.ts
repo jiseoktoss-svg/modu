@@ -20,7 +20,14 @@ import {
   recommendSlots,
 } from "@/lib/scheduler";
 import { buildShareText } from "@/lib/share";
-import { getSupabaseAdmin } from "@/lib/supabase/server";
+import {
+  createDemoMeetingId,
+  DEMO_ADMIN_TOKEN,
+  getDemoParticipants,
+  getDemoVoteOptions,
+  isDemoMeetingId,
+} from "@/lib/demoMeeting";
+import { getSupabaseAdmin, hasSupabaseConfig } from "@/lib/supabase/server";
 import { generateToken } from "@/lib/tokens";
 import { parseHm, todayDateStrKst } from "@/lib/time";
 import { mapMeeting, type MeetingRow, type ParticipantRow } from "@/lib/types";
@@ -176,6 +183,27 @@ export async function createMeeting(
   const we = parseHm(workdayEnd);
   if (!(ws < we)) return { error: "근무 시작 시간은 종료 시간보다 빨라야 합니다." };
   if (durationMinutes > we - ws) return { error: "회의 길이가 근무 시간보다 깁니다." };
+
+  if (process.env.NODE_ENV === "production" && !hasSupabaseConfig()) {
+    if (isEditing && (!isDemoMeetingId(editMeetingId) || editAdminToken !== DEMO_ADMIN_TOKEN)) {
+      return { error: "데모 모드에서는 데모 회의만 수정할 수 있습니다." };
+    }
+
+    const demoMeetingId = createDemoMeetingId({
+      title,
+      agenda,
+      location,
+      durationMinutes,
+      dateStart,
+      dateEnd,
+      workdayStart,
+      workdayEnd,
+      lunchStart,
+      lunchEnd,
+      participants,
+    });
+    redirect(`/meetings/${demoMeetingId}/share`);
+  }
 
   const storage = getMeetingStorage();
   if (!storage.ok) return { error: storage.error };
@@ -351,6 +379,28 @@ export async function verifyParticipantIdentity(
 // ---- 응답 제출/수정 ----
 
 export async function submitAvailability(args: SubmitAvailabilityArgs): Promise<SubmitResult> {
+  if ((args.memo ?? "").length > MAX_MEMO_LENGTH) {
+    return { ok: false, error: "메모가 너무 깁니다." };
+  }
+  if ((args.role ?? "").length > MAX_ROLE_LENGTH) {
+    return { ok: false, error: "역할이 너무 깁니다." };
+  }
+
+  if (isDemoMeetingId(args.meetingId)) {
+    const meeting = await fetchMeeting(args.meetingId);
+    const participant = await assertParticipantToken(
+      args.meetingId,
+      args.participantId,
+      args.token ?? "",
+    );
+    if (!meeting || !participant) return { ok: false, error: "참석자를 찾을 수 없습니다." };
+
+    const blockCheck = validateSubmittedBlocks(toSchedulerMeeting(meeting), args.blocks);
+    if (!blockCheck.ok) return { ok: false, error: blockCheck.reason };
+
+    return { ok: true, participantId: participant.id, token: participant.participant_token };
+  }
+
   const sb = getSupabaseAdmin();
 
   const meeting = await fetchMeeting(args.meetingId);
@@ -379,14 +429,6 @@ export async function submitAvailability(args: SubmitAvailabilityArgs): Promise<
         error: "이 응답을 수정할 권한이 없습니다. 처음 제출한 브라우저에서만 수정할 수 있어요.",
       };
     }
-  }
-
-  // 메모 길이 제한.
-  if ((args.memo ?? "").length > MAX_MEMO_LENGTH) {
-    return { ok: false, error: "메모가 너무 깁니다." };
-  }
-  if ((args.role ?? "").length > MAX_ROLE_LENGTH) {
-    return { ok: false, error: "역할이 너무 깁니다." };
   }
 
   // 제출 블록 서버 검증(클라이언트 우회 방어): 날짜 범위·근무 시간·점심·30분·개수.
@@ -438,6 +480,13 @@ export async function submitAvailability(args: SubmitAvailabilityArgs): Promise<
 export async function loadParticipantResponse(
   args: LoadResponseArgs,
 ): Promise<LoadResponseResult> {
+  if (isDemoMeetingId(args.meetingId)) {
+    const participant = await assertParticipantToken(args.meetingId, args.participantId, args.token);
+    return participant
+      ? { ok: true, blocks: [], memo: null }
+      : { ok: false, error: "권한이 없습니다." };
+  }
+
   const sb = getSupabaseAdmin();
   const { data: pData } = await sb
     .from("participants")
@@ -508,6 +557,26 @@ async function assertParticipantToken(
   participantId: string,
   token: string,
 ): Promise<ParticipantRow | null> {
+  const demoParticipants = getDemoParticipants(meetingId);
+  if (demoParticipants) {
+    const participant = demoParticipants.find(
+      (p) => p.id === participantId && p.participantToken === token,
+    );
+    if (!participant) return null;
+    return {
+      id: participant.id,
+      meeting_id: participant.meetingId,
+      name: participant.name,
+      role: participant.role,
+      attendance_type: participant.attendanceType,
+      response_status: participant.responseStatus,
+      participant_token: participant.participantToken,
+      memo: participant.memo,
+      created_at: participant.createdAt,
+      updated_at: participant.updatedAt,
+    };
+  }
+
   const sb = getSupabaseAdmin();
   const { data } = await sb
     .from("participants")
@@ -573,6 +642,12 @@ export async function loadVotingOptions(
     args.token,
   );
   if (!participant) return { ok: false, error: "권한이 없습니다." };
+  if (isDemoMeetingId(args.meetingId)) {
+    return {
+      ok: true,
+      options: getDemoVoteOptions(args.meetingId, args.participantId) ?? [],
+    };
+  }
   if (participant.response_status !== "submitted") {
     return { ok: false, error: "가능한 시간을 먼저 제출해 주세요." };
   }
@@ -593,6 +668,13 @@ export async function submitVote(args: SubmitVoteArgs): Promise<SimpleResult> {
     args.token,
   );
   if (!participant) return { ok: false, error: "권한이 없습니다." };
+  if (isDemoMeetingId(args.meetingId)) {
+    const options = getDemoVoteOptions(args.meetingId, args.participantId) ?? [];
+    const selected = options.some(
+      (option) => option.startAt === args.startAt && option.endAt === args.endAt,
+    );
+    return selected ? { ok: true } : { ok: false, error: "현재 후보 시간대 중 하나만 투표할 수 있습니다." };
+  }
   if (participant.response_status !== "submitted") {
     return { ok: false, error: "가능한 시간을 먼저 제출해 주세요." };
   }

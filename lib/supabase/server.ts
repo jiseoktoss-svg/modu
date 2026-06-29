@@ -8,6 +8,13 @@ import { createLocalSupabaseClient } from "@/lib/supabase/localClient";
 let cached: SupabaseClient | null = null;
 let warnedLocalFallback = false;
 
+export function hasSupabaseConfig() {
+  return Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      (process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY),
+  );
+}
+
 export function getSupabaseAdmin(): SupabaseClient {
   if (cached) return cached;
 
@@ -15,7 +22,7 @@ export function getSupabaseAdmin(): SupabaseClient {
   const key =
     process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!url || !key) {
+  if (!hasSupabaseConfig() || !url || !key) {
     if (process.env.NODE_ENV !== "production") {
       if (!warnedLocalFallback) {
         console.warn(

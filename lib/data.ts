@@ -1,4 +1,5 @@
 import "server-only";
+import { getDemoMeeting, getDemoParticipants, isDemoMeetingId } from "@/lib/demoMeeting";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { SchedulerInput, SchedulerMeeting } from "@/lib/scheduler";
 import {
@@ -22,6 +23,9 @@ import {
 } from "@/lib/types";
 
 export async function fetchMeeting(id: string): Promise<Meeting | null> {
+  const demoMeeting = getDemoMeeting(id);
+  if (demoMeeting) return demoMeeting;
+
   const sb = getSupabaseAdmin();
   const { data, error } = await sb
     .from("meetings")
@@ -33,6 +37,9 @@ export async function fetchMeeting(id: string): Promise<Meeting | null> {
 }
 
 export async function fetchParticipants(meetingId: string): Promise<Participant[]> {
+  const demoParticipants = getDemoParticipants(meetingId);
+  if (demoParticipants) return demoParticipants;
+
   const sb = getSupabaseAdmin();
   const { data, error } = await sb
     .from("participants")
@@ -44,6 +51,8 @@ export async function fetchParticipants(meetingId: string): Promise<Participant[
 }
 
 export async function fetchBlocks(meetingId: string): Promise<AvailabilityBlock[]> {
+  if (isDemoMeetingId(meetingId)) return [];
+
   const sb = getSupabaseAdmin();
   const { data, error } = await sb
     .from("availability_blocks")
@@ -57,6 +66,8 @@ export async function fetchBlocksForParticipant(
   meetingId: string,
   participantId: string,
 ): Promise<AvailabilityBlock[]> {
+  if (isDemoMeetingId(meetingId)) return [];
+
   const sb = getSupabaseAdmin();
   const { data, error } = await sb
     .from("availability_blocks")
@@ -79,6 +90,8 @@ export async function fetchConfirmedSlot(slotId: string): Promise<ConfirmedSlot 
 }
 
 export async function fetchVotes(meetingId: string): Promise<MeetingVote[]> {
+  if (isDemoMeetingId(meetingId)) return [];
+
   const sb = getSupabaseAdmin();
   const { data, error } = await sb
     .from("meeting_votes")

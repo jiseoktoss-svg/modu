@@ -28,9 +28,9 @@ export default async function NewMeetingPage({
   const editParticipants = editMeeting ? await fetchParticipants(editMeeting.id) : [];
 
   return (
-    <div className="flex min-h-screen flex-col bg-white/95">
+    <div className="flex h-dvh flex-col overflow-hidden bg-white/95 sm:h-auto sm:min-h-screen sm:overflow-visible">
       <SiteHeader />
-      <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 sm:px-6">
+      <main className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col px-4 sm:px-6">
         <MeetingCreateForm
           defaultDeadlineDate={defaultDeadlineDate}
           minDeadlineDate={today}

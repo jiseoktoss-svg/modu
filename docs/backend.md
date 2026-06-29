@@ -47,7 +47,7 @@ SUPABASE_SERVICE_ROLE_KEY=
 
 서버 클라이언트는 `SUPABASE_SECRET_KEY`를 우선 사용하고, 없을 경우 `SUPABASE_SERVICE_ROLE_KEY`를 사용할 수 있다. 두 값 모두 브라우저 번들에 포함되면 안 된다.
 
-개발 모드에서 Supabase 환경변수가 없으면 `.modu-local-db.json` 파일 저장소를 자동으로 사용한다. 배포 환경에서는 Supabase 환경변수가 없으면 에러로 처리한다.
+개발 모드에서 Supabase 환경변수가 없으면 `.modu-local-db.json` 파일 저장소를 자동으로 사용한다. 배포 환경에서 Supabase 환경변수가 없으면 제품 흐름 확인을 위해 데모 회의 ID 기반 링크 생성 화면으로 이동한다. 이 데모 링크는 실제 DB 저장이 아니며, Supabase 환경변수를 설정하면 실제 저장 흐름으로 동작한다.
 
 ## 4. 데이터 모델
 
@@ -282,6 +282,7 @@ grant all on meeting_votes to service_role;
   - 참석자 기본 `attendance_type`은 클라이언트에서 `required`로 전달되며(필수참석), 서버는 `required`가 아니면 `optional`로 정규화한다.
   - `meetingId`, `adminToken`, 참석자별 `participantToken`을 생성한다.
   - 생성 후 공유 화면으로 이동한다.
+  - 배포 환경에서 Supabase 환경변수가 없으면 실제 DB 저장 대신 데모 회의 ID를 생성해 공유 화면으로 이동한다.
 
 - `verifyParticipantIdentity`
   - 링크로 들어온 참석자의 이름과 직무가 실제 참석자 명단에 있는지 검증한다.

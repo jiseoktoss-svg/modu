@@ -308,8 +308,6 @@ export function MeetingCreateForm({
   const handleNext = () => {
     if (step < LAST_STEP && valid[step]) {
       goTo(step + 1);
-      // 시간 입력(4) 다음 → 참석자 선택 모달을 바로 연다.
-      if (step + 1 === 5) setShowParticipantModal(true);
     }
   };
   const editStep = (i: number, focusId?: string) => {
@@ -441,9 +439,12 @@ export function MeetingCreateForm({
   const participantNames = filledParticipants.map((p) => p.name).join(", ");
 
   return (
-    <form action={formAction} className="flex flex-1 flex-col">
+    <form
+      action={formAction}
+      className="flex min-h-0 flex-1 flex-col overflow-hidden sm:overflow-visible"
+    >
       {/* 상단: 입력에 따라 완성되는 안내 문장 */}
-      <div className="flex-1 pt-6 sm:pt-8">
+      <div className="min-h-0 flex-1 overflow-y-auto pt-6 pr-1 sm:overflow-visible sm:pt-8 sm:pr-0">
         <p className="text-sm font-medium text-slate-400">회의 만들기</p>
         <div
           aria-live="polite"
@@ -771,7 +772,7 @@ export function MeetingCreateForm({
           <div
             ref={modalPanelRef}
             tabIndex={-1}
-            className="mx-auto flex h-dvh max-h-dvh w-full max-w-2xl flex-col bg-white p-4 shadow-xl focus:outline-none sm:h-[680px] sm:max-h-[calc(100vh-3rem)] sm:rounded-3xl sm:p-5"
+            className="mx-auto flex h-dvh max-h-dvh w-full max-w-2xl flex-col overflow-hidden bg-white p-4 shadow-xl focus:outline-none sm:h-[680px] sm:max-h-[calc(100vh-3rem)] sm:rounded-3xl sm:p-5"
           >
             <div className="mb-0.5 flex shrink-0 items-start justify-between gap-3 sm:mb-1 sm:gap-4">
               <h3 className="text-base font-bold text-slate-900 sm:text-lg">참석자 선택</h3>

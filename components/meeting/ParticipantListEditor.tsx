@@ -256,7 +256,7 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
   }
 
   return (
-    <div className="flex h-full flex-col gap-1.5 sm:gap-2">
+    <div className="flex h-full min-h-0 flex-col gap-1.5 overflow-hidden sm:gap-2">
       {/* 검색 */}
       <div className="relative max-w-sm shrink-0">
         <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -283,7 +283,7 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
       </div>
 
       {/* 직원 목록 — 클릭으로 추가/해제 토글 (위아래 페이드 + 스크롤) */}
-      <div className="relative h-[32dvh] min-h-32 max-h-48 shrink-0 sm:h-64 sm:max-h-none">
+      <div className="relative min-h-40 flex-[1.45_1_0] sm:h-64 sm:min-h-0 sm:max-h-none sm:flex-none">
         <div className="h-full space-y-1.5 overflow-y-auto px-0.5 py-1 sm:space-y-2">
           {filteredEmployees.map((employee) => {
             const selected = selectedKeys.has(employeeKey(employee));
@@ -336,7 +336,7 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
       </div>
 
       {/* 필수참석 / 선택참석 구역 — 빈 곳 드래그로 범위 선택, 뱃지를 끌어 이동 */}
-      <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <div className="flex min-h-0 flex-[0.85_1_0] flex-col gap-1.5 sm:flex-1 sm:gap-2">
         <div className="hidden flex-nowrap items-center gap-1.5 sm:flex">
           <span
             className={cn(
@@ -361,7 +361,7 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
           onMouseDown={handleZonesMouseDown}
           className="relative min-h-0 flex-1 select-none"
         >
-          <div className="grid h-full grid-cols-2 grid-rows-1 gap-2 sm:gap-3">
+          <div className="grid h-full grid-cols-2 grid-rows-1 gap-1.5 sm:gap-3">
             {GROUPS.map((g) => {
               const members = participants.filter((p) => p.attendanceType === g.type);
               return (
@@ -376,13 +376,13 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
                   onDragLeave={() => setOverZone((o) => (o === g.type ? null : o))}
                   onDrop={(e) => handleDrop(e, g.type)}
                   className={cn(
-                    "flex flex-col gap-1.5 overflow-y-auto rounded-xl border p-2 transition-colors sm:gap-2 sm:p-3",
+                    "flex flex-col gap-1 overflow-y-auto rounded-xl border p-1.5 transition-colors sm:gap-2 sm:p-3",
                     overZone === g.type
                       ? "border-brand-400 bg-brand-50"
                       : "border-slate-200 bg-slate-50",
                   )}
                 >
-                  <p className="shrink-0 text-xs font-bold text-slate-700">
+                  <p className="shrink-0 text-[11px] font-bold text-slate-700 sm:text-xs">
                     {g.title} <span className="font-normal text-slate-400">{members.length}</span>
                   </p>
                   {members.length === 0 ? (

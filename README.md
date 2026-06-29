@@ -20,6 +20,7 @@ cp .env.example .env.local
 #
 #   로컬 개발 모드에서는 두 값이 비어 있어도
 #   .modu-local-db.json 파일 저장소로 회의 생성 플로우를 테스트할 수 있음
+#   Vercel 배포 환경에서는 두 값이 비어 있으면 데모 링크 생성 흐름으로 동작
 
 # 3) Supabase를 사용할 경우 테이블 생성 (아래 "Supabase 설정" 참고)
 
@@ -36,12 +37,12 @@ npm run build      # 프로덕션 빌드
 
 | 변수 | 필수 | 설명 |
 | --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | 배포 시 필수 | Supabase 프로젝트 URL. 개발 모드에서는 비워두면 파일 저장소를 사용 |
-| `SUPABASE_SECRET_KEY` | 배포 시 필수 | 서버 전용 secret key. **브라우저에 노출 금지** |
+| `NEXT_PUBLIC_SUPABASE_URL` | 실제 저장 시 필수 | Supabase 프로젝트 URL. 개발 모드에서는 비워두면 파일 저장소를 사용 |
+| `SUPABASE_SECRET_KEY` | 실제 저장 시 필수 | 서버 전용 secret key. **브라우저에 노출 금지** |
 | `SUPABASE_SERVICE_ROLE_KEY` | 선택 | `SUPABASE_SECRET_KEY` 가 없을 때의 fallback |
 | `NEXT_PUBLIC_APP_URL` | 선택 | 안내용. 공유 링크는 브라우저 origin 으로 생성됨 |
 
-> Supabase 접근은 **서버에서만** 이뤄지며, secret/service-role key 는 클라이언트 번들에 포함되지 않습니다. 개발 모드에서 Supabase 값이 없으면 `.modu-local-db.json` 파일 저장소로 동작합니다.
+> Supabase 접근은 **서버에서만** 이뤄지며, secret/service-role key 는 클라이언트 번들에 포함되지 않습니다. 개발 모드에서 Supabase 값이 없으면 `.modu-local-db.json` 파일 저장소로 동작합니다. Vercel 배포 환경에서 Supabase 값이 없으면 프론트 흐름 확인용 데모 링크 생성 모드로 동작합니다.
 
 ## 주요 화면 경로
 
@@ -95,6 +96,7 @@ npm run build      # 프로덕션 빌드
 - 확정 후 공유 문구 + `.ics` 다운로드
 - 토큰 기반 권한, 서버 전용 Supabase 접근, RLS
 - 개발 환경 Supabase 미설정 시 `.modu-local-db.json` 파일 저장소 fallback
+- Vercel 배포 환경 Supabase 미설정 시 프론트 흐름 확인용 데모 링크 생성
 
 ## 개인정보 보호
 
