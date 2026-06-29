@@ -1,6 +1,6 @@
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { MobileStickyAction } from "@/components/layout/MobileStickyAction";
-import { TDSButton } from "@/components/ui/TDSButton";
+import { StartMeetingButton } from "@/components/meeting/StartMeetingButton";
 
 export default function LandingPage() {
   return (
@@ -20,18 +20,14 @@ export default function LandingPage() {
 
           {/* 데스크톱: 중앙 CTA */}
           <div className="mt-8 hidden justify-center sm:flex">
-            <TDSButton as="a" href="/meetings/new" size="xl">
-              회의 만들기
-            </TDSButton>
+            <StartMeetingButton />
           </div>
         </div>
       </main>
 
       {/* 모바일: 하단 고정 CTA */}
       <MobileStickyAction bleed={false} className="sm:hidden">
-        <TDSButton as="a" href="/meetings/new" size="xl" display="block">
-          회의 만들기
-        </TDSButton>
+        <StartMeetingButton display="block" />
       </MobileStickyAction>
     </div>
   );

@@ -780,6 +780,7 @@ export function ResponseForm(props: Props) {
   const [draftStart, setDraftStart] = useState(workdayStart);
   const [draftEnd, setDraftEnd] = useState(workdayEnd);
   const [toast, setToast] = useState<string | null>(null);
+  const [toastIcon, setToastIcon] = useState("⚠️");
   const toastTimer = useRef<number | null>(null);
 
   const selected = participants.find((p) => p.id === selectedId) ?? null;
@@ -859,8 +860,9 @@ export function ResponseForm(props: Props) {
     }
   }
 
-  const showToast = (message: string) => {
+  const showToast = (message: string, icon = "⚠️") => {
     setToast(message);
+    setToastIcon(icon);
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(null), 2600);
   };
@@ -1144,6 +1146,7 @@ export function ResponseForm(props: Props) {
 
     setAvailStep(0);
     setMaxAvailStep(0);
+    showToast("본인 확인 완료", "✅"); // 다음(가능 시간) 화면에서 잠깐 노출
     setStep("availability"); // 본인확인 완료 → 다음 화면
   }
 
@@ -1247,7 +1250,7 @@ export function ResponseForm(props: Props) {
   if (step === "identity") {
     return (
       <>
-        <Toast open={toast !== null} message={toast ?? ""} />
+        <Toast open={toast !== null} message={toast ?? ""} icon={toastIcon} />
         <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
           <div className="flex-1">
             <p className="text-sm font-medium text-slate-400">본인 확인</p>
@@ -1338,8 +1341,8 @@ export function ResponseForm(props: Props) {
   // step === "availability": 가능 시간 문장 빌더(5단계).
   return (
     <>
-      <Toast open={toast !== null} message={toast ?? ""} />
-      <div className="mx-auto w-full max-w-2xl">
+      <Toast open={toast !== null} message={toast ?? ""} icon={toastIcon} />
+      <div className="mx-auto w-full max-w-2xl pb-28">
         {/* 상단: 답변이 쌓이는 문장 */}
         <p className="pt-2 text-sm font-medium text-slate-400">가능 시간</p>
         <div

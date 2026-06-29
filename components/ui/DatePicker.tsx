@@ -117,9 +117,9 @@ export function DatePicker({ id, value, onChange, min }: DatePickerProps) {
         role="dialog"
         aria-modal="true"
         aria-label="날짜 선택 달력"
-        className="max-h-[calc(100dvh-2rem)] w-full max-w-[20rem] overflow-y-auto rounded-[22px] border border-slate-200 bg-white p-3 shadow-2xl sm:max-w-[22rem] sm:p-4"
+        className="max-h-[calc(100dvh-2rem)] w-full max-w-[22rem] overflow-y-auto rounded-[24px] border border-slate-200 bg-white p-5 shadow-2xl sm:max-w-[24rem] sm:p-6"
       >
-        <div className="mb-2 flex items-center justify-between gap-3 sm:mb-3">
+        <div className="mb-3 flex items-center justify-between gap-3 sm:mb-4">
           <div>
             <p className="text-xs font-bold text-brand-600">회의 마감일</p>
             <p className="mt-0.5 text-sm font-bold text-slate-900">{label}</p>
@@ -128,13 +128,13 @@ export function DatePicker({ id, value, onChange, min }: DatePickerProps) {
             type="button"
             onClick={() => setOpen(false)}
             aria-label="달력 닫기"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 sm:h-9 sm:w-9"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 sm:h-11 sm:w-11"
           >
-            <Emoji symbol="✕" size={14} />
+            <Emoji symbol="✕" size={18} />
           </button>
         </div>
 
-        <div className="mb-2 flex items-center justify-between sm:mb-3">
+        <div className="mb-3 flex items-center justify-between sm:mb-4">
           <button
             type="button"
             onClick={() => go(-1)}
@@ -157,7 +157,7 @@ export function DatePicker({ id, value, onChange, min }: DatePickerProps) {
           </button>
         </div>
 
-        <div className="grid grid-cols-7 gap-1 text-center">
+        <div className="grid grid-cols-7 gap-1.5 text-center">
           {WEEKDAYS.map((w, i) => (
             <div
               key={w}

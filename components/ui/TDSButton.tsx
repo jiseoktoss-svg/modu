@@ -45,12 +45,18 @@ export interface TDSButtonProps extends Omit<HTMLAttributes<HTMLElement>, "color
   download?: AnchorHTMLAttributes<HTMLAnchorElement>["download"];
 }
 
+// 로딩 표시: 점 3개 파도타기(앱 공통 DotWave 패턴). 버튼 글자색(currentColor)을 따른다.
 function LoadingDot() {
   return (
-    <span
-      aria-hidden="true"
-      className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent opacity-80 motion-reduce:animate-none"
-    />
+    <span aria-hidden="true" className="inline-flex shrink-0 items-center gap-1">
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="h-1.5 w-1.5 rounded-full bg-current animate-dot-wave motion-reduce:animate-none"
+          style={{ animationDelay: `${i * 0.16}s` }}
+        />
+      ))}
+    </span>
   );
 }
 

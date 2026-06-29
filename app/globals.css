@@ -215,11 +215,16 @@ body {
   }
 }
 
-@media (hover: hover) and (pointer: fine) {
-  .modu-tds-button {
-    transition: filter 140ms ease;
-  }
+/* CTA 버튼 누름(press) 효과 — 모바일 탭/데스크톱 클릭 공통. */
+.modu-tds-button {
+  transition: transform 120ms ease, filter 140ms ease, background-color 140ms ease;
+}
 
+.modu-tds-button:not(:disabled):not([aria-disabled="true"]):active {
+  transform: scale(0.97);
+}
+
+@media (hover: hover) and (pointer: fine) {
   .modu-tds-button:not(:disabled):hover {
     filter: brightness(0.97);
   }
@@ -251,6 +256,10 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .modu-tds-button {
     transition: none;
+  }
+
+  .modu-tds-button:active {
+    transform: none;
   }
 
   .completion-badge {

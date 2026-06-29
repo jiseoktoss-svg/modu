@@ -230,11 +230,11 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
 
             <div className="mt-4 border-t border-slate-100 pt-4 text-left">
               <h3 className="text-sm font-bold text-slate-400">참석자 명단</h3>
-              <ul className="mt-2 grid max-h-36 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:mt-2.5 sm:flex sm:max-h-80 sm:flex-wrap sm:justify-start">
+              <ul className="mt-2 grid max-h-36 grid-cols-3 gap-1.5 overflow-y-auto pr-1 sm:mt-2.5 sm:flex sm:max-h-80 sm:flex-wrap sm:justify-start sm:gap-2">
                 {participants.map((participant) => (
                   <li
                     key={participant.id}
-                    className="flex min-w-0 items-center gap-1 rounded-full bg-slate-50 px-2.5 py-1.5 sm:gap-1.5 sm:px-3 sm:py-2"
+                    className="flex min-w-0 items-center gap-0.5 rounded-full bg-slate-50 px-2 py-1 sm:gap-1.5 sm:px-3 sm:py-2"
                   >
                     <span className="min-w-0 truncate text-xs font-bold text-slate-800 sm:text-sm">
                       {participant.name}
@@ -244,7 +244,7 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
                         {participant.role}
                       </span>
                     )}
-                    <span className="shrink-0 rounded-full bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-500 sm:px-2 sm:text-[11px]">
+                    <span className="shrink-0 rounded-full bg-white px-1 py-0.5 text-[9px] font-bold text-slate-500 sm:px-2 sm:text-[11px]">
                       {participant.attendanceType === "required" ? "필수" : "선택"}
                     </span>
                   </li>
