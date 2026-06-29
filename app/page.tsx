@@ -4,10 +4,10 @@ import { TDSButton } from "@/components/ui/TDSButton";
 
 export default function LandingPage() {
   return (
-    <div className="flex min-h-screen flex-col bg-white/95">
+    <div className="flex min-h-dvh flex-col bg-white/95">
       <SiteHeader />
 
-      <main className="flex flex-1 flex-col items-center justify-center px-4 py-20 pb-28 sm:pb-20">
+      <main className="flex flex-1 flex-col items-center justify-center px-4 py-16 sm:py-20">
         <div className="mx-auto max-w-xl text-center">
           <h1 className="text-balance text-3xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-4xl">
             모두의 시간,
