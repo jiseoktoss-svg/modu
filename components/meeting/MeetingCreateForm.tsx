@@ -399,6 +399,7 @@ export function MeetingCreateForm({
   const keepSummaryEndVisible = () => {
     if (!autoStickSummaryRef.current) return;
     if (window.matchMedia("(min-width: 640px)").matches) return;
+    if (document.documentElement.scrollHeight <= window.innerHeight + 1) return;
 
     const end = summaryEndRef.current;
     if (!end) return;

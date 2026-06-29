@@ -23,24 +23,39 @@ export function MobileStickyAction({
   ...props
 }: MobileStickyActionProps) {
   const actionRef = useRef<HTMLDivElement>(null);
-  const [actionHeight, setActionHeight] = useState(0);
+  const spacerRef = useRef<HTMLDivElement>(null);
+  const [spacerHeight, setSpacerHeight] = useState(0);
 
   useLayoutEffect(() => {
     const node = actionRef.current;
     if (!node) return;
 
     const measure = () => {
-      setActionHeight(node.getBoundingClientRect().height);
+      const isMobile = window.matchMedia("(max-width: 639px)").matches;
+      const actionHeight = node.getBoundingClientRect().height;
+      const currentSpacerHeight = spacerRef.current?.getBoundingClientRect().height ?? 0;
+      const pageHeightWithoutSpacer =
+        document.documentElement.scrollHeight - currentSpacerHeight;
+      const needsScrollPadding =
+        isMobile && pageHeightWithoutSpacer > window.innerHeight + 1;
+
+      setSpacerHeight(needsScrollPadding ? actionHeight : 0);
     };
-    measure();
+
+    const scheduleMeasure = () => {
+      window.requestAnimationFrame(measure);
+    };
+
+    scheduleMeasure();
 
     const observer = new ResizeObserver(measure);
     observer.observe(node);
-    window.addEventListener("resize", measure);
+    observer.observe(document.body);
+    window.addEventListener("resize", scheduleMeasure);
 
     return () => {
       observer.disconnect();
-      window.removeEventListener("resize", measure);
+      window.removeEventListener("resize", scheduleMeasure);
     };
   }, []);
 
@@ -50,9 +65,10 @@ export function MobileStickyAction({
       {...props}
     >
       <div
+        ref={spacerRef}
         aria-hidden="true"
         className="modu-mobile-sticky-action-spacer"
-        style={actionHeight > 0 ? { height: actionHeight } : undefined}
+        style={spacerHeight > 0 ? { height: spacerHeight } : undefined}
       />
       <div ref={actionRef} className="modu-mobile-sticky-action">
         <div className={cn("mx-auto w-full", innerClassName)}>{children}</div>
