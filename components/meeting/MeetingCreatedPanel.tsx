@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { TDSButton } from "@/components/ui/TDSButton";
+import { MobileStickyAction } from "@/components/layout/MobileStickyAction";
 import { describeDateStr } from "@/lib/time";
 import type { Meeting, Participant } from "@/lib/types";
 
@@ -188,7 +189,7 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col">
+    <section className="flex flex-1 flex-col">
       <div
         role="status"
         aria-live="polite"
@@ -205,7 +206,7 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
         복사 완료
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto py-3 sm:py-6">
+      <div className="flex flex-1 flex-col py-3 sm:py-6">
         <div className="my-auto w-full">
           <div className="shrink-0 text-center">
             <CompletionLottie />
@@ -272,30 +273,32 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
         </div>
       </div>
 
-      <div className="grid shrink-0 grid-cols-[0.85fr_1.15fr] gap-2 pb-4 pt-3 sm:gap-3 sm:pb-8 sm:pt-5">
-        <TDSButton
-          type="button"
-          tone="secondary"
-          size="xl"
-          display="block"
-          className="modu-secondary-cta"
-          onClick={() => {
-            window.location.href = editPath;
-          }}
-        >
-          수정하기
-        </TDSButton>
-        <TDSButton
-          type="button"
-          size="xl"
-          display="block"
-          onClick={() => {
-            window.location.href = participantPath;
-          }}
-        >
-          회의시간 입력하기
-        </TDSButton>
-      </div>
+      <MobileStickyAction className="mt-4 sm:mt-0">
+        <div className="grid grid-cols-[0.85fr_1.15fr] gap-2 sm:gap-3">
+          <TDSButton
+            type="button"
+            tone="secondary"
+            size="xl"
+            display="block"
+            className="modu-secondary-cta"
+            onClick={() => {
+              window.location.href = editPath;
+            }}
+          >
+            수정하기
+          </TDSButton>
+          <TDSButton
+            type="button"
+            size="xl"
+            display="block"
+            onClick={() => {
+              window.location.href = participantPath;
+            }}
+          >
+            회의시간 입력하기
+          </TDSButton>
+        </div>
+      </MobileStickyAction>
     </section>
   );
 }

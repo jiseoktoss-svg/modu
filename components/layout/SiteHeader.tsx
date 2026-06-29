@@ -4,7 +4,7 @@ import { Container } from "@/components/ui/Container";
 export function SiteHeader() {
   return (
     <>
-      <header className="fixed inset-x-0 top-0 z-30 border-b border-slate-200 bg-white/95 sm:static sm:z-auto">
+      <header className="modu-mobile-header fixed inset-x-0 top-0 z-30 bg-white sm:static sm:z-auto sm:bg-white/95">
         <Container className="flex h-14 items-center">
           <Link
             href="/"

@@ -459,3 +459,71 @@ Supabase 정책:
 - 현재 구현된 기능
 - 아직 제외한 기능
 - 다음 개선 우선순위
+
+## 11. 개발자 오리엔테이션 (코드 맵 / 빠른 시작)
+
+> 새 세션에서 백엔드 코드를 빠르게 파악하기 위한 지도. 위 1~10장이 "무엇을/왜"라면 이 장은 "코드 어디에 무엇이 있는가"다. (프론트는 `frontend.md` §9)
+
+### 11.1 데이터 흐름
+
+```txt
+[클라이언트 컴포넌트]  — URL의 토큰만 신뢰(세션 없음)
+      ▼
+[app/actions/meetings.ts]  ('use server') — 토큰 검증 → 도메인 검증 → 변이
+      ├─▶ lib/scheduler/recommendSlots()   순수 추천 엔진(DB·UI 무관, 테스트됨)
+      ├─▶ lib/data.ts                       읽기 어댑터 + toPublicParticipant(토큰 제거)
+      ▼
+[lib/supabase/server.ts: getSupabaseAdmin()]  ('server-only', service_role → RLS 우회)
+      ├─▶ (운영) @supabase/supabase-js → Postgres 5개 테이블
+      └─▶ (개발, env 없음) lib/supabase/localClient.ts → .modu-local-db.json
+```
+
+### 11.2 서버 액션 (`app/actions/meetings.ts`, 모두 `'use server'`)
+
+| 함수 | 검증 | 핵심 동작 |
+| --- | --- | --- |
+| `createMeeting` | 입력 검증(필수·길이·인원 2~8·마감일) | 회의+참석자 insert, `admin_token`/참석자별 `participant_token` 발급, 공유 화면 redirect. **운영+env 없음** 시 `lib/demoMeeting` 데모 ID로 우회 |
+| `verifyParticipantIdentity` | 이름+직무 명단 대조 | `participant_token` 반환(기존 제출자는 토큰 일치 시 수정 허용) |
+| `submitAvailability` | `participantId`+토큰, 미확정 | 기존 블록 교체(delete→insert), `response_status='submitted'`, **회의 투표 초기화** |
+| `loadParticipantResponse` / `loadCalendarSnapshot` | participant 토큰 | 본인 응답 / 캘린더 집계용 최소 데이터(메모 원문 제외) |
+| `updateAttendanceType` | admin 토큰, 미확정 | 필수/선택 변경 + 투표 초기화 |
+| `loadVotingOptions` / `submitVote` | participant 토큰, 전원 응답 | 후보=추천결과, 1인 1표(재투표 교체) |
+| `confirmSlot` | admin 토큰, 전원 응답+전원 투표 | 최다 득표 슬롯 `confirmed_slots` 기록 + `confirmed_slot_id` 갱신(동률은 주최자 선택). 확정 시 응답·투표 잠금 |
+
+Route Handler: `app/api/meetings/[meetingId]/ics/route.ts` — 확정 슬롯 있을 때만 `.ics`(`lib/ics.ts: buildIcs`).
+
+### 11.3 추천 엔진 (`lib/scheduler/`)
+
+진입점 `recommendSlots(input)`(`index.ts`): 슬롯 생성(`generateSlots`) → 채점/제외(`scoreSlot`) → **점수 내림차순, 동점은 시작 빠른 순** 정렬 → 상위 N개(기본 5) → `best`는 최상위 1개로 제한(나머지 동급은 `recommended`로 강등).
+
+**점수 공식** (`scoreSlots.ts`, 상수 전부 export — 설명/테스트용):
+
+| 항목 | 상수 | 값 |
+| --- | --- | --- |
+| 기준점 | `SCORE_BASE` | +100 |
+| **하드 제외** | 필수 참석자(응답함)가 `busy` → `scoreSlot`이 `null` | — |
+| 선택 참석자 busy | `PENALTY_OPTIONAL_BUSY` | −15 |
+| 필수 미응답(불확실성) | `PENALTY_REQUIRED_PENDING` | −12 |
+| 점심 직후 밴드 `[lunchEnd, lunchEnd+60]` | `PENALTY_AFTER_LUNCH` | −10 |
+| `avoid` 겹침(소프트) | `PENALTY_AVOID` | −8 |
+| `preferred` 겹침(1건당) | `BONUS_PREFERRED` | +6 |
+
+- 참석자별 `dominantStatus`: `busy > avoid > preferred > available`. 미응답자는 제외 안 하고 `pending` 표시.
+- 등급(내부값 → 라벨): `best`→가장 추천 / `recommended`→추천 / `conditional`→조건부 추천 / `caution`→주의 필요. 필수 일부 불확실이면 `caution`.
+- 파일: `generateSlots.ts`(09:00~18:00·30분·점심 겹침 제외), `validate.ts`(`isSlotConfirmable`/`validateSubmittedBlocks` — 스펙 미기재지만 존재), `explainRecommendation.ts`(점수 없이 사실 집계로 한국어 이유), `types.ts`.
+
+### 11.4 데이터·영속 계층
+
+- **`lib/data.ts`** — 읽기 어댑터 `fetchMeeting/fetchParticipants/fetchBlocks/fetchVotes/fetchConfirmedSlot`, 행→도메인 매핑, `toPublicParticipant`(토큰·메모 제거), `toSchedulerInput`(엔진 입력 변환), `isRequiredAllAvailable`. 데모 ID는 여기서 분기.
+- **`lib/supabase/server.ts`** — `getSupabaseAdmin()`(키: `SUPABASE_SECRET_KEY ?? SUPABASE_SERVICE_ROLE_KEY`), `hasSupabaseConfig()`(데모 진입 게이트). `server-only`.
+- **`lib/supabase/localClient.ts`** — supabase-js thenable 체이닝 흉내 + `runExclusive` 직렬화. **unique/check/FK는 강제 안 함**(로컬은 되는데 운영은 실패 가능).
+- **`lib/tokens.ts`** — `generateToken(bytes=24)` = `randomBytes(24).toString('base64url')`(192비트 CSPRNG, 평문 저장).
+- **`lib/demoMeeting.ts`** — 회의 페이로드를 `demo_` + base64url(JSON) meetingId에 인코딩(무서명). `isDemoMeetingId`, `createDemoMeetingId`, `getDemoMeeting/Participants/VoteOptions`, 고정 토큰 `DEMO_ADMIN_TOKEN`/`demo-token-N`.
+
+### 11.5 함정 / 주의
+
+- **비원자성**: `confirmSlot`(TOCTOU)·`submitAvailability`(delete→insert)·`createMeeting` 수정 분기가 트랜잭션 아님 → 부분 실패·경쟁 조건 가능.
+- **권한은 평문 토큰 `===` 비교**(상수시간 아님). RLS는 service_role만 grant라 보안이 앱 내부 토큰 비교에 전적으로 의존.
+- **데모 소비 경로는 env 게이트 안 됨**: 생성은 `production && !hasSupabaseConfig()`로 막지만, 읽기/액션 단락은 `isDemoMeetingId`만으로 발동(운영에서도 `demo_` ID 위조 가능). 데모 토큰은 추측 가능·페이로드 무서명.
+- **`expires_at`은 선언만** 있고 삭제 잡 없음. 점심 비활성화는 `lunch_start='00:00'/lunch_end='00:01'` 센티넬(서버가 점심 겹침 블록 거부, DDL 기본값 `12:00/13:00`과 다름 — 코드가 insert 시 센티넬 명시).
+- 신규 코드(`demoMeeting.ts` 등)·서버 액션은 **테스트 0%**(테스트는 `lib/scheduler`·`lib/grid`만).
