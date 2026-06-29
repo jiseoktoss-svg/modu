@@ -1101,7 +1101,7 @@ export function ResponseForm(props: Props) {
       {/* 하단 고정 CTA */}
       <MobileStickyAction
         bleed={false}
-        className="fixed inset-x-0 bottom-0 z-10 sm:p-0"
+        className="sm:p-0"
         innerClassName="max-w-2xl sm:px-6 sm:py-3"
       >
         <TDSButton
