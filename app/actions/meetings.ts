@@ -48,6 +48,21 @@ const DEFAULT_WORKDAY_START = "09:00";
 const DEFAULT_WORKDAY_END = "18:00";
 const DISABLED_LUNCH_START = "00:00";
 const DISABLED_LUNCH_END = "00:01";
+const MEETING_STORAGE_ERROR_MESSAGE =
+  "회의 링크를 만들기 위한 서버 연결에 문제가 있습니다. 잠시 후 다시 시도해주세요.";
+
+function logMeetingStorageError(context: string, error: unknown) {
+  console.error(`[meetings] ${context}`, error);
+}
+
+function getMeetingStorage() {
+  try {
+    return { ok: true as const, sb: getSupabaseAdmin() };
+  } catch (error) {
+    logMeetingStorageError("failed to initialize Supabase client", error);
+    return { ok: false as const, error: MEETING_STORAGE_ERROR_MESSAGE };
+  }
+}
 
 interface ParticipantSeed {
   name: string;
@@ -138,10 +153,18 @@ export async function createMeeting(
   if (!(ws < we)) return { error: "근무 시작 시간은 종료 시간보다 빨라야 합니다." };
   if (durationMinutes > we - ws) return { error: "회의 길이가 근무 시간보다 깁니다." };
 
-  const sb = getSupabaseAdmin();
+  const storage = getMeetingStorage();
+  if (!storage.ok) return { error: storage.error };
+  const { sb } = storage;
 
   if (isEditing) {
-    const meeting = await fetchMeeting(editMeetingId);
+    let meeting;
+    try {
+      meeting = await fetchMeeting(editMeetingId);
+    } catch (error) {
+      logMeetingStorageError("failed to load meeting for edit", error);
+      return { error: MEETING_STORAGE_ERROR_MESSAGE };
+    }
     if (!meeting || meeting.adminToken !== editAdminToken) {
       return { error: "수정 권한이 없습니다." };
     }
@@ -149,7 +172,13 @@ export async function createMeeting(
       return { error: "이미 확정된 회의는 수정할 수 없습니다." };
     }
 
-    const existingParticipants = await fetchParticipants(editMeetingId);
+    let existingParticipants;
+    try {
+      existingParticipants = await fetchParticipants(editMeetingId);
+    } catch (error) {
+      logMeetingStorageError("failed to load participants for edit", error);
+      return { error: MEETING_STORAGE_ERROR_MESSAGE };
+    }
     if (existingParticipants.some((participant) => participant.responseStatus === "submitted")) {
       return { error: "이미 응답이 있는 회의는 생성 화면에서 수정할 수 없어요." };
     }
@@ -172,6 +201,7 @@ export async function createMeeting(
       .eq("admin_token", editAdminToken);
 
     if (meetingError) {
+      logMeetingStorageError("failed to update meeting", meetingError);
       return { error: "회의 수정에 실패했습니다. 잠시 후 다시 시도해 주세요." };
     }
 
@@ -180,6 +210,7 @@ export async function createMeeting(
       .delete()
       .eq("meeting_id", editMeetingId);
     if (deleteParticipantError) {
+      logMeetingStorageError("failed to replace participants", deleteParticipantError);
       return { error: "참석자 수정에 실패했습니다. 잠시 후 다시 시도해 주세요." };
     }
 
@@ -193,6 +224,7 @@ export async function createMeeting(
 
     const { error: participantError } = await sb.from("participants").insert(participantRows);
     if (participantError) {
+      logMeetingStorageError("failed to insert edited participants", participantError);
       return { error: "참석자 수정에 실패했습니다. 잠시 후 다시 시도해 주세요." };
     }
 
@@ -223,6 +255,7 @@ export async function createMeeting(
     .single();
 
   if (meetingError || !meetingData) {
+    logMeetingStorageError("failed to create meeting", meetingError);
     return { error: "회의 생성에 실패했습니다. 잠시 후 다시 시도해 주세요." };
   }
 
@@ -237,6 +270,7 @@ export async function createMeeting(
 
   const { error: participantError } = await sb.from("participants").insert(participantRows);
   if (participantError) {
+    logMeetingStorageError("failed to insert participants", participantError);
     return { error: "참석자 저장에 실패했습니다. 잠시 후 다시 시도해 주세요." };
   }
 

@@ -177,7 +177,7 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="이름 또는 직책 검색"
           aria-label="직원 검색"
-          className="h-10 w-full rounded-2xl border border-slate-200 bg-slate-50 py-0 pl-9 pr-10 text-sm font-medium text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-brand-300 focus:bg-white focus:ring-2 focus:ring-brand-100"
+          className="h-10 w-full rounded-2xl border border-slate-200 bg-slate-50 py-0 pl-9 pr-10 text-base font-medium text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-brand-300 focus:bg-white focus:ring-2 focus:ring-brand-100 sm:text-sm"
         />
         {query && (
           <button

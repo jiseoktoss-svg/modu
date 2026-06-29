@@ -88,7 +88,7 @@ function EditValue({
       type="button"
       onClick={onEdit}
       aria-label={`${fieldLabel} 수정`}
-      className="inline rounded font-semibold text-brand-600 decoration-brand-400 decoration-2 underline-offset-4 transition-colors hover:text-brand-700 hover:underline focus:outline-none focus-visible:underline focus-visible:ring-2 focus-visible:ring-brand-200"
+      className="inline rounded text-left align-baseline font-semibold text-brand-600 decoration-brand-400 decoration-2 underline-offset-4 transition-colors hover:text-brand-700 hover:underline focus:outline-none focus-visible:underline focus-visible:ring-2 focus-visible:ring-brand-200"
     >
       {children}
     </button>
@@ -148,7 +148,7 @@ function NumberStepper({
   const canIncrease = safeValue < max;
 
   return (
-    <div className="grid h-11 grid-cols-[2.5rem_minmax(3.25rem,1fr)_2.5rem] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div className="grid h-11 w-24 grid-cols-[2rem_2rem_2rem] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <button
         type="button"
         aria-label={minusLabel}
@@ -561,43 +561,47 @@ export function MeetingCreateForm({
             <>
               <Label htmlFor="durationHours" className="text-lg">예상 회의 진행 시간을 입력해주세요</Label>
               <div className="grid grid-cols-2 gap-3">
-                <div
-                  id="durationHours"
-                  tabIndex={-1}
-                  className="flex items-center justify-start gap-2 rounded-2xl bg-slate-50 p-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
-                >
-                  <NumberStepper
-                    ariaLabel="회의 진행 시간(시간) 직접 입력"
-                    value={hoursOk ? hoursNum : 0}
-                    inputValue={durationHours}
-                    min={0}
-                    max={WORKDAY_MINUTES / 60}
-                    minusLabel="회의 시간 줄이기"
-                    plusLabel="회의 시간 늘리기"
-                    onNumberChange={handleDurationHoursChange}
-                    onInputChange={handleDurationHoursInput}
-                    onKeyDown={onFieldKeyDown}
-                  />
+                <div className="flex items-center justify-start gap-2">
+                  <div
+                    id="durationHours"
+                    tabIndex={-1}
+                    className="rounded-2xl bg-slate-50 p-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+                  >
+                    <NumberStepper
+                      ariaLabel="회의 진행 시간(시간) 직접 입력"
+                      value={hoursOk ? hoursNum : 0}
+                      inputValue={durationHours}
+                      min={0}
+                      max={WORKDAY_MINUTES / 60}
+                      minusLabel="회의 시간 줄이기"
+                      plusLabel="회의 시간 늘리기"
+                      onNumberChange={handleDurationHoursChange}
+                      onInputChange={handleDurationHoursInput}
+                      onKeyDown={onFieldKeyDown}
+                    />
+                  </div>
                   <span className="shrink-0 text-sm font-bold text-slate-700">시간</span>
                 </div>
-                <div
-                  id="durationMinutePart"
-                  tabIndex={-1}
-                  className="flex items-center justify-start gap-2 rounded-2xl bg-slate-50 p-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
-                >
-                  <NumberStepper
-                    ariaLabel="회의 진행 시간(분) 직접 입력"
-                    value={minOk ? minNum : 0}
-                    inputValue={durationMinute}
-                    min={0}
-                    max={hoursNum >= WORKDAY_MINUTES / 60 ? 0 : 55}
-                    step={5}
-                    minusLabel="회의 분 줄이기"
-                    plusLabel="회의 분 늘리기"
-                    onNumberChange={handleDurationMinuteChange}
-                    onInputChange={handleDurationMinuteInput}
-                    onKeyDown={onFieldKeyDown}
-                  />
+                <div className="flex items-center justify-start gap-2">
+                  <div
+                    id="durationMinutePart"
+                    tabIndex={-1}
+                    className="rounded-2xl bg-slate-50 p-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+                  >
+                    <NumberStepper
+                      ariaLabel="회의 진행 시간(분) 직접 입력"
+                      value={minOk ? minNum : 0}
+                      inputValue={durationMinute}
+                      min={0}
+                      max={hoursNum >= WORKDAY_MINUTES / 60 ? 0 : 55}
+                      step={5}
+                      minusLabel="회의 분 줄이기"
+                      plusLabel="회의 분 늘리기"
+                      onNumberChange={handleDurationMinuteChange}
+                      onInputChange={handleDurationMinuteInput}
+                      onKeyDown={onFieldKeyDown}
+                    />
+                  </div>
                   <span className="shrink-0 text-sm font-bold text-slate-700">분</span>
                 </div>
               </div>
@@ -670,12 +674,12 @@ export function MeetingCreateForm({
             }
             backdropDownRef.current = false;
           }}
-          className="fixed inset-0 z-30 flex items-end bg-slate-900/40 p-0 sm:items-center sm:p-6"
+          className="fixed inset-0 z-30 flex items-stretch bg-slate-900/40 p-0 sm:items-center sm:p-6"
         >
           <div
             ref={modalPanelRef}
             tabIndex={-1}
-            className="mx-auto flex h-[90vh] w-full max-w-2xl flex-col rounded-t-3xl bg-white p-5 shadow-xl focus:outline-none sm:h-[680px] sm:rounded-3xl"
+            className="mx-auto flex h-dvh max-h-dvh w-full max-w-2xl flex-col bg-white p-5 shadow-xl focus:outline-none sm:h-[680px] sm:max-h-[calc(100vh-3rem)] sm:rounded-3xl"
           >
             <div className="mb-1 flex shrink-0 items-start justify-between gap-4">
               <h3 className="text-lg font-bold text-slate-900">참석자 선택</h3>
