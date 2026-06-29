@@ -79,6 +79,9 @@
 
 html,
 body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   background-color: rgb(255 255 255 / 0.95);
   color: #0f172a;
 }

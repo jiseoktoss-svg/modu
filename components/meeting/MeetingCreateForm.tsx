@@ -261,6 +261,9 @@ export function MeetingCreateForm({
   const focusOverride = useRef<string | null>(null); // 특정 입력으로 포커스 강제
   const modalPanelRef = useRef<HTMLDivElement>(null);
   const backdropDownRef = useRef(false); // backdrop 에서 mousedown 시작했는지
+  const summaryEndRef = useRef<HTMLSpanElement>(null);
+  const autoStickSummaryRef = useRef(true);
+  const lastScrollYRef = useRef(0);
 
   const filledParticipants = participants.filter((p) => p.name.trim().length > 0);
 
@@ -391,6 +394,71 @@ export function MeetingCreateForm({
     setDurationMinute(String(normalizeDurationMinute(Number(digits))));
   };
 
+  const participantNames = filledParticipants.map((p) => p.name).join(", ");
+
+  const keepSummaryEndVisible = () => {
+    if (!autoStickSummaryRef.current) return;
+    if (window.matchMedia("(min-width: 640px)").matches) return;
+
+    const end = summaryEndRef.current;
+    if (!end) return;
+
+    const footer = document.querySelector<HTMLElement>(".modu-mobile-sticky-action");
+    const header = document.querySelector<HTMLElement>("header");
+    const footerTop = footer?.getBoundingClientRect().top ?? window.innerHeight;
+    const headerBottom = header?.getBoundingClientRect().bottom ?? 0;
+    const visibleTop = headerBottom + 16;
+    const visibleBottom = footerTop - 16;
+    if (visibleBottom <= visibleTop) return;
+
+    const rect = end.getBoundingClientRect();
+
+    if (rect.bottom > visibleBottom) {
+      window.scrollBy({ top: rect.bottom - visibleBottom });
+    } else if (rect.top < visibleTop) {
+      window.scrollBy({ top: rect.top - visibleTop });
+    }
+  };
+
+  useEffect(() => {
+    lastScrollYRef.current = window.scrollY;
+
+    const onScroll = () => {
+      const currentScrollY = window.scrollY;
+      if (currentScrollY < lastScrollYRef.current - 8) {
+        autoStickSummaryRef.current = false;
+      }
+
+      const end = summaryEndRef.current;
+      if (end) {
+        const footer = document.querySelector<HTMLElement>(".modu-mobile-sticky-action");
+        const footerTop = footer?.getBoundingClientRect().top ?? window.innerHeight;
+        if (end.getBoundingClientRect().bottom <= footerTop - 16) {
+          autoStickSummaryRef.current = true;
+        }
+      }
+
+      lastScrollYRef.current = currentScrollY;
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(keepSummaryEndVisible);
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    maxStep,
+    title,
+    agenda,
+    location,
+    deadlineText,
+    durationHours,
+    durationMinute,
+    participantNames,
+  ]);
+
   // 단계가 바뀌면 해당 입력에 포커스(최초 마운트는 건너뜀, 스크롤 점프 방지).
   useEffect(() => {
     if (skipInitialFocus.current) {
@@ -435,8 +503,6 @@ export function MeetingCreateForm({
       document.getElementById("participantSelect")?.focus({ preventScroll: true });
     };
   }, [showParticipantModal]);
-
-  const participantNames = filledParticipants.map((p) => p.name).join(", ");
 
   return (
     <form
@@ -526,6 +592,7 @@ export function MeetingCreateForm({
               입니다.
             </p>
           )}
+          <span ref={summaryEndRef} aria-hidden="true" className="block h-px" />
         </div>
       </div>
 
@@ -651,11 +718,7 @@ export function MeetingCreateForm({
               <Label htmlFor="durationHours" className="text-lg">예상 회의 진행 시간을 입력해주세요</Label>
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex items-center justify-start gap-2">
-                  <div
-                    id="durationHours"
-                    tabIndex={-1}
-                    className="rounded-2xl bg-slate-50 p-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
-                  >
+                  <div id="durationHours" tabIndex={-1}>
                     <NumberStepper
                       ariaLabel="회의 진행 시간(시간) 직접 입력"
                       value={hoursOk ? hoursNum : 0}
@@ -672,11 +735,7 @@ export function MeetingCreateForm({
                   <span className="shrink-0 text-sm font-bold text-slate-700">시간</span>
                 </div>
                 <div className="flex items-center justify-start gap-2">
-                  <div
-                    id="durationMinutePart"
-                    tabIndex={-1}
-                    className="rounded-2xl bg-slate-50 p-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
-                  >
+                  <div id="durationMinutePart" tabIndex={-1}>
                     <NumberStepper
                       ariaLabel="회의 진행 시간(분) 직접 입력"
                       value={minOk ? minNum : 0}
