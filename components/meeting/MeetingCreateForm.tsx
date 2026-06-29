@@ -10,15 +10,24 @@ import {
 } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { createMeeting } from "@/app/actions/meetings";
+import { MobileStickyAction } from "@/components/layout/MobileStickyAction";
 import { Emoji } from "@/components/ui/Emoji";
 import { Input, Label } from "@/components/ui/Input";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { TDSButton } from "@/components/ui/TDSButton";
+import { cn } from "@/lib/cn";
 import {
   ParticipantListEditor,
   type ParticipantDraft,
 } from "@/components/meeting/ParticipantListEditor";
 import type { FormState } from "@/lib/actionTypes";
+import {
+  MAX_MEETING_AGENDA_LENGTH,
+  MAX_MEETING_LOCATION_LENGTH,
+  MAX_MEETING_PARTICIPANTS,
+  MAX_MEETING_TITLE_LENGTH,
+  MIN_MEETING_PARTICIPANTS,
+} from "@/lib/meetingLimits";
 
 interface Props {
   defaultDeadlineDate: string;
@@ -92,6 +101,39 @@ function EditValue({
     >
       {children}
     </button>
+  );
+}
+
+function LimitedFieldLabel({
+  htmlFor,
+  invalid,
+  children,
+}: {
+  htmlFor: string;
+  invalid: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <Label
+      htmlFor={htmlFor}
+      id={`${htmlFor}-limit`}
+      role={invalid ? "alert" : undefined}
+      className={cn("text-lg", invalid && "text-red-600")}
+    >
+      {invalid ? (
+        <span className="inline-flex items-start gap-1.5">
+          <span
+            aria-hidden="true"
+            className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-red-600 text-[11px] font-extrabold leading-none text-red-600"
+          >
+            !
+          </span>
+          <span>{children}</span>
+        </span>
+      ) : (
+        children
+      )}
+    </Label>
   );
 }
 
@@ -241,13 +283,17 @@ export function MeetingCreateForm({
 
   // 단계별 유효성(모두 필수). 서버 검증과 일치시킨다.
   const dateOk = deadlineDate.trim().length > 0 && deadlineDate >= minDeadlineDate;
+  const titleTooLong = title.length > MAX_MEETING_TITLE_LENGTH;
+  const agendaTooLong = agenda.length > MAX_MEETING_AGENDA_LENGTH;
+  const locationTooLong = location.length > MAX_MEETING_LOCATION_LENGTH;
   const valid = [
-    title.trim().length > 0,
-    agenda.trim().length > 0,
-    location.trim().length > 0,
+    title.trim().length > 0 && !titleTooLong,
+    agenda.trim().length > 0 && !agendaTooLong,
+    location.trim().length > 0 && !locationTooLong,
     dateOk,
     durationOk,
-    filledParticipants.length >= 2,
+    filledParticipants.length >= MIN_MEETING_PARTICIPANTS &&
+      filledParticipants.length <= MAX_MEETING_PARTICIPANTS,
   ];
   const allValid = valid.every(Boolean);
 
@@ -397,7 +443,7 @@ export function MeetingCreateForm({
   return (
     <form action={formAction} className="flex flex-1 flex-col">
       {/* 상단: 입력에 따라 완성되는 안내 문장 */}
-      <div className="flex-1 pt-8">
+      <div className="flex-1 pt-6 sm:pt-8">
         <p className="text-sm font-medium text-slate-400">회의 만들기</p>
         <div
           aria-live="polite"
@@ -508,40 +554,82 @@ export function MeetingCreateForm({
       />
 
       {/* 하단: 현재 단계 입력 + 액션 버튼 */}
-      <div className="mt-8 pb-8 pt-5">
+      <MobileStickyAction className="mt-6 sm:mt-8">
         <div key={step} className="animate-fade-up motion-reduce:animate-none">
           {step === 0 && (
             <>
-              <Label htmlFor="title" className="text-lg">회의명을 입력해주세요</Label>
+              <LimitedFieldLabel htmlFor="title" invalid={titleTooLong}>
+                {titleTooLong ? (
+                  <>
+                    회의명은 최대 {MAX_MEETING_TITLE_LENGTH}글자까지 입력할 수 있습니다.
+                  </>
+                ) : (
+                  "회의명을 입력해주세요"
+                )}
+              </LimitedFieldLabel>
               <Input
                 id="title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 onKeyDown={onFieldKeyDown}
+                aria-invalid={titleTooLong || undefined}
+                aria-describedby={titleTooLong ? "title-limit" : undefined}
+                className={cn(
+                  titleTooLong &&
+                    "!border-red-600 focus:!border-2 focus:!border-red-600 focus:!ring-0",
+                )}
                 placeholder="예: 주간 제품 회의"
               />
             </>
           )}
           {step === 1 && (
             <>
-              <Label htmlFor="agenda" className="text-lg">회의 안건을 입력해주세요</Label>
+              <LimitedFieldLabel htmlFor="agenda" invalid={agendaTooLong}>
+                {agendaTooLong ? (
+                  <>
+                    회의 안건은 최대 {MAX_MEETING_AGENDA_LENGTH}글자까지 입력할 수 있습니다.
+                  </>
+                ) : (
+                  "회의 안건을 입력해주세요"
+                )}
+              </LimitedFieldLabel>
               <Input
                 id="agenda"
                 value={agenda}
                 onChange={(e) => setAgenda(e.target.value)}
                 onKeyDown={onFieldKeyDown}
+                aria-invalid={agendaTooLong || undefined}
+                aria-describedby={agendaTooLong ? "agenda-limit" : undefined}
+                className={cn(
+                  agendaTooLong &&
+                    "!border-red-600 focus:!border-2 focus:!border-red-600 focus:!ring-0",
+                )}
                 placeholder="예: 다음 스프린트 범위와 출시 일정 정리"
               />
             </>
           )}
           {step === 2 && (
             <>
-              <Label htmlFor="location" className="text-lg">회의 장소를 입력해주세요</Label>
+              <LimitedFieldLabel htmlFor="location" invalid={locationTooLong}>
+                {locationTooLong ? (
+                  <>
+                    회의 장소는 최대 {MAX_MEETING_LOCATION_LENGTH}글자까지 입력할 수 있습니다.
+                  </>
+                ) : (
+                  "회의 장소를 입력해주세요"
+                )}
+              </LimitedFieldLabel>
               <Input
                 id="location"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 onKeyDown={onFieldKeyDown}
+                aria-invalid={locationTooLong || undefined}
+                aria-describedby={locationTooLong ? "location-limit" : undefined}
+                className={cn(
+                  locationTooLong &&
+                    "!border-red-600 focus:!border-2 focus:!border-red-600 focus:!ring-0",
+                )}
                 placeholder="예: 7층 회의실 A 또는 Zoom"
               />
             </>
@@ -616,7 +704,9 @@ export function MeetingCreateForm({
               )}
             </>
           )}
-          {step === 5 && filledParticipants.length < 2 && (
+          {step === 5 &&
+            (filledParticipants.length < MIN_MEETING_PARTICIPANTS ||
+              filledParticipants.length > MAX_MEETING_PARTICIPANTS) && (
             <Label htmlFor="participantSelect" className="text-lg">
               본인 포함 참석자를 선택해주세요
             </Label>
@@ -636,7 +726,9 @@ export function MeetingCreateForm({
         <div className="mt-4">
           {step === LAST_STEP && allValid && !showParticipantModal ? (
             <SubmitButton isEditing={isEditing} />
-          ) : step === LAST_STEP && filledParticipants.length < 2 ? (
+          ) : step === LAST_STEP &&
+            (filledParticipants.length < MIN_MEETING_PARTICIPANTS ||
+              filledParticipants.length > MAX_MEETING_PARTICIPANTS) ? (
             <TDSButton
               id="participantSelect"
               type="button"
@@ -658,7 +750,7 @@ export function MeetingCreateForm({
             </TDSButton>
           ) : null}
         </div>
-      </div>
+      </MobileStickyAction>
 
       {showParticipantModal && (
         <div
@@ -679,15 +771,15 @@ export function MeetingCreateForm({
           <div
             ref={modalPanelRef}
             tabIndex={-1}
-            className="mx-auto flex h-dvh max-h-dvh w-full max-w-2xl flex-col bg-white p-5 shadow-xl focus:outline-none sm:h-[680px] sm:max-h-[calc(100vh-3rem)] sm:rounded-3xl"
+            className="mx-auto flex h-dvh max-h-dvh w-full max-w-2xl flex-col bg-white p-4 shadow-xl focus:outline-none sm:h-[680px] sm:max-h-[calc(100vh-3rem)] sm:rounded-3xl sm:p-5"
           >
-            <div className="mb-1 flex shrink-0 items-start justify-between gap-4">
-              <h3 className="text-lg font-bold text-slate-900">참석자 선택</h3>
+            <div className="mb-0.5 flex shrink-0 items-start justify-between gap-3 sm:mb-1 sm:gap-4">
+              <h3 className="text-base font-bold text-slate-900 sm:text-lg">참석자 선택</h3>
               <button
                 type="button"
                 aria-label="참석자 선택 닫기"
                 onClick={() => setShowParticipantModal(false)}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 sm:h-9 sm:w-9"
               >
                 <Emoji symbol="✕" size={16} />
               </button>
@@ -695,8 +787,10 @@ export function MeetingCreateForm({
             <div className="min-h-0 flex-1">
               <ParticipantListEditor participants={participants} onChange={setParticipants} />
             </div>
-            <div className="mt-4 shrink-0">
-              {participantError && participants.length < 2 && (
+            <div className="mt-3 shrink-0 sm:mt-4">
+              {participantError &&
+                (participants.length < MIN_MEETING_PARTICIPANTS ||
+                  participants.length > MAX_MEETING_PARTICIPANTS) && (
                 <div
                   role="alert"
                   className="mb-2 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700"
@@ -705,22 +799,29 @@ export function MeetingCreateForm({
                   {participantError}
                 </div>
               )}
-              <div className="flex justify-end">
-                <TDSButton
-                  type="button"
-                  size="lg"
-                  onClick={() => {
-                    if (participants.length < 2) {
-                      setParticipantError("참석자는 최소 2명 이상 선택해 주세요.");
-                      return;
-                    }
-                    setParticipantError(null);
-                    setShowParticipantModal(false);
-                  }}
-                >
-                  선택 완료
-                </TDSButton>
-              </div>
+              <TDSButton
+                type="button"
+                size="xl"
+                display="block"
+                onClick={() => {
+                  if (participants.length < MIN_MEETING_PARTICIPANTS) {
+                    setParticipantError(
+                      `참석자는 최소 ${MIN_MEETING_PARTICIPANTS}명 이상 선택해 주세요.`,
+                    );
+                    return;
+                  }
+                  if (participants.length > MAX_MEETING_PARTICIPANTS) {
+                    setParticipantError(
+                      `참석자는 최대 ${MAX_MEETING_PARTICIPANTS}명까지 선택할 수 있습니다.`,
+                    );
+                    return;
+                  }
+                  setParticipantError(null);
+                  setShowParticipantModal(false);
+                }}
+              >
+                선택 완료
+              </TDSButton>
             </div>
           </div>
         </div>

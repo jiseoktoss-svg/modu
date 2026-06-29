@@ -24,6 +24,13 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { generateToken } from "@/lib/tokens";
 import { parseHm, todayDateStrKst } from "@/lib/time";
 import { mapMeeting, type MeetingRow, type ParticipantRow } from "@/lib/types";
+import {
+  MAX_MEETING_AGENDA_LENGTH,
+  MAX_MEETING_LOCATION_LENGTH,
+  MAX_MEETING_PARTICIPANTS,
+  MAX_MEETING_TITLE_LENGTH,
+  MIN_MEETING_PARTICIPANTS,
+} from "@/lib/meetingLimits";
 import type {
   ConfirmSlotArgs,
   FormState,
@@ -96,9 +103,12 @@ export async function createMeeting(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const title = String(formData.get("title") ?? "").trim();
-  const agenda = String(formData.get("agenda") ?? "").trim();
-  const location = String(formData.get("location") ?? "").trim();
+  const rawTitle = String(formData.get("title") ?? "");
+  const rawAgenda = String(formData.get("agenda") ?? "");
+  const rawLocation = String(formData.get("location") ?? "");
+  const title = rawTitle.trim();
+  const agenda = rawAgenda.trim();
+  const location = rawLocation.trim();
   const rawDurationMinutes = formData.get("durationMinutes");
   const durationHours = Number(formData.get("durationHours") ?? 0);
   const durationMinutePart = Number(formData.get("durationMinutePart") ?? 0);
@@ -122,12 +132,26 @@ export async function createMeeting(
 
   // 검증
   if (!title) return { error: "회의명을 입력해 주세요." };
+  if (rawTitle.length > MAX_MEETING_TITLE_LENGTH) {
+    return { error: `회의명은 최대 ${MAX_MEETING_TITLE_LENGTH}글자까지 입력할 수 있습니다.` };
+  }
   if (!agenda) return { error: "회의 안건을 입력해 주세요." };
+  if (rawAgenda.length > MAX_MEETING_AGENDA_LENGTH) {
+    return { error: `회의 안건은 최대 ${MAX_MEETING_AGENDA_LENGTH}글자까지 입력할 수 있습니다.` };
+  }
   if (!location) return { error: "회의 장소를 입력해 주세요." };
+  if (rawLocation.length > MAX_MEETING_LOCATION_LENGTH) {
+    return { error: `회의 장소는 최대 ${MAX_MEETING_LOCATION_LENGTH}글자까지 입력할 수 있습니다.` };
+  }
   if (isEditing && (!editMeetingId || !editAdminToken)) {
     return { error: "수정 권한 정보가 올바르지 않습니다." };
   }
-  if (participants.length < 2) return { error: "참석자는 최소 2명 이상이어야 합니다." };
+  if (participants.length < MIN_MEETING_PARTICIPANTS) {
+    return { error: `참석자는 최소 ${MIN_MEETING_PARTICIPANTS}명 이상이어야 합니다.` };
+  }
+  if (participants.length > MAX_MEETING_PARTICIPANTS) {
+    return { error: `참석자는 최대 ${MAX_MEETING_PARTICIPANTS}명까지 선택할 수 있습니다.` };
+  }
   if (!deadlineDate) {
     return { error: "회의 마감 날짜를 선택해 주세요." };
   }

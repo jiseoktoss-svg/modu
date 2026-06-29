@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/cn";
 import { Emoji } from "@/components/ui/Emoji";
 
@@ -60,16 +61,11 @@ export function DatePicker({ id, value, onChange, min }: DatePickerProps) {
 
   useEffect(() => {
     if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
-    document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
@@ -110,6 +106,108 @@ export function DatePicker({ id, value, onChange, min }: DatePickerProps) {
     setOpen(false);
   }
 
+  const calendarDialog = open ? (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-3 py-4 sm:px-4 sm:py-6"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) setOpen(false);
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="날짜 선택 달력"
+        className="max-h-[calc(100dvh-2rem)] w-full max-w-[20rem] overflow-y-auto rounded-[22px] border border-slate-200 bg-white p-3 shadow-2xl sm:max-w-[22rem] sm:p-4"
+      >
+        <div className="mb-2 flex items-center justify-between gap-3 sm:mb-3">
+          <div>
+            <p className="text-xs font-bold text-brand-600">회의 마감일</p>
+            <p className="mt-0.5 text-sm font-bold text-slate-900">{label}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            aria-label="달력 닫기"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 sm:h-9 sm:w-9"
+          >
+            <Emoji symbol="✕" size={14} />
+          </button>
+        </div>
+
+        <div className="mb-2 flex items-center justify-between sm:mb-3">
+          <button
+            type="button"
+            onClick={() => go(-1)}
+            disabled={!canPrev}
+            aria-label="이전 달"
+            className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30"
+          >
+            <Chevron dir="left" />
+          </button>
+          <span className="text-sm font-bold text-slate-800">
+            {view.y}년 {view.m}월
+          </span>
+          <button
+            type="button"
+            onClick={() => go(1)}
+            aria-label="다음 달"
+            className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100"
+          >
+            <Chevron dir="right" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-7 gap-1 text-center">
+          {WEEKDAYS.map((w, i) => (
+            <div
+              key={w}
+              className={cn(
+                "py-1 text-xs font-semibold",
+                i === 0 ? "text-red-400" : i === 6 ? "text-blue-400" : "text-slate-400",
+              )}
+            >
+              {w}
+            </div>
+          ))}
+          {cells.map((d, i) => {
+            if (d === null) return <div key={`e${i}`} />;
+            const s = ymd(view.y, view.m, d);
+            const disabled = Boolean(minStr) && s < minStr;
+            const selected = value === s;
+            const dow = (lead + (d - 1)) % 7;
+            return (
+              <button
+                key={s}
+                type="button"
+                disabled={disabled}
+                onClick={() => pick(d)}
+                aria-label={`${view.y}년 ${view.m}월 ${d}일${selected ? " 선택됨" : ""}`}
+                aria-current={selected ? "date" : undefined}
+                className={cn(
+                  "aspect-square rounded-lg text-sm transition-colors",
+                  selected
+                    ? "bg-brand-500 font-bold text-white shadow-sm shadow-brand-500/20"
+                    : disabled
+                      ? "text-slate-300"
+                      : cn(
+                          "hover:bg-brand-50",
+                          dow === 0
+                            ? "text-red-500"
+                            : dow === 6
+                              ? "text-blue-500"
+                              : "text-slate-700",
+                        ),
+                )}
+              >
+                {d}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <div ref={ref} className="relative">
       <button
@@ -122,90 +220,13 @@ export function DatePicker({ id, value, onChange, min }: DatePickerProps) {
         }}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="flex h-11 w-full items-center justify-between rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 transition-colors hover:border-slate-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+        className="flex h-11 w-full items-center justify-between rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 transition-colors hover:border-slate-400 focus:border-2 focus:border-brand-400 focus:outline-none focus:ring-0"
       >
         <span className={sel ? "" : "text-slate-400"}>{label}</span>
         <Emoji symbol="📅" size={16} />
       </button>
 
-      {open && (
-        <div
-          role="dialog"
-          aria-label="날짜 선택 달력"
-          className="absolute bottom-full left-0 z-40 mb-2 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-lg"
-        >
-          <div className="mb-2 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => go(-1)}
-              disabled={!canPrev}
-              aria-label="이전 달"
-              className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30"
-            >
-              <Chevron dir="left" />
-            </button>
-            <span className="text-sm font-bold text-slate-900">
-              {view.y}년 {view.m}월
-            </span>
-            <button
-              type="button"
-              onClick={() => go(1)}
-              aria-label="다음 달"
-              className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100"
-            >
-              <Chevron dir="right" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-7 gap-1 text-center">
-            {WEEKDAYS.map((w, i) => (
-              <div
-                key={w}
-                className={cn(
-                  "py-1 text-xs font-semibold",
-                  i === 0 ? "text-red-400" : i === 6 ? "text-blue-400" : "text-slate-400",
-                )}
-              >
-                {w}
-              </div>
-            ))}
-            {cells.map((d, i) => {
-              if (d === null) return <div key={`e${i}`} />;
-              const s = ymd(view.y, view.m, d);
-              const disabled = Boolean(minStr) && s < minStr;
-              const selected = value === s;
-              const dow = (lead + (d - 1)) % 7;
-              return (
-                <button
-                  key={s}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => pick(d)}
-                  aria-label={`${view.y}년 ${view.m}월 ${d}일${selected ? " 선택됨" : ""}`}
-                  aria-current={selected ? "date" : undefined}
-                  className={cn(
-                    "aspect-square rounded-lg text-sm transition-colors",
-                    selected
-                      ? "bg-brand-500 font-bold text-white"
-                      : disabled
-                        ? "text-slate-300"
-                        : cn(
-                            "hover:bg-brand-50",
-                            dow === 0
-                              ? "text-red-500"
-                              : dow === 6
-                                ? "text-blue-500"
-                                : "text-slate-700",
-                          ),
-                  )}
-                >
-                  {d}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {calendarDialog ? createPortal(calendarDialog, document.body) : null}
     </div>
   );
 }

@@ -4,6 +4,41 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .modu-mobile-sticky-action {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    padding: 1rem 1rem calc(1.5rem + env(safe-area-inset-bottom));
+    border: 0;
+    background: rgb(255 255 255);
+  }
+
+  .modu-mobile-sticky-action::before {
+    content: "";
+    position: absolute;
+    right: 0;
+    bottom: 100%;
+    left: 0;
+    height: 1.5rem;
+    pointer-events: none;
+    background: linear-gradient(to bottom, rgb(255 255 255 / 0), rgb(255 255 255));
+  }
+
+  @media (min-width: 640px) {
+    .modu-mobile-sticky-action {
+      position: static;
+      z-index: auto;
+      padding: 1.25rem 0 2rem;
+      background: transparent;
+    }
+
+    .modu-mobile-sticky-action::before {
+      content: none;
+    }
+  }
+}
+
 @font-face {
   font-family: "TossFace";
   /* Web(COLR/CPAL) 파일을 우선 사용 — 전 브라우저(윈도우/맥)에서 컬러 렌더링됨.

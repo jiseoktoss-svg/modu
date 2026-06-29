@@ -24,6 +24,7 @@ import { Select } from "@/components/ui/Select";
 import { TDSButton } from "@/components/ui/TDSButton";
 import { MeetingSummarySentence } from "@/components/meeting/MeetingSummarySentence";
 import { ExpiryNotice } from "@/components/layout/ExpiryNotice";
+import { MobileStickyAction } from "@/components/layout/MobileStickyAction";
 import { cn } from "@/lib/cn";
 import { cellKey, cellsToBlocks, GRID_STEP_MINUTES } from "@/lib/grid";
 import {
@@ -1098,25 +1099,27 @@ export function ResponseForm(props: Props) {
       </div>
 
       {/* 하단 고정 CTA */}
-      <div className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto w-full max-w-2xl px-4 py-3 sm:px-6">
-          <TDSButton
-            size="xl"
-            display="block"
-            onClick={handleAvailNext}
-            disabled={availStep === AVAIL_LAST_STEP && submitting}
-            loading={availStep === AVAIL_LAST_STEP && submitting}
-          >
-            {availStep === AVAIL_LAST_STEP
-              ? submitting
-                ? "저장 중..."
-                : token
-                  ? "수정 저장하기"
-                  : "응답 제출하기"
-              : "다음"}
-          </TDSButton>
-        </div>
-      </div>
+      <MobileStickyAction
+        bleed={false}
+        className="fixed inset-x-0 bottom-0 z-10 sm:p-0"
+        innerClassName="max-w-2xl sm:px-6 sm:py-3"
+      >
+        <TDSButton
+          size="xl"
+          display="block"
+          onClick={handleAvailNext}
+          disabled={availStep === AVAIL_LAST_STEP && submitting}
+          loading={availStep === AVAIL_LAST_STEP && submitting}
+        >
+          {availStep === AVAIL_LAST_STEP
+            ? submitting
+              ? "저장 중..."
+              : token
+                ? "수정 저장하기"
+                : "응답 제출하기"
+            : "다음"}
+        </TDSButton>
+      </MobileStickyAction>
     </>
   );
 }

@@ -5,11 +5,13 @@ import {
   useState,
   type DragEvent,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/Badge";
 import { Emoji } from "@/components/ui/Emoji";
 import { MOCK_EMPLOYEES } from "@/data/mockEmployees";
+import { MAX_MEETING_PARTICIPANTS } from "@/lib/meetingLimits";
 import type { AttendanceType } from "@/lib/types";
 
 export interface ParticipantDraft {
@@ -22,8 +24,6 @@ interface Props {
   participants: ParticipantDraft[];
   onChange: (next: ParticipantDraft[]) => void;
 }
-
-const MIN_PARTICIPANTS = 2;
 
 const GROUPS: { type: AttendanceType; title: string }[] = [
   { type: "required", title: "필수참석" },
@@ -39,16 +39,30 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [overZone, setOverZone] = useState<AttendanceType | null>(null);
   const [pickedKeys, setPickedKeys] = useState<Set<string>>(new Set());
+  const [touchDrag, setTouchDrag] = useState<{
+    keys: string[];
+    x: number;
+    y: number;
+  } | null>(null);
   // 마퀴(드래그 박스) 선택 영역(구역 래퍼 기준 좌표).
   const [marquee, setMarquee] = useState<{ l: number; t: number; w: number; h: number } | null>(
     null,
   );
   const movingRef = useRef<string[]>([]);
   const zonesRef = useRef<HTMLDivElement>(null);
+  const touchDragRef = useRef<{
+    active: boolean;
+    keys: string[];
+    pointerId: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
+  const justDraggedRef = useRef(false);
 
   const selectedKeys = new Set(participants.map(employeeKey));
   const requiredCount = participants.filter((p) => p.attendanceType === "required").length;
   const optionalCount = participants.length - requiredCount;
+  const participantLimitReached = participants.length >= MAX_MEETING_PARTICIPANTS;
   const normalizedQuery = query.trim().toLowerCase();
   const filteredEmployees = MOCK_EMPLOYEES.filter((employee) => {
     if (!normalizedQuery) return true;
@@ -59,6 +73,8 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
     const key = employeeKey(employee);
     if (selectedKeys.has(key)) {
       onChange(participants.filter((p) => employeeKey(p) !== key));
+    } else if (participantLimitReached) {
+      return;
     } else {
       onChange([...participants, { ...employee, attendanceType: "required" }]);
     }
@@ -71,6 +87,18 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
       const n = new Set(prev);
       n.delete(key);
       return n;
+    });
+  }
+
+  function togglePickedKey(key: string) {
+    setPickedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
     });
   }
 
@@ -107,6 +135,69 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
     setDragKey(null);
     setOverZone(null);
     movingRef.current = [];
+  }
+
+  function getZoneAtPoint(x: number, y: number): AttendanceType | null {
+    const zone = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-drop-zone]");
+    const type = zone?.dataset.dropZone;
+    if (type === "required" || type === "optional") return type;
+    return null;
+  }
+
+  function startTouchDrag(e: ReactPointerEvent<HTMLElement>, key: string) {
+    if (e.pointerType === "mouse") return;
+    if ((e.target as HTMLElement).closest("[data-remove-pill]")) return;
+
+    const keys = pickedKeys.has(key) ? Array.from(pickedKeys) : [key];
+    touchDragRef.current = {
+      active: false,
+      keys,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+    };
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Playwright 합성 터치 이벤트는 활성 포인터가 없어 capture 가 실패할 수 있다.
+      // 실제 브라우저 터치에서는 capture 로 모달 밖 이동까지 추적한다.
+    }
+  }
+
+  function moveTouchDrag(e: ReactPointerEvent<HTMLElement>) {
+    const drag = touchDragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    if (!drag.active && Math.hypot(dx, dy) < 8) return;
+
+    drag.active = true;
+    justDraggedRef.current = true;
+    movingRef.current = drag.keys;
+    e.preventDefault();
+
+    const nextZone = getZoneAtPoint(e.clientX, e.clientY);
+    setOverZone(nextZone);
+    setTouchDrag({ keys: drag.keys, x: e.clientX, y: e.clientY });
+  }
+
+  function finishTouchDrag(e: ReactPointerEvent<HTMLElement>) {
+    const drag = touchDragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+
+    if (drag.active) {
+      const type = getZoneAtPoint(e.clientX, e.clientY);
+      if (type) setTypeMany(drag.keys, type);
+      window.setTimeout(() => {
+        justDraggedRef.current = false;
+      }, 300);
+    }
+
+    touchDragRef.current = null;
+    movingRef.current = [];
+    setTouchDrag(null);
+    setOverZone(null);
   }
 
   // 빈 공간을 드래그하면 사각형 안의 뱃지를 한 번에 선택(마퀴).
@@ -165,7 +256,7 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
   }
 
   return (
-    <div className="flex h-full flex-col gap-2">
+    <div className="flex h-full flex-col gap-1.5 sm:gap-2">
       {/* 검색 */}
       <div className="relative max-w-sm shrink-0">
         <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -177,7 +268,7 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="이름 또는 직책 검색"
           aria-label="직원 검색"
-          className="h-10 w-full rounded-2xl border border-slate-200 bg-slate-50 py-0 pl-9 pr-10 text-base font-medium text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-brand-300 focus:bg-white focus:ring-2 focus:ring-brand-100 sm:text-sm"
+          className="h-9 w-full rounded-2xl border border-slate-200 bg-slate-50 py-0 pl-9 pr-10 text-base font-medium text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-2 focus:border-brand-400 focus:bg-white focus:ring-0 sm:h-10"
         />
         {query && (
           <button
@@ -192,18 +283,20 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
       </div>
 
       {/* 직원 목록 — 클릭으로 추가/해제 토글 (위아래 페이드 + 스크롤) */}
-      <div className="relative h-64 shrink-0">
-        <div className="h-full space-y-2 overflow-y-auto px-0.5 py-1">
+      <div className="relative h-[32dvh] min-h-32 max-h-48 shrink-0 sm:h-64 sm:max-h-none">
+        <div className="h-full space-y-1.5 overflow-y-auto px-0.5 py-1 sm:space-y-2">
           {filteredEmployees.map((employee) => {
             const selected = selectedKeys.has(employeeKey(employee));
+            const disabledByLimit = !selected && participantLimitReached;
             return (
               <button
                 key={employee.id}
                 type="button"
                 onClick={() => toggleEmployee(employee)}
                 aria-pressed={selected}
+                disabled={disabledByLimit}
                 className={cn(
-                  "flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors",
+                  "flex w-full items-center justify-between gap-2 rounded-xl border px-2.5 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45 sm:gap-3 sm:px-3 sm:py-2.5",
                   selected
                     ? "border-brand-200 bg-brand-50"
                     : "border-slate-200 bg-white hover:bg-slate-50",
@@ -213,11 +306,15 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
                   <span className="block truncate text-sm font-semibold text-slate-900">
                     {employee.name}
                   </span>
-                  <span className="block truncate text-xs text-slate-500">{employee.role}</span>
+                  <span className="block truncate text-[11px] text-slate-500 sm:text-xs">{employee.role}</span>
                 </span>
                 {selected ? (
                   <Badge tone="green" className="shrink-0">
                     선택됨 · 해제
+                  </Badge>
+                ) : disabledByLimit ? (
+                  <Badge tone="gray" className="shrink-0">
+                    최대 {MAX_MEETING_PARTICIPANTS}명
                   </Badge>
                 ) : (
                   <Badge tone="brand" className="shrink-0">
@@ -240,13 +337,23 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
 
       {/* 필수참석 / 선택참석 구역 — 빈 곳 드래그로 범위 선택, 뱃지를 끌어 이동 */}
       <div className="flex min-h-0 flex-1 flex-col gap-2">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs text-slate-500">
-            빈 곳을 드래그하면 여러 명을 한 번에 선택해요. 이름을 끌어 구역을 옮기세요.
-          </p>
-          <Badge tone={participants.length >= MIN_PARTICIPANTS ? "green" : "amber"}>
-            필수 {requiredCount}명 · 선택 {optionalCount}명
-          </Badge>
+        <div className="hidden flex-nowrap items-center gap-1.5 sm:flex">
+          <span
+            className={cn(
+              "whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-bold",
+              requiredCount > 0 ? "bg-brand-50 text-brand-700" : "bg-slate-100 text-slate-500",
+            )}
+          >
+            필수 {requiredCount}명
+          </span>
+          <span
+            className={cn(
+              "whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-bold",
+              optionalCount > 0 ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500",
+            )}
+          >
+            선택 {optionalCount}명
+          </span>
         </div>
 
         <div
@@ -254,12 +361,13 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
           onMouseDown={handleZonesMouseDown}
           className="relative min-h-0 flex-1 select-none"
         >
-          <div className="grid h-full grid-cols-2 grid-rows-1 gap-3">
+          <div className="grid h-full grid-cols-2 grid-rows-1 gap-2 sm:gap-3">
             {GROUPS.map((g) => {
               const members = participants.filter((p) => p.attendanceType === g.type);
               return (
                 <div
                   key={g.type}
+                  data-drop-zone={g.type}
                   onDragOver={(e) => {
                     e.preventDefault();
                     e.dataTransfer.dropEffect = "move";
@@ -268,7 +376,7 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
                   onDragLeave={() => setOverZone((o) => (o === g.type ? null : o))}
                   onDrop={(e) => handleDrop(e, g.type)}
                   className={cn(
-                    "flex flex-col gap-2 overflow-y-auto rounded-xl border p-3 transition-colors",
+                    "flex flex-col gap-1.5 overflow-y-auto rounded-xl border p-2 transition-colors sm:gap-2 sm:p-3",
                     overZone === g.type
                       ? "border-brand-400 bg-brand-50"
                       : "border-slate-200 bg-slate-50",
@@ -296,19 +404,31 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
                               setDragKey(null);
                               setOverZone(null);
                             }}
+                            onPointerDown={(e) => startTouchDrag(e, key)}
+                            onPointerMove={moveTouchDrag}
+                            onPointerUp={finishTouchDrag}
+                            onPointerCancel={finishTouchDrag}
+                            onClick={() => {
+                              if (justDraggedRef.current) {
+                                justDraggedRef.current = false;
+                                return;
+                              }
+                              togglePickedKey(key);
+                            }}
                             title={`${p.name} — 끌어서 구역 이동`}
                             className={cn(
-                              "inline-flex cursor-grab select-none items-center gap-1 rounded-full border py-1 pl-3 pr-1 active:cursor-grabbing",
+                              "inline-flex touch-none cursor-grab select-none items-center gap-1 rounded-full border py-0.5 pl-2.5 pr-1 active:cursor-grabbing sm:py-1 sm:pl-3",
                               picked
                                 ? "border-brand-400 bg-brand-50 ring-2 ring-brand-200"
                                 : "border-slate-200 bg-white",
                               dragKey === key && "opacity-50",
                             )}
                           >
-                            <span className="text-sm font-semibold text-slate-900">{p.name}</span>
+                            <span className="text-xs font-semibold text-slate-900 sm:text-sm">{p.name}</span>
                             <button
                               type="button"
                               onMouseDown={(e) => e.stopPropagation()}
+                              data-remove-pill
                               onClick={(e) => {
                                 e.stopPropagation();
                                 removeByKey(key);
@@ -336,6 +456,15 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
           )}
         </div>
       </div>
+
+      {touchDrag && (
+        <div
+          className="pointer-events-none fixed z-[60] rounded-full bg-slate-900 px-3 py-2 text-xs font-bold text-white shadow-xl"
+          style={{ left: touchDrag.x + 10, top: touchDrag.y + 10 }}
+        >
+          {touchDrag.keys.length}명 이동
+        </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { SiteHeader } from "@/components/layout/SiteHeader";
+import { MobileStickyAction } from "@/components/layout/MobileStickyAction";
 import { TDSButton } from "@/components/ui/TDSButton";
 
 export default function LandingPage() {
@@ -27,11 +28,11 @@ export default function LandingPage() {
       </main>
 
       {/* 모바일: 하단 고정 CTA */}
-      <div className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/95 p-4 backdrop-blur sm:hidden">
+      <MobileStickyAction bleed={false} className="sm:hidden">
         <TDSButton as="a" href="/meetings/new" size="xl" display="block">
           회의 만들기
         </TDSButton>
-      </div>
+      </MobileStickyAction>
     </div>
   );
 }

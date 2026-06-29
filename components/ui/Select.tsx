@@ -10,7 +10,7 @@ export function Select({
     <select
       className={cn(
         "h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-base text-slate-900 sm:text-sm",
-        "focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100",
+        "focus:border-2 focus:border-brand-400 focus:outline-none focus:ring-0",
         className,
       )}
       {...props}
