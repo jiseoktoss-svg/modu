@@ -15,6 +15,9 @@ interface MobileStickyActionProps extends HTMLAttributes<HTMLDivElement> {
   bleed?: boolean;
 }
 
+// 본문과 하단 고정 영역 사이에 둘 최소 여백(px).
+const BOTTOM_GAP = 20;
+
 export function MobileStickyAction({
   children,
   className,
@@ -23,23 +26,19 @@ export function MobileStickyAction({
   ...props
 }: MobileStickyActionProps) {
   const actionRef = useRef<HTMLDivElement>(null);
-  const spacerRef = useRef<HTMLDivElement>(null);
   const [spacerHeight, setSpacerHeight] = useState(0);
 
   useLayoutEffect(() => {
     const node = actionRef.current;
     if (!node) return;
 
+    // 모바일에서는 하단 고정 영역 높이 + 여백만큼 본문 아래 공간을 '항상' 확보한다.
+    // window.innerHeight 에 의존하지 않으므로(주소창 표시/숨김에 따라 변하지 않음)
+    // 스크롤 중 스페이서가 토글되며 스크롤 위치가 튀거나 되돌아가는 현상이 없다.
     const measure = () => {
       const isMobile = window.matchMedia("(max-width: 639px)").matches;
       const actionHeight = node.getBoundingClientRect().height;
-      const currentSpacerHeight = spacerRef.current?.getBoundingClientRect().height ?? 0;
-      const pageHeightWithoutSpacer =
-        document.documentElement.scrollHeight - currentSpacerHeight;
-      const needsScrollPadding =
-        isMobile && pageHeightWithoutSpacer > window.innerHeight + 1;
-
-      setSpacerHeight(needsScrollPadding ? actionHeight : 0);
+      setSpacerHeight(isMobile ? actionHeight + BOTTOM_GAP : 0);
     };
 
     const scheduleMeasure = () => {
@@ -50,7 +49,6 @@ export function MobileStickyAction({
 
     const observer = new ResizeObserver(measure);
     observer.observe(node);
-    observer.observe(document.body);
     window.addEventListener("resize", scheduleMeasure);
 
     return () => {
@@ -65,7 +63,6 @@ export function MobileStickyAction({
       {...props}
     >
       <div
-        ref={spacerRef}
         aria-hidden="true"
         className="modu-mobile-sticky-action-spacer"
         style={spacerHeight > 0 ? { height: spacerHeight } : undefined}

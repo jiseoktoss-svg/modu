@@ -27,6 +27,7 @@ import { MeetingSummarySentence } from "@/components/meeting/MeetingSummarySente
 import { ExpiryNotice } from "@/components/layout/ExpiryNotice";
 import { MobileStickyAction } from "@/components/layout/MobileStickyAction";
 import { cn } from "@/lib/cn";
+import { useScrollLock } from "@/lib/useScrollLock";
 import { cellKey, cellsToBlocks, GRID_STEP_MINUTES } from "@/lib/grid";
 import {
   describeDateStr,
@@ -451,6 +452,8 @@ function TimeSelect({
   const listRef = useRef<HTMLDivElement>(null);
   const valueMin = parseHm(value);
 
+  useScrollLock(open);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -535,9 +538,9 @@ function TimeSelect({
                 type="button"
                 onClick={close}
                 aria-label="닫기"
-                className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                className="flex h-11 w-11 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
               >
-                <Emoji symbol="✕" size={14} />
+                <Emoji symbol="✕" size={20} />
               </button>
             </div>
             <div ref={listRef} className="max-h-[18rem] overflow-y-auto py-1">
@@ -613,6 +616,7 @@ function CalendarModalField({
   blockedDates?: Set<string>;
 }) {
   const [open, setOpen] = useState(false);
+  useScrollLock(open);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -648,9 +652,9 @@ function CalendarModalField({
             type="button"
             onClick={() => setOpen(false)}
             aria-label="달력 닫기"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
           >
-            <Emoji symbol="✕" size={14} />
+            <Emoji symbol="✕" size={20} />
           </button>
         </div>
         <div className="flex justify-center">
@@ -779,8 +783,11 @@ export function ResponseForm(props: Props) {
   const [dtModalOpen, setDtModalOpen] = useState(false); // 5단계 날짜 선택 모달
   const [draftStart, setDraftStart] = useState(workdayStart);
   const [draftEnd, setDraftEnd] = useState(workdayEnd);
-  const [toast, setToast] = useState<string | null>(null);
+  // 복사완료 토스트처럼 요소는 계속 렌더되고 open 클래스만 토글해 등장/사라짐을 전환한다.
+  // (사라지는 동안 message 를 유지해야 텍스트가 즉시 사라지지 않고 부드럽게 페이드아웃된다.)
+  const [toastMessage, setToastMessage] = useState("");
   const [toastIcon, setToastIcon] = useState("⚠️");
+  const [toastOpen, setToastOpen] = useState(false);
   const toastTimer = useRef<number | null>(null);
 
   const selected = participants.find((p) => p.id === selectedId) ?? null;
@@ -861,13 +868,15 @@ export function ResponseForm(props: Props) {
   }
 
   const showToast = (message: string, icon = "⚠️") => {
-    setToast(message);
+    setToastMessage(message);
     setToastIcon(icon);
+    setToastOpen(true);
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), 2600);
+    toastTimer.current = window.setTimeout(() => setToastOpen(false), 2600);
   };
 
-  // 5단계 날짜 선택 모달: Esc 로 닫기.
+  // 5단계 날짜 선택 모달: 배경 스크롤 잠금 + Esc 로 닫기.
+  useScrollLock(dtModalOpen);
   useEffect(() => {
     if (!dtModalOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -1250,7 +1259,7 @@ export function ResponseForm(props: Props) {
   if (step === "identity") {
     return (
       <>
-        <Toast open={toast !== null} message={toast ?? ""} icon={toastIcon} />
+        <Toast open={toastOpen} message={toastMessage} icon={toastIcon} />
         <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
           <div className="flex-1">
             <p className="text-sm font-medium text-slate-400">본인 확인</p>
@@ -1341,8 +1350,8 @@ export function ResponseForm(props: Props) {
   // step === "availability": 가능 시간 문장 빌더(5단계).
   return (
     <>
-      <Toast open={toast !== null} message={toast ?? ""} icon={toastIcon} />
-      <div className="mx-auto w-full max-w-2xl pb-28">
+      <Toast open={toastOpen} message={toastMessage} icon={toastIcon} />
+      <div className="mx-auto w-full max-w-2xl">
         {/* 상단: 답변이 쌓이는 문장 */}
         <p className="pt-2 text-sm font-medium text-slate-400">가능 시간</p>
         <div
@@ -1515,9 +1524,9 @@ export function ResponseForm(props: Props) {
                             type="button"
                             onClick={() => setDtModalOpen(false)}
                             aria-label="달력 닫기"
-                            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                            className="flex h-11 w-11 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
                           >
-                            <Emoji symbol="✕" size={14} />
+                            <Emoji symbol="✕" size={20} />
                           </button>
                         </div>
                         <div className="flex justify-center">

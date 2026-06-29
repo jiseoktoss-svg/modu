@@ -16,6 +16,7 @@ import { Input, Label } from "@/components/ui/Input";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { TDSButton } from "@/components/ui/TDSButton";
 import { cn } from "@/lib/cn";
+import { useScrollLock } from "@/lib/useScrollLock";
 import {
   ParticipantListEditor,
   type ParticipantDraft,
@@ -411,6 +412,9 @@ export function MeetingCreateForm({
     document.getElementById(id)?.focus({ preventScroll: true });
   }, [step]);
 
+  // 참석자 모달: 배경 스크롤 잠금.
+  useScrollLock(showParticipantModal);
+
   // 참석자 모달 접근성: Esc 닫기 + 열림 시 포커스 이동 + 닫힘 시 트리거로 복원.
   useEffect(() => {
     if (!showParticipantModal) return;
@@ -779,9 +783,9 @@ export function MeetingCreateForm({
                 type="button"
                 aria-label="참석자 선택 닫기"
                 onClick={() => setShowParticipantModal(false)}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 sm:h-9 sm:w-9"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
               >
-                <Emoji symbol="✕" size={16} />
+                <Emoji symbol="✕" size={20} />
               </button>
             </div>
             <div className="min-h-0 flex-1">

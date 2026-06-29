@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/cn";
+import { useScrollLock } from "@/lib/useScrollLock";
 import { Emoji } from "@/components/ui/Emoji";
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
@@ -58,6 +59,8 @@ export function DatePicker({ id, value, onChange, min }: DatePickerProps) {
     }
     return { y: 2026, m: 1 };
   });
+
+  useScrollLock(open);
 
   useEffect(() => {
     if (!open) return;
@@ -128,9 +131,9 @@ export function DatePicker({ id, value, onChange, min }: DatePickerProps) {
             type="button"
             onClick={() => setOpen(false)}
             aria-label="달력 닫기"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 sm:h-11 sm:w-11"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
           >
-            <Emoji symbol="✕" size={18} />
+            <Emoji symbol="✕" size={20} />
           </button>
         </div>
 
