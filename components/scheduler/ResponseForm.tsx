@@ -198,14 +198,17 @@ function DotWave() {
   );
 }
 
-// 상단 문장에서 클릭하면 해당 단계로 돌아가 수정할 수 있는 값(파란 강조).
+// 상단 문장에서 클릭하면 해당 단계로 돌아가 수정할 수 있는 값.
+// 긍정(선호)은 파란색, 부정(피하고 싶은/불가/안 되는)은 회색으로 구분한다.
 function EditValue({
   fieldLabel,
   onEdit,
+  tone = "positive",
   children,
 }: {
   fieldLabel: string;
   onEdit: () => void;
+  tone?: "positive" | "negative";
   children: ReactNode;
 }) {
   return (
@@ -213,10 +216,29 @@ function EditValue({
       type="button"
       onClick={onEdit}
       aria-label={`${fieldLabel} 수정`}
-      className="inline rounded font-semibold text-brand-600 decoration-brand-400 decoration-2 underline-offset-4 transition-colors hover:text-brand-700 hover:underline focus:outline-none focus-visible:underline focus-visible:ring-2 focus-visible:ring-brand-200"
+      className={cn(
+        "inline rounded font-semibold decoration-2 underline-offset-4 transition-colors hover:underline focus:outline-none focus-visible:underline focus-visible:ring-2 focus-visible:ring-brand-200",
+        tone === "negative"
+          ? "text-slate-500 decoration-slate-300 hover:text-slate-600"
+          : "text-brand-600 decoration-brand-400 hover:text-brand-700",
+      )}
     >
       {children}
     </button>
+  );
+}
+
+// 칩 삭제 X 아이콘: 칩의 텍스트 색(currentColor)을 따라가 배지 색과 어울리게 한다.
+function ChipRemoveIcon() {
+  return (
+    <svg viewBox="0 0 10 10" className="h-2.5 w-2.5" fill="none" aria-hidden="true">
+      <path
+        d="M2 2 8 8M8 2 2 8"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 
@@ -682,7 +704,7 @@ function CalendarModalField({
                 aria-label={`${fmtMD(ds)} 삭제`}
                 className="ml-0.5 opacity-60 hover:opacity-100"
               >
-                <Emoji symbol="❌" size={11} />
+                <ChipRemoveIcon />
               </button>
             </span>
           ))}
@@ -700,7 +722,7 @@ function Toast({ open, message, icon = "⚠️" }: { open: boolean; message: str
       role="status"
       aria-live="polite"
       className={cn(
-        "fixed left-1/2 top-5 z-50 flex w-[calc(100%-1.5rem)] max-w-md -translate-x-1/2 items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-center text-sm font-bold leading-snug text-white shadow-[0_8px_20px_rgba(15,23,42,0.18)] transition-all duration-200 ease-out",
+        "fixed left-1/2 top-5 z-50 inline-flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded-[16px] bg-slate-900 px-4 py-3 text-sm font-bold leading-snug text-white shadow-[0_8px_20px_rgba(15,23,42,0.12)] transition-all duration-200 ease-out",
         open
           ? "translate-y-0 opacity-100 blur-0"
           : "pointer-events-none -translate-y-2 opacity-0 blur-sm",
@@ -744,6 +766,7 @@ export function ResponseForm(props: Props) {
   const [formStep, setFormStep] = useState(0);
   const [maxFormStep, setMaxFormStep] = useState(0);
   const skipFormFocus = useRef(true); // 본인확인 진입 시 자동 포커스(스크롤 점프) 방지
+  const skipNextAutoFocus = useRef(false); // 모바일 '다음' 이동 시 자동 포커스(키보드 팝업·스크롤) 방지
   // 가능 시간 입력(문장 빌더): 0=피하고싶은시간,1=선호시간,2=불가날짜,3=선호날짜,4=특정날짜+시간.
   const [availStep, setAvailStep] = useState(0);
   const [maxAvailStep, setMaxAvailStep] = useState(0);
@@ -889,6 +912,19 @@ export function ResponseForm(props: Props) {
       showToast("피하고 싶은 시간과 겹쳐요.");
       return;
     }
+    // 같은 구역에 이미 추가한 것과 동일한 시간대는 중복 추가하지 않는다.
+    const existing =
+      target === "avoid"
+        ? commonAvoid
+        : target === "pref"
+          ? commonPref
+          : dtDate
+            ? dateTimeBusy[dtDate] ?? []
+            : [];
+    if (existing.some((x) => x.start === s && x.end === e)) {
+      showToast("이미 추가한 시간대예요.");
+      return;
+    }
     const r: TimeRange = { start: s, end: e };
     if (target === "avoid") setCommonAvoid((p) => [...p, r]);
     else if (target === "pref") setCommonPref((p) => [...p, r]);
@@ -1020,7 +1056,7 @@ export function ResponseForm(props: Props) {
                 aria-label={`${fmtRange(r)} 삭제`}
                 className="ml-0.5 opacity-60 hover:opacity-100"
               >
-                <Emoji symbol="❌" size={11} />
+                <ChipRemoveIcon />
               </button>
             </span>
           ))}
@@ -1040,6 +1076,8 @@ export function ResponseForm(props: Props) {
     if (formStep === IDENTITY_LAST_STEP) {
       void handleVerifyIdentity();
     } else {
+      // 모바일에서는 '다음'으로 넘어가도 다음 입력에 자동 포커스하지 않는다(직접 터치해야 활성화).
+      skipNextAutoFocus.current = window.matchMedia("(max-width: 639px)").matches;
       goToForm(formStep + 1);
     }
   };
@@ -1137,6 +1175,10 @@ export function ResponseForm(props: Props) {
       skipFormFocus.current = false;
       return;
     }
+    if (skipNextAutoFocus.current) {
+      skipNextAutoFocus.current = false;
+      return;
+    }
     document.getElementById(formStep === 0 ? "pName" : "pRole")?.focus({ preventScroll: true });
   }, [formStep, step]);
 
@@ -1162,7 +1204,7 @@ export function ResponseForm(props: Props) {
             durationMinutes={durationMinutes}
           />
         </div>
-        <div className="mt-8 pb-8 pt-5">
+        <MobileStickyAction className="mt-8">
           <TDSButton
             size="xl"
             display="block"
@@ -1174,7 +1216,7 @@ export function ResponseForm(props: Props) {
           >
             시간 정하러 가기
           </TDSButton>
-        </div>
+        </MobileStickyAction>
       </div>
     );
   }
@@ -1232,7 +1274,7 @@ export function ResponseForm(props: Props) {
             </div>
           </div>
 
-          <div className="mt-8 pb-8 pt-5">
+          <MobileStickyAction className="mt-8">
             <div key={formStep} className="animate-fade-up motion-reduce:animate-none">
               {formStep === 0 ? (
                 <>
@@ -1287,7 +1329,7 @@ export function ResponseForm(props: Props) {
                 </TDSButton>
               )}
             </div>
-          </div>
+          </MobileStickyAction>
         </div>
       </>
     );
@@ -1311,13 +1353,13 @@ export function ResponseForm(props: Props) {
                 availDots("피하고 싶은 시간", () => editAvailStep(0))
               ) : commonAvoid.length > 0 ? (
                 <>
-                  <EditValue fieldLabel="피하고 싶은 시간" onEdit={() => editAvailStep(0)}>
+                  <EditValue fieldLabel="피하고 싶은 시간" tone="negative" onEdit={() => editAvailStep(0)}>
                     {commonAvoid.map(fmtRange).join(", ")}
                   </EditValue>
                   는 피하고 싶어요.{" "}
                 </>
               ) : (
-                <EditValue fieldLabel="피하고 싶은 시간" onEdit={() => editAvailStep(0)}>
+                <EditValue fieldLabel="피하고 싶은 시간" tone="negative" onEdit={() => editAvailStep(0)}>
                   특별히 피하고 싶은 시간은 없어요.
                 </EditValue>
               )}{" "}
@@ -1347,13 +1389,13 @@ export function ResponseForm(props: Props) {
                 availDots("불가능한 날짜", () => editAvailStep(2))
               ) : busyDates.size > 0 ? (
                 <>
-                  <EditValue fieldLabel="불가능한 날짜" onEdit={() => editAvailStep(2)}>
+                  <EditValue fieldLabel="불가능한 날짜" tone="negative" onEdit={() => editAvailStep(2)}>
                     {[...busyDates].sort().map(fmtMD).join(", ")}
                   </EditValue>
                   에는 회의가 불가능해요.{" "}
                 </>
               ) : (
-                <EditValue fieldLabel="불가능한 날짜" onEdit={() => editAvailStep(2)}>
+                <EditValue fieldLabel="불가능한 날짜" tone="negative" onEdit={() => editAvailStep(2)}>
                   불가능한 날짜는 없어요.
                 </EditValue>
               )}{" "}
@@ -1383,7 +1425,7 @@ export function ResponseForm(props: Props) {
                 availDots("특정 날짜 시간", () => editAvailStep(4))
               ) : Object.keys(dateTimeBusy).length > 0 ? (
                 <>
-                  <EditValue fieldLabel="특정 날짜 시간" onEdit={() => editAvailStep(4)}>
+                  <EditValue fieldLabel="특정 날짜 시간" tone="negative" onEdit={() => editAvailStep(4)}>
                     {Object.entries(dateTimeBusy)
                       .sort(([a], [b]) => a.localeCompare(b))
                       .map(([ds, rs]) => `${fmtMD(ds)} ${rs.map(fmtRange).join("·")}`)
@@ -1392,7 +1434,7 @@ export function ResponseForm(props: Props) {
                   에는 안 돼요.
                 </>
               ) : (
-                <EditValue fieldLabel="특정 날짜 시간" onEdit={() => editAvailStep(4)}>
+                <EditValue fieldLabel="특정 날짜 시간" tone="negative" onEdit={() => editAvailStep(4)}>
                   특정 시간에 안 되는 날은 없어요.
                 </EditValue>
               )}

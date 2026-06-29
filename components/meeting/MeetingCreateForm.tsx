@@ -190,7 +190,7 @@ function NumberStepper({
   const canIncrease = safeValue < max;
 
   return (
-    <div className="grid h-11 w-24 grid-cols-[2rem_2rem_2rem] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div className="grid h-11 w-[6.75rem] grid-cols-[2rem_2.75rem_2rem] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <button
         type="button"
         aria-label={minusLabel}
@@ -258,12 +258,10 @@ export function MeetingCreateForm({
 
   // 포커스 제어용 ref.
   const skipInitialFocus = useRef(true); // 최초 마운트 자동 포커스(스크롤 점프) 방지
+  const skipNextAutoFocus = useRef(false); // 모바일 '다음' 이동 시 자동 포커스(키보드 팝업·스크롤) 방지
   const focusOverride = useRef<string | null>(null); // 특정 입력으로 포커스 강제
   const modalPanelRef = useRef<HTMLDivElement>(null);
   const backdropDownRef = useRef(false); // backdrop 에서 mousedown 시작했는지
-  const summaryEndRef = useRef<HTMLSpanElement>(null);
-  const autoStickSummaryRef = useRef(true);
-  const lastScrollYRef = useRef(0);
 
   const filledParticipants = participants.filter((p) => p.name.trim().length > 0);
 
@@ -310,6 +308,8 @@ export function MeetingCreateForm({
   };
   const handleNext = () => {
     if (step < LAST_STEP && valid[step]) {
+      // 모바일에서는 '다음'으로 넘어가도 다음 입력에 자동 포커스하지 않는다(직접 터치해야 활성화).
+      skipNextAutoFocus.current = window.matchMedia("(max-width: 639px)").matches;
       goTo(step + 1);
     }
   };
@@ -396,74 +396,14 @@ export function MeetingCreateForm({
 
   const participantNames = filledParticipants.map((p) => p.name).join(", ");
 
-  const keepSummaryEndVisible = () => {
-    if (!autoStickSummaryRef.current) return;
-    if (window.matchMedia("(min-width: 640px)").matches) return;
-    if (document.documentElement.scrollHeight <= window.innerHeight + 1) return;
-
-    const end = summaryEndRef.current;
-    if (!end) return;
-
-    const footer = document.querySelector<HTMLElement>(".modu-mobile-sticky-action");
-    const header = document.querySelector<HTMLElement>("header");
-    const footerTop = footer?.getBoundingClientRect().top ?? window.innerHeight;
-    const headerBottom = header?.getBoundingClientRect().bottom ?? 0;
-    const visibleTop = headerBottom + 16;
-    const visibleBottom = footerTop - 16;
-    if (visibleBottom <= visibleTop) return;
-
-    const rect = end.getBoundingClientRect();
-
-    if (rect.bottom > visibleBottom) {
-      window.scrollBy({ top: rect.bottom - visibleBottom });
-    } else if (rect.top < visibleTop) {
-      window.scrollBy({ top: rect.top - visibleTop });
-    }
-  };
-
-  useEffect(() => {
-    lastScrollYRef.current = window.scrollY;
-
-    const onScroll = () => {
-      const currentScrollY = window.scrollY;
-      if (currentScrollY < lastScrollYRef.current - 8) {
-        autoStickSummaryRef.current = false;
-      }
-
-      const end = summaryEndRef.current;
-      if (end) {
-        const footer = document.querySelector<HTMLElement>(".modu-mobile-sticky-action");
-        const footerTop = footer?.getBoundingClientRect().top ?? window.innerHeight;
-        if (end.getBoundingClientRect().bottom <= footerTop - 16) {
-          autoStickSummaryRef.current = true;
-        }
-      }
-
-      lastScrollYRef.current = currentScrollY;
-    };
-
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(keepSummaryEndVisible);
-    return () => window.cancelAnimationFrame(frame);
-  }, [
-    maxStep,
-    title,
-    agenda,
-    location,
-    deadlineText,
-    durationHours,
-    durationMinute,
-    participantNames,
-  ]);
-
-  // 단계가 바뀌면 해당 입력에 포커스(최초 마운트는 건너뜀, 스크롤 점프 방지).
+  // 단계가 바뀌면 해당 입력에 포커스(최초 마운트·모바일 '다음' 이동은 건너뜀).
   useEffect(() => {
     if (skipInitialFocus.current) {
       skipInitialFocus.current = false;
+      return;
+    }
+    if (skipNextAutoFocus.current) {
+      skipNextAutoFocus.current = false;
       return;
     }
     const id = focusOverride.current ?? FOCUS_IDS[step] ?? "";
@@ -593,7 +533,6 @@ export function MeetingCreateForm({
               입니다.
             </p>
           )}
-          <span ref={summaryEndRef} aria-hidden="true" className="block h-px" />
         </div>
       </div>
 
