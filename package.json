@@ -30,5 +30,15 @@
     "tailwindcss": "^3.4.7",
     "typescript": "^5.5.4",
     "vitest": "^2.0.5"
-  }
+  },
+  "description": "> 모두의 시간, 모두의 회의",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "lib": "lib",
+    "test": "test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

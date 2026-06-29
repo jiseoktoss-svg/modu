@@ -9,7 +9,6 @@ import {
   type ReactNode,
 } from "react";
 import { useFormState, useFormStatus } from "react-dom";
-import { IconButton, NumericSpinner } from "@toss/tds-mobile";
 import { createMeeting } from "@/app/actions/meetings";
 import { Emoji } from "@/components/ui/Emoji";
 import { Input, Label } from "@/components/ui/Input";
@@ -114,6 +113,72 @@ function SubmitButton({ disabled, isEditing }: { disabled?: boolean; isEditing?:
           ? "수정 저장하기"
           : "회의 만들기"}
     </TDSButton>
+  );
+}
+
+interface NumberStepperProps {
+  ariaLabel: string;
+  inputValue: string;
+  max: number;
+  min: number;
+  minusLabel: string;
+  onInputChange: (e: ReactChangeEvent<HTMLInputElement>) => void;
+  onKeyDown: (e: ReactKeyboardEvent<HTMLInputElement>) => void;
+  onNumberChange: (next: number) => void;
+  plusLabel: string;
+  step?: number;
+  value: number;
+}
+
+function NumberStepper({
+  ariaLabel,
+  inputValue,
+  max,
+  min,
+  minusLabel,
+  onInputChange,
+  onKeyDown,
+  onNumberChange,
+  plusLabel,
+  step = 1,
+  value,
+}: NumberStepperProps) {
+  const safeValue = Number.isFinite(value) ? value : min;
+  const canDecrease = safeValue > min;
+  const canIncrease = safeValue < max;
+
+  return (
+    <div className="grid h-11 grid-cols-[2.5rem_minmax(3.25rem,1fr)_2.5rem] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <button
+        type="button"
+        aria-label={minusLabel}
+        disabled={!canDecrease}
+        onClick={() => onNumberChange(Math.max(min, safeValue - step))}
+        className="flex items-center justify-center text-lg font-bold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800 disabled:cursor-not-allowed disabled:text-slate-200"
+      >
+        -
+      </button>
+      <input
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        aria-label={ariaLabel}
+        value={inputValue}
+        onChange={onInputChange}
+        onFocus={(e) => e.target.select()}
+        onKeyDown={onKeyDown}
+        className="min-w-0 border-x border-slate-100 bg-white px-1 text-center text-lg font-extrabold tabular-nums text-slate-900 outline-none focus:bg-brand-50/40"
+      />
+      <button
+        type="button"
+        aria-label={plusLabel}
+        disabled={!canIncrease}
+        onClick={() => onNumberChange(Math.min(max, safeValue + step))}
+        className="flex items-center justify-center text-lg font-bold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800 disabled:cursor-not-allowed disabled:text-slate-200"
+      >
+        +
+      </button>
+    </div>
   );
 }
 
@@ -501,31 +566,18 @@ export function MeetingCreateForm({
                   tabIndex={-1}
                   className="flex items-center justify-start gap-2 rounded-2xl bg-slate-50 p-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
                 >
-                  {/* 외형은 그대로 두고, 가운데 숫자 위에 투명 input을 겹쳐 직접 타이핑 허용 */}
-                  <div className="relative">
-                    <NumericSpinner
-                      size="large"
-                      number={hoursOk ? hoursNum : 0}
-                      minNumber={0}
-                      maxNumber={WORKDAY_MINUTES / 60}
-                      onNumberChange={handleDurationHoursChange}
-                      a11yProps={{
-                        minusButtonAriaLabel: "회의 시간 줄이기",
-                        plusButtonAriaLabel: "회의 시간 늘리기",
-                      }}
-                    />
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      aria-label="회의 진행 시간(시간) 직접 입력"
-                      value={durationHours}
-                      onChange={handleDurationHoursInput}
-                      onFocus={(e) => e.target.select()}
-                      onKeyDown={onFieldKeyDown}
-                      className="absolute inset-y-0 left-1/2 w-12 -translate-x-1/2 cursor-text bg-transparent text-center text-transparent caret-transparent outline-none"
-                    />
-                  </div>
+                  <NumberStepper
+                    ariaLabel="회의 진행 시간(시간) 직접 입력"
+                    value={hoursOk ? hoursNum : 0}
+                    inputValue={durationHours}
+                    min={0}
+                    max={WORKDAY_MINUTES / 60}
+                    minusLabel="회의 시간 줄이기"
+                    plusLabel="회의 시간 늘리기"
+                    onNumberChange={handleDurationHoursChange}
+                    onInputChange={handleDurationHoursInput}
+                    onKeyDown={onFieldKeyDown}
+                  />
                   <span className="shrink-0 text-sm font-bold text-slate-700">시간</span>
                 </div>
                 <div
@@ -533,31 +585,19 @@ export function MeetingCreateForm({
                   tabIndex={-1}
                   className="flex items-center justify-start gap-2 rounded-2xl bg-slate-50 p-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
                 >
-                  {/* 외형은 그대로 두고, 가운데 숫자 위에 투명 input을 겹쳐 직접 타이핑 허용 */}
-                  <div className="relative">
-                    <NumericSpinner
-                      size="large"
-                      number={minOk ? minNum : 0}
-                      minNumber={0}
-                      maxNumber={hoursNum >= WORKDAY_MINUTES / 60 ? 0 : 55}
-                      onNumberChange={handleDurationMinuteChange}
-                      a11yProps={{
-                        minusButtonAriaLabel: "회의 분 줄이기",
-                        plusButtonAriaLabel: "회의 분 늘리기",
-                      }}
-                    />
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      aria-label="회의 진행 시간(분) 직접 입력"
-                      value={durationMinute}
-                      onChange={handleDurationMinuteInput}
-                      onFocus={(e) => e.target.select()}
-                      onKeyDown={onFieldKeyDown}
-                      className="absolute inset-y-0 left-1/2 w-12 -translate-x-1/2 cursor-text bg-transparent text-center text-transparent caret-transparent outline-none"
-                    />
-                  </div>
+                  <NumberStepper
+                    ariaLabel="회의 진행 시간(분) 직접 입력"
+                    value={minOk ? minNum : 0}
+                    inputValue={durationMinute}
+                    min={0}
+                    max={hoursNum >= WORKDAY_MINUTES / 60 ? 0 : 55}
+                    step={5}
+                    minusLabel="회의 분 줄이기"
+                    plusLabel="회의 분 늘리기"
+                    onNumberChange={handleDurationMinuteChange}
+                    onInputChange={handleDurationMinuteInput}
+                    onKeyDown={onFieldKeyDown}
+                  />
                   <span className="shrink-0 text-sm font-bold text-slate-700">분</span>
                 </div>
               </div>
@@ -639,14 +679,14 @@ export function MeetingCreateForm({
           >
             <div className="mb-1 flex shrink-0 items-start justify-between gap-4">
               <h3 className="text-lg font-bold text-slate-900">참석자 선택</h3>
-              <IconButton
-                name="icon-x-circle-mono"
+              <button
+                type="button"
                 aria-label="참석자 선택 닫기"
-                variant="clear"
-                iconSize={24}
-                color="#8b95a1"
                 onClick={() => setShowParticipantModal(false)}
-              />
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+              >
+                <Emoji symbol="✕" size={16} />
+              </button>
             </div>
             <div className="min-h-0 flex-1">
               <ParticipantListEditor participants={participants} onChange={setParticipants} />

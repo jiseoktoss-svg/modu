@@ -6,7 +6,6 @@ import {
   type DragEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import { SearchField } from "@toss/tds-mobile";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/Badge";
 import { Emoji } from "@/components/ui/Emoji";
@@ -167,15 +166,29 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
 
   return (
     <div className="flex h-full flex-col gap-2">
-      {/* 검색 (TDS SearchField) */}
-      <div className="max-w-sm shrink-0">
-        <SearchField
+      {/* 검색 */}
+      <div className="relative max-w-sm shrink-0">
+        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+          <Emoji symbol="🔎" size={15} />
+        </span>
+        <input
+          type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          onDeleteClick={() => setQuery("")}
           placeholder="이름 또는 직책 검색"
           aria-label="직원 검색"
+          className="h-10 w-full rounded-2xl border border-slate-200 bg-slate-50 py-0 pl-9 pr-10 text-sm font-medium text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-brand-300 focus:bg-white focus:ring-2 focus:ring-brand-100"
         />
+        {query && (
+          <button
+            type="button"
+            onClick={() => setQuery("")}
+            aria-label="검색어 지우기"
+            className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-200/70 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+          >
+            <Emoji symbol="✕" size={12} />
+          </button>
+        )}
       </div>
 
       {/* 직원 목록 — 클릭으로 추가/해제 토글 (위아래 페이드 + 스크롤) */}

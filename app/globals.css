@@ -193,13 +193,3 @@ body {
     opacity: 0;
   }
 }
-
-/* 참석자 모달 검색창(TDS SearchField) 높이 축소.
-   루트(.tds-mobile-search-field)엔 높이가 없고 내부 row(div>div)가 높이를 결정하므로
-   그 row를 더 낮게 고정한다. 자식 결합자로 specificity가 Emotion 클래스를 이기므로 !important 불필요. */
-.tds-mobile-search-field > div > div {
-  min-height: 0;
-  height: 40px;
-  padding-top: 0;
-  padding-bottom: 0;
-}

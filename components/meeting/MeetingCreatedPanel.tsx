@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { BottomCTA, CTAButton } from "@toss/tds-mobile";
+import { TDSButton } from "@/components/ui/TDSButton";
 import { describeDateStr } from "@/lib/time";
 import type { Meeting, Participant } from "@/lib/types";
 
@@ -272,36 +272,29 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
         </div>
       </div>
 
-      <div className="shrink-0 pb-4 pt-3 sm:pb-8 sm:pt-5">
-        <BottomCTA.Double
-          background="none"
-          hasPaddingBottom={false}
-          hasSafeAreaPadding={false}
-          leftButton={
-            <CTAButton
-              color="dark"
-              variant="weak"
-              className="modu-tds-button modu-secondary-cta"
-              data-tone="dark"
-              onClick={() => {
-                window.location.href = editPath;
-              }}
-            >
-              수정하기
-            </CTAButton>
-          }
-          rightButton={
-            <CTAButton
-              className="modu-tds-button"
-              data-tone="primary"
-              onClick={() => {
-                window.location.href = participantPath;
-              }}
-            >
-              회의시간 입력하기
-            </CTAButton>
-          }
-        />
+      <div className="grid shrink-0 grid-cols-[0.85fr_1.15fr] gap-2 pb-4 pt-3 sm:gap-3 sm:pb-8 sm:pt-5">
+        <TDSButton
+          type="button"
+          tone="secondary"
+          size="xl"
+          display="block"
+          className="modu-secondary-cta"
+          onClick={() => {
+            window.location.href = editPath;
+          }}
+        >
+          수정하기
+        </TDSButton>
+        <TDSButton
+          type="button"
+          size="xl"
+          display="block"
+          onClick={() => {
+            window.location.href = participantPath;
+          }}
+        >
+          회의시간 입력하기
+        </TDSButton>
       </div>
     </section>
   );
