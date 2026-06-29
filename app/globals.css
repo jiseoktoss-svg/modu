@@ -25,6 +25,23 @@
     background: linear-gradient(to bottom, rgb(255 255 255 / 0), rgb(255 255 255));
   }
 
+  @media (max-width: 639px) {
+    html:has(.modu-mobile-screen-lock),
+    body:has(.modu-mobile-screen-lock) {
+      height: 100%;
+      max-height: 100dvh;
+      overflow: hidden;
+      overscroll-behavior: none;
+    }
+
+    .modu-mobile-screen-lock {
+      height: 100dvh;
+      max-height: 100dvh;
+      overflow: hidden;
+      overscroll-behavior: none;
+    }
+  }
+
   @media (min-width: 640px) {
     .modu-mobile-sticky-action {
       position: static;
