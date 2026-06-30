@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -467,6 +468,7 @@ function TimeSelect({
 }) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState<number | null>(null); // 근무시간 외 — 컨펌 대기
+  const [sel, setSel] = useState(() => parseHm(value)); // 목록에서 고른 시간(확인 전까지 적용 안 함)
   const listRef = useRef<HTMLDivElement>(null);
   const valueMin = parseHm(value);
 
@@ -493,12 +495,13 @@ function TimeSelect({
   }, [open, pending]);
 
   const inWork = (min: number) => min >= workStart && min <= workEnd;
-  const pick = (min: number) => {
-    if (!inWork(min)) {
-      setPending(min);
+  // 목록에서 시간을 탭하면 선택만 하고, 하단 '확인'을 눌러야 적용된다.
+  const commit = () => {
+    if (!inWork(sel)) {
+      setPending(sel); // 근무시간 외면 한 번 더 확인을 받는다.
       return;
     }
-    onChange(minToHm(min));
+    onChange(minToHm(sel));
     setOpen(false);
   };
   const confirmPending = () => {
@@ -513,7 +516,7 @@ function TimeSelect({
 
   const dialog = open ? (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 px-3 py-4 sm:items-center sm:py-6"
+      className="fixed inset-0 z-50 flex items-stretch justify-center bg-slate-900/40 sm:items-center sm:px-4 sm:py-6"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) close();
       }}
@@ -522,57 +525,61 @@ function TimeSelect({
         role="dialog"
         aria-modal="true"
         aria-label={ariaLabel}
-        className="w-full max-w-[20rem] overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-2xl sm:max-w-[22rem]"
+        className="flex h-dvh max-h-dvh w-full flex-col overflow-hidden bg-white shadow-2xl sm:h-auto sm:max-h-[calc(100dvh-3rem)] sm:max-w-[22rem] sm:rounded-[22px] sm:border sm:border-slate-200"
       >
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-4 py-3">
+          <p className="text-sm font-bold text-slate-900">{ariaLabel}</p>
+          <button
+            type="button"
+            onClick={close}
+            aria-label={`${ariaLabel} 닫기`}
+            className="-mr-1 flex h-11 w-11 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+          >
+            <Emoji symbol="✕" size={20} />
+          </button>
+        </div>
         {pending !== null ? (
-          <div className="p-5">
-            <p className="text-base font-bold text-slate-900">{formatClock(pending)}</p>
-            <p className="mt-2 text-sm leading-relaxed text-slate-600">
-              선택한 시간은 근무시간({formatClock(workStart)}~{formatClock(workEnd)})을 벗어났습니다.
-              그래도 선택하시겠습니까?
-            </p>
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setPending(null)}
-                className="flex-1 rounded-xl bg-slate-100 py-2.5 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-200"
-              >
-                취소
-              </button>
-              <button
-                type="button"
-                onClick={confirmPending}
-                className="flex-1 rounded-xl bg-brand-500 py-2.5 text-sm font-bold text-white transition-colors hover:bg-brand-600"
-              >
-                선택
-              </button>
+          <>
+            <div className="flex flex-1 flex-col justify-center px-4 py-5">
+              <p className="text-base font-bold text-slate-900">{formatClock(pending)}</p>
+              <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                선택한 시간은 근무시간({formatClock(workStart)}~{formatClock(workEnd)})을 벗어났습니다.
+                그래도 선택하시겠습니까?
+              </p>
             </div>
-          </div>
+            <div className="shrink-0 border-t border-slate-100 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:border-t-0 sm:pb-4 sm:pt-2">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPending(null)}
+                  className="flex-1 rounded-xl bg-slate-100 py-3 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-200"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmPending}
+                  className="flex-1 rounded-xl bg-brand-500 py-3 text-sm font-bold text-white transition-colors hover:bg-brand-600"
+                >
+                  선택
+                </button>
+              </div>
+            </div>
+          </>
         ) : (
           <>
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-              <p className="text-sm font-bold text-slate-900">{ariaLabel}</p>
-              <button
-                type="button"
-                onClick={close}
-                aria-label="닫기"
-                className="flex h-11 w-11 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-              >
-                <Emoji symbol="✕" size={20} />
-              </button>
-            </div>
-            <div ref={listRef} className="max-h-[18rem] overflow-y-auto py-1">
+            <div ref={listRef} className="flex-1 overflow-y-auto py-1">
               {ALL_TIME_OPTIONS.map((min) => {
                 const work = inWork(min);
-                const isSel = min === valueMin;
+                const isSel = min === sel;
                 return (
                   <button
                     key={min}
                     type="button"
                     data-sel={isSel}
-                    onClick={() => pick(min)}
+                    onClick={() => setSel(min)}
                     className={cn(
-                      "flex w-full items-center justify-between px-4 py-2 text-sm transition-colors hover:bg-slate-50",
+                      "flex w-full items-center justify-between px-4 py-2.5 text-sm transition-colors hover:bg-slate-50",
                       isSel
                         ? "font-bold text-brand-600"
                         : work
@@ -587,6 +594,11 @@ function TimeSelect({
                 );
               })}
             </div>
+            <div className="shrink-0 border-t border-slate-100 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:border-t-0 sm:pb-4 sm:pt-2">
+              <TDSButton size="xl" display="block" onClick={commit}>
+                확인
+              </TDSButton>
+            </div>
           </>
         )}
       </div>
@@ -599,6 +611,7 @@ function TimeSelect({
         type="button"
         onClick={() => {
           setPending(null);
+          setSel(valueMin);
           setOpen(true);
         }}
         aria-haspopup="dialog"
@@ -611,6 +624,156 @@ function TimeSelect({
       </button>
       {dialog ? createPortal(dialog, document.body) : null}
     </>
+  );
+}
+
+// 모바일 여부(<=639px). 모달을 모바일은 전체화면, 데스크톱은 가운데 카드로 다르게 그리기 위함.
+// 초기값을 동기 계산해 모달이 열리는 순간 깜빡임(데스크톱 카드→전체화면)이 없도록 한다.
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return isMobile;
+}
+
+// '?' 아이콘을 누르면 설명 툴팁을 토글로 보여준다(모바일에서도 동작하도록 hover 가 아닌 click).
+function HelpTooltip({ text, label = "도움말" }: { text: string; label?: string }) {
+  const [open, setOpen] = useState(false);
+  const tipId = useId();
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        aria-label={label}
+        aria-expanded={open}
+        aria-describedby={open ? tipId : undefined}
+        onClick={() => setOpen((v) => !v)}
+        onBlur={() => setOpen(false)}
+        className="flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 text-[11px] font-bold leading-none text-slate-400 transition-colors hover:border-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+      >
+        ?
+      </button>
+      {open && (
+        // 하단 고정 CTA 영역에서도 입력칸을 가리지 않도록 트리거 '위쪽'으로 펼친다.
+        <span
+          id={tipId}
+          role="tooltip"
+          className="absolute bottom-full left-0 mb-2 z-40 w-[16rem] max-w-[calc(100vw-2rem)] break-keep rounded-lg bg-slate-800 px-3 py-2 text-xs font-medium leading-relaxed text-white shadow-lg"
+        >
+          {text}
+        </span>
+      )}
+    </span>
+  );
+}
+
+// 선택 시트: 모바일은 전체화면, 데스크톱은 회의 만들기 달력 모달과 같은 톤의 가운데 카드.
+// 날짜/시간을 고른 뒤 '확인'(또는 헤더 X·배경 탭)으로 닫는다.
+function PickerSheet({
+  title,
+  subtitle,
+  confirmLabel = "확인",
+  onClose,
+  onConfirm,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  confirmLabel?: string;
+  onClose: () => void;
+  onConfirm: () => void;
+  children: ReactNode;
+}) {
+  const isMobile = useIsMobile();
+
+  if (isMobile) {
+    return createPortal(
+      <div
+        className="fixed inset-0 z-50 flex items-stretch justify-center bg-slate-900/40"
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={title}
+          className="flex h-dvh max-h-dvh w-full flex-col overflow-hidden bg-white shadow-2xl"
+        >
+          <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
+            <div>
+              <p className="text-sm font-bold text-slate-900">{title}</p>
+              {subtitle && <p className="mt-0.5 text-xs text-slate-400">{subtitle}</p>}
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label={`${title} 닫기`}
+              className="-mr-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            >
+              <Emoji symbol="✕" size={20} />
+            </button>
+          </div>
+          <div className="flex flex-1 items-start justify-center overflow-y-auto p-4">
+            {children}
+          </div>
+          <div className="shrink-0 border-t border-slate-100 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+            <TDSButton size="xl" display="block" onClick={onConfirm}>
+              {confirmLabel}
+            </TDSButton>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    );
+  }
+
+  // 데스크톱: 회의 만들기 달력 모달과 동일 톤의 컴팩트한 가운데 카드.
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4 py-6"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="max-h-[calc(100dvh-3rem)] w-full max-w-[22rem] overflow-y-auto rounded-[22px] border border-slate-200 bg-white p-4 shadow-2xl"
+      >
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-bold text-slate-900">{title}</p>
+            {subtitle && <p className="mt-0.5 text-xs text-slate-400">{subtitle}</p>}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={`${title} 닫기`}
+            className="-mr-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+          >
+            <Emoji symbol="✕" size={20} />
+          </button>
+        </div>
+        <div className="flex justify-center">{children}</div>
+        <button
+          type="button"
+          onClick={onConfirm}
+          className="mt-3 w-full rounded-xl bg-brand-500 py-2.5 text-sm font-bold text-white transition-colors hover:bg-brand-600"
+        >
+          {confirmLabel}
+        </button>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -649,50 +812,20 @@ function CalendarModalField({
     tone === "busy" ? "bg-red-50 text-red-700" : "bg-blue-50 text-blue-700";
 
   const dialog = open ? (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-3 py-4 sm:px-4 sm:py-6"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) setOpen(false);
-      }}
+    <PickerSheet
+      title={title}
+      subtitle="여러 날짜를 선택할 수 있어요"
+      onClose={() => setOpen(false)}
+      onConfirm={() => setOpen(false)}
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        className="max-h-[calc(100dvh-2rem)] w-full max-w-[20rem] overflow-y-auto rounded-[22px] border border-slate-200 bg-white p-3 shadow-2xl sm:max-w-[22rem] sm:p-4"
-      >
-        <div className="mb-2 flex items-center justify-between gap-3 sm:mb-3">
-          <div>
-            <p className="text-sm font-bold text-slate-900">{title}</p>
-            <p className="mt-0.5 text-xs text-slate-400">여러 날짜를 선택할 수 있어요</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            aria-label="달력 닫기"
-            className="flex h-11 w-11 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-          >
-            <Emoji symbol="✕" size={20} />
-          </button>
-        </div>
-        <div className="flex justify-center">
-          <MonthCalendar
-            dates={dates}
-            selected={selected}
-            onToggle={onToggle}
-            tone={tone}
-            blockedDates={blockedDates}
-          />
-        </div>
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          className="mt-3 w-full rounded-xl bg-brand-500 py-2.5 text-sm font-bold text-white transition-colors hover:bg-brand-600"
-        >
-          완료
-        </button>
-      </div>
-    </div>
+      <MonthCalendar
+        dates={dates}
+        selected={selected}
+        onToggle={onToggle}
+        tone={tone}
+        blockedDates={blockedDates}
+      />
+    </PickerSheet>
   ) : null;
 
   return (
@@ -732,7 +865,7 @@ function CalendarModalField({
           ))}
         </div>
       )}
-      {dialog ? createPortal(dialog, document.body) : null}
+      {dialog}
     </div>
   );
 }
@@ -776,6 +909,7 @@ export function ResponseForm(props: Props) {
     () => buildRows(workdayStart, workdayEnd),
     [workdayStart, workdayEnd],
   );
+  const isMobile = useIsMobile();
 
   const [step, setStep] = useState<Step>("loading");
   const [caseId, setCaseId] = useState(1); // 데모: 후보/캘린더에 보여줄 케이스(docs/cases.md)
@@ -957,6 +1091,25 @@ export function ResponseForm(props: Props) {
       else next.add(ds);
       return next;
     });
+  };
+
+  // 특정 날짜+시간 시트 열기: '추가'는 날짜부터 새로 고르고, 요약 항목 탭은 그 날짜를 편집.
+  const openDtAdd = () => {
+    setDtDate(null);
+    setDtModalOpen(true);
+  };
+  const openDtEdit = (ds: string) => {
+    setDtDate(ds);
+    setDtModalOpen(true);
+  };
+  // 그 날짜에 입력한 불가 시간을 모두 삭제한다.
+  const removeWholeDate = (ds: string) => {
+    setDateTimeBusy((p) => {
+      const next = { ...p };
+      delete next[ds];
+      return next;
+    });
+    setDtDate((cur) => (cur === ds ? null : cur));
   };
 
   const goAvail = (next: number) => {
@@ -1215,7 +1368,7 @@ export function ResponseForm(props: Props) {
         <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
           <div className="flex-1">
             <p className="text-sm font-medium text-slate-400">입력 확인</p>
-            <div className="mt-3 break-keep text-left text-xl leading-relaxed text-slate-800 sm:text-2xl sm:leading-relaxed">
+            <div className="mt-3 break-keep text-left text-2xl leading-relaxed text-slate-800 sm:text-3xl sm:leading-relaxed">
               {personName}님은{" "}
               {busyDatesText ? (
                 <>
@@ -1272,7 +1425,7 @@ export function ResponseForm(props: Props) {
               )}
             </div>
             <p className="mt-5 text-sm text-slate-500">
-              이대로 제출할까요? 제출 후에도 수정할 수 있어요.
+              응답 시간 마감 전까지 수정할 수 있어요.
             </p>
           </div>
           <MobileStickyAction className="mt-auto">
@@ -1327,11 +1480,6 @@ export function ResponseForm(props: Props) {
         onSelectCase={setCaseId}
         dates={dates}
         onViewCalendar={() => setStep("done")}
-        onEdit={() => {
-          setAvailStep(0);
-          setMaxAvailStep(0);
-          setStep("availability");
-        }}
       />
     );
   }
@@ -1389,7 +1537,12 @@ export function ResponseForm(props: Props) {
             <div key={formStep}>
               {formStep === 0 ? (
                 <>
-                  <Label htmlFor="pName" className="text-lg">이름을 입력해주세요</Label>
+                  <div className="mb-1.5 flex items-center gap-1.5">
+                    <label htmlFor="pName" className="text-lg font-semibold text-slate-700">
+                      이름을 입력해주세요
+                    </label>
+                    <HelpTooltip text="참석자 명단에 있는 분만 응답할 수 있도록 본인 확인을 해요. 입력한 이름·직무가 명단과 일치하면 다음 단계로 넘어가요." />
+                  </div>
                   <Input
                     id="pName"
                     value={identityName}
@@ -1455,7 +1608,7 @@ export function ResponseForm(props: Props) {
         <p className="pt-2 text-sm font-medium text-slate-400">가능 시간</p>
         <div
           aria-live="polite"
-          className="mt-3 break-keep text-left text-xl leading-relaxed text-slate-800 sm:text-2xl sm:leading-relaxed"
+          className="mt-3 break-keep text-left text-2xl leading-relaxed text-slate-800 sm:text-3xl sm:leading-relaxed"
         >
           {availClauseVisible(0) && (
             <span className="relative animate-fade-up-blur motion-reduce:animate-none">
@@ -1522,68 +1675,61 @@ export function ResponseForm(props: Props) {
             )}
             {availStep === 1 && (
               <div className="space-y-3">
-                {/* 날짜 선택 트리거 → 모달(불가능으로 고른 날짜는 차단) */}
+                {/* 날짜+시간을 한 전체화면 시트에서 함께 고른다. '추가'는 날짜부터 새로. */}
                 <button
                   type="button"
-                  onClick={() => setDtModalOpen(true)}
+                  onClick={openDtAdd}
                   aria-haspopup="dialog"
                   aria-expanded={dtModalOpen}
-                  className="flex h-11 w-full items-center justify-between rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 transition-colors hover:border-slate-400 focus:border-2 focus:border-brand-400 focus:outline-none focus:ring-0"
+                  className="flex h-11 w-full items-center justify-between rounded-xl border border-slate-300 bg-white px-3 text-sm transition-colors hover:border-slate-400 focus:border-2 focus:border-brand-400 focus:outline-none focus:ring-0"
                 >
-                  <span className={dtDate ? "" : "text-slate-400"}>
-                    {dtDate ? `${fmtMD(dtDate)} 시간 입력 중` : "날짜 선택"}
+                  <span
+                    className={
+                      Object.keys(dateTimeBusy).length > 0
+                        ? "font-semibold text-brand-600"
+                        : "text-slate-400"
+                    }
+                  >
+                    {Object.keys(dateTimeBusy).length > 0 ? "다른 날 추가하기" : "날짜 선택"}
                   </span>
                   <Emoji symbol="📅" size={16} />
                 </button>
 
-                {dtModalOpen &&
-                  createPortal(
-                    <div
-                      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-3 py-4 sm:px-4 sm:py-6"
-                      onMouseDown={(e) => {
-                        if (e.target === e.currentTarget) setDtModalOpen(false);
-                      }}
-                    >
-                      <div
-                        role="dialog"
-                        aria-modal="true"
-                        aria-label="특정 날짜 선택"
-                        className="max-h-[calc(100dvh-2rem)] w-full max-w-[20rem] overflow-y-auto rounded-[22px] border border-slate-200 bg-white p-3 shadow-2xl sm:max-w-[22rem] sm:p-4"
-                      >
-                        <div className="mb-2 flex items-center justify-between gap-3 sm:mb-3">
-                          <div>
-                            <p className="text-sm font-bold text-slate-900">특정 시간이 안 되는 날</p>
-                            <p className="mt-0.5 text-xs text-slate-400">
-                              불가능으로 고른 날은 선택할 수 없어요
-                            </p>
-                          </div>
+                {/* 입력한 '이 날 이 시간' 요약 — 탭하면 시트에서 수정, ✕ 로 그 날 전체 삭제 */}
+                {Object.keys(dateTimeBusy).length > 0 && (
+                  <div className="space-y-1.5">
+                    {Object.entries(dateTimeBusy)
+                      .sort(([a], [b]) => a.localeCompare(b))
+                      .map(([ds, ranges]) => (
+                        <div
+                          key={ds}
+                          className="flex items-center justify-between gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2"
+                        >
                           <button
                             type="button"
-                            onClick={() => setDtModalOpen(false)}
-                            aria-label="달력 닫기"
-                            className="flex h-11 w-11 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                            onClick={() => (isMobile ? openDtEdit(ds) : setDtDate(ds))}
+                            className="min-w-0 flex-1 text-left text-sm"
                           >
-                            <Emoji symbol="✕" size={20} />
+                            <span className="font-bold text-red-800">{fmtMD(ds)}</span>{" "}
+                            <span className="break-keep font-semibold text-red-600">
+                              {ranges.map(fmtRange).join(", ")}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeWholeDate(ds)}
+                            aria-label={`${fmtMD(ds)} 삭제`}
+                            className="shrink-0 text-red-500 opacity-70 transition-opacity hover:opacity-100"
+                          >
+                            <ChipRemoveIcon />
                           </button>
                         </div>
-                        <div className="flex justify-center">
-                          <MonthCalendar
-                            dates={dates}
-                            selected={new Set([...Object.keys(dateTimeBusy), ...(dtDate ? [dtDate] : [])])}
-                            onToggle={(ds) => {
-                              setDtDate(ds);
-                              setDtModalOpen(false);
-                            }}
-                            tone="busy"
-                            blockedDates={busyDates}
-                          />
-                        </div>
-                      </div>
-                    </div>,
-                    document.body,
-                  )}
+                      ))}
+                  </div>
+                )}
 
-                {dtDate && (
+                {/* 데스크톱: 날짜 모달을 닫은 뒤 페이지에서 그 날의 안 되는 시간을 입력(이전 방식) */}
+                {!isMobile && dtDate && (
                   <div className="rounded-2xl bg-slate-50 p-3">
                     <p className="text-sm font-bold text-slate-700">{fmtMD(dtDate)} 안 되는 시간</p>
                     <div className="mt-2">
@@ -1592,23 +1738,51 @@ export function ResponseForm(props: Props) {
                   </div>
                 )}
 
-                {/* 이미 시간을 입력한 다른 날짜로 빠른 전환 */}
-                {Object.keys(dateTimeBusy).filter((ds) => ds !== dtDate).length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {Object.keys(dateTimeBusy)
-                      .filter((ds) => ds !== dtDate)
-                      .sort()
-                      .map((ds) => (
-                        <button
-                          key={ds}
-                          type="button"
-                          onClick={() => setDtDate(ds)}
-                          className="inline-flex items-center gap-1 rounded-full bg-red-50 px-3 py-1 text-sm font-bold text-red-700"
-                        >
-                          {fmtMD(ds)} ({dateTimeBusy[ds].length})
-                        </button>
-                      ))}
-                  </div>
+                {/* 날짜 선택 시트(모바일=전체화면+시간 입력기까지, 데스크톱=가운데 카드·날짜만) */}
+                {dtModalOpen && (
+                  <PickerSheet
+                    title="특정 시간이 안 되는 날"
+                    subtitle={
+                      isMobile
+                        ? dtDate
+                          ? `${fmtMD(dtDate)}에 안 되는 시간을 추가하세요`
+                          : "날짜를 고르면 시간을 추가할 수 있어요"
+                        : "안 되는 날짜를 골라주세요"
+                    }
+                    onClose={() => setDtModalOpen(false)}
+                    onConfirm={() => setDtModalOpen(false)}
+                  >
+                    <div className="w-full max-w-[20rem] space-y-4">
+                      <div className="flex justify-center">
+                        <MonthCalendar
+                          dates={dates}
+                          selected={new Set([...Object.keys(dateTimeBusy), ...(dtDate ? [dtDate] : [])])}
+                          onToggle={(ds) => {
+                            setDtDate(ds);
+                            // 데스크톱은 날짜를 고르면 모달을 닫고 페이지에서 시간을 입력(이전 방식).
+                            if (!isMobile) setDtModalOpen(false);
+                          }}
+                          tone="busy"
+                          blockedDates={busyDates}
+                        />
+                      </div>
+                      {isMobile &&
+                        (dtDate ? (
+                          <div className="rounded-2xl bg-slate-50 p-3">
+                            <p className="text-sm font-bold text-slate-700">
+                              {fmtMD(dtDate)} 안 되는 시간
+                            </p>
+                            <div className="mt-2">
+                              {renderTimeAdder(dateTimeBusy[dtDate] ?? [], (i) => removeRange(i, dtDate))}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-center text-xs text-slate-400">
+                            날짜를 고르면 안 되는 시간을 추가할 수 있어요.
+                          </p>
+                        ))}
+                    </div>
+                  </PickerSheet>
                 )}
               </div>
             )}
@@ -1777,11 +1951,19 @@ function WaitingScreen({
     ? `${formatKoreanDate(responseDeadline)} ${formatKoreanTime(responseDeadline)}`
     : null;
 
-  const steps = [
-    { state: "done" as const, label: "내 가능한 시간을 보냈어요" },
-    { state: "current" as const, label: "다른 참여자들의 응답을 기다리고 있어요" },
-    { state: "todo" as const, label: "응답이 마감되면 추천 시간을 확인해요" },
-  ];
+  // 응답 마감(ready)이 되면 마지막 스텝(추천 확인)이 활성화(current)된다.
+  type StepState = "done" | "current" | "todo";
+  const steps: { state: StepState; label: string }[] = ready
+    ? [
+        { state: "done", label: "내 가능한 시간을 보냈어요" },
+        { state: "done", label: "다른 참여자들의 응답을 받았어요" },
+        { state: "current", label: "추천시간을 확인해보세요" },
+      ]
+    : [
+        { state: "done", label: "내 가능한 시간을 보냈어요" },
+        { state: "current", label: "다른 참여자들의 응답을 기다리고 있어요" },
+        { state: "todo", label: "응답이 마감되면 추천 시간을 확인해요" },
+      ];
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col pt-2">
@@ -1832,7 +2014,7 @@ function WaitingScreen({
                   >
                     {s.label}
                   </p>
-                  {s.state === "current" && (
+                  {s.state === "current" && !ready && (
                     <>
                       <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-brand-50 px-3 py-1.5">
                         <Emoji symbol="⏳" size={16} />
@@ -1875,13 +2057,11 @@ function ResultScreen({
   onSelectCase,
   dates,
   onViewCalendar,
-  onEdit,
 }: {
   caseId: number;
   onSelectCase: (id: number) => void;
   dates: string[];
   onViewCalendar: () => void;
-  onEdit: () => void;
 }) {
   const current = DEMO_CASES.find((c) => c.id === caseId) ?? DEMO_CASES[0];
   const candidates = useMemo(() => buildCaseCandidates(current, dates), [current, dates]);
@@ -1894,9 +2074,8 @@ function ResultScreen({
   }, [caseId]);
 
   return (
-    <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col pt-2">
-      {/* 고정: 진행 현황 + 케이스 버튼 */}
-      <div className="shrink-0 space-y-3">
+    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col pt-2">
+      <div className="flex-1 space-y-3">
         <div className="flex items-center justify-between gap-2">
           <h1 className="text-xl font-extrabold tracking-tight text-slate-900">후보</h1>
           <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
@@ -1904,10 +2083,6 @@ function ResultScreen({
           </span>
         </div>
         <CaseSelector caseId={caseId} onSelect={onSelectCase} />
-      </div>
-
-      {/* 스크롤: 케이스 설명 + 후보 카드 */}
-      <div className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto pb-1">
         <CaseDescription caseId={caseId} />
         {candidates.length === 0 ? (
           <p className="text-sm text-slate-500">표시할 후보가 없어요.</p>
@@ -1969,17 +2144,11 @@ function ResultScreen({
         )}
       </div>
 
-      {/* 고정 하단 CTA */}
-      <div className="shrink-0 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-2">
-        <div className="space-y-2">
-          <TDSButton size="xl" display="block" onClick={onViewCalendar}>
-            캘린더 보기
-          </TDSButton>
-          <TDSButton size="xl" tone="secondary" display="block" onClick={onEdit}>
-            응답 수정하기
-          </TDSButton>
-        </div>
-      </div>
+      <MobileStickyAction className="mt-4">
+        <TDSButton size="xl" display="block" onClick={onViewCalendar}>
+          캘린더 보기
+        </TDSButton>
+      </MobileStickyAction>
     </div>
   );
 }
