@@ -12,6 +12,7 @@ import {
 import { createPortal } from "react-dom";
 import { Emoji } from "@/components/ui/Emoji";
 import {
+  loadCalendarSnapshot,
   loadVotingOptions,
   loadParticipantResponse,
   submitAvailability,
@@ -24,7 +25,6 @@ import { Input, Label } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { TDSButton } from "@/components/ui/TDSButton";
 import { MeetingSummarySentence } from "@/components/meeting/MeetingSummarySentence";
-import { ExpiryNotice } from "@/components/layout/ExpiryNotice";
 import { MobileStickyAction } from "@/components/layout/MobileStickyAction";
 import { cn } from "@/lib/cn";
 import { useScrollLock } from "@/lib/useScrollLock";
@@ -33,6 +33,7 @@ import {
   describeDateStr,
   formatHm,
   formatKoreanDate,
+  formatKoreanDateTimeRange,
   formatKoreanTimeRange,
   kstWallToIso,
   parseHm,
@@ -45,6 +46,13 @@ import type {
   VoteOption,
 } from "@/lib/actionTypes";
 import type { AttendanceType, AvailabilityStatus, CellStatus } from "@/lib/types";
+import { recommendSlots, GRADE_LABELS, type SlotCandidate } from "@/lib/scheduler";
+import {
+  DEMO_PEOPLE,
+  DEMO_CASES,
+  buildCaseCandidates,
+  buildCaseSnapshot,
+} from "@/data/demoCases";
 
 interface Props {
   meetingId: string;
@@ -61,7 +69,7 @@ interface Props {
   initialParticipants: PublicParticipant[];
 }
 
-type Step = "loading" | "intro" | "identity" | "availability" | "done";
+type Step = "loading" | "intro" | "identity" | "availability" | "review" | "result" | "done";
 type DateSummaryStatus = "available" | "preferred" | "busy" | "mixed";
 type CalendarStatus = "available" | "preferred" | "avoid" | "busy" | "pending";
 
@@ -726,7 +734,7 @@ function Toast({ open, message, icon = "⚠️" }: { open: boolean; message: str
       role="status"
       aria-live="polite"
       className={cn(
-        "fixed left-1/2 top-5 z-50 inline-flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded-[16px] bg-slate-900 px-4 py-3 text-sm font-bold leading-snug text-white shadow-[0_8px_20px_rgba(15,23,42,0.12)] transition-all duration-200 ease-out",
+        "fixed left-1/2 top-5 z-50 inline-flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded-[16px] bg-white px-4 py-3 text-sm font-bold leading-snug text-slate-800 shadow-[0_8px_20px_rgba(15,23,42,0.12)] transition-all duration-200 ease-out",
         open
           ? "translate-y-0 opacity-100 blur-0"
           : "pointer-events-none -translate-y-2 opacity-0 blur-sm",
@@ -759,6 +767,7 @@ export function ResponseForm(props: Props) {
   );
 
   const [step, setStep] = useState<Step>("loading");
+  const [caseId, setCaseId] = useState(1); // 데모: 후보/캘린더에 보여줄 케이스(docs/cases.md)
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [role, setRole] = useState("");
@@ -771,16 +780,13 @@ export function ResponseForm(props: Props) {
   const [maxFormStep, setMaxFormStep] = useState(0);
   const skipFormFocus = useRef(true); // 본인확인 진입 시 자동 포커스(스크롤 점프) 방지
   const skipNextAutoFocus = useRef(false); // 모바일 '다음' 이동 시 자동 포커스(키보드 팝업·스크롤) 방지
-  // 가능 시간 입력(문장 빌더): 0=피하고싶은시간,1=선호시간,2=불가날짜,3=선호날짜,4=특정날짜+시간.
+  // 가능 시간 입력(문장 빌더, 불가 중심 2단계): 0=불가날짜, 1=특정날짜+시간.
   const [availStep, setAvailStep] = useState(0);
   const [maxAvailStep, setMaxAvailStep] = useState(0);
-  const [commonAvoid, setCommonAvoid] = useState<TimeRange[]>([]);
-  const [commonPref, setCommonPref] = useState<TimeRange[]>([]);
   const [busyDates, setBusyDates] = useState<Set<string>>(() => new Set());
-  const [prefDates, setPrefDates] = useState<Set<string>>(() => new Set());
   const [dateTimeBusy, setDateTimeBusy] = useState<Record<string, TimeRange[]>>({});
-  const [dtDate, setDtDate] = useState<string | null>(null); // 5단계에서 시간 입력 중인 날짜
-  const [dtModalOpen, setDtModalOpen] = useState(false); // 5단계 날짜 선택 모달
+  const [dtDate, setDtDate] = useState<string | null>(null); // 특정날짜+시간 단계에서 시간 입력 중인 날짜
+  const [dtModalOpen, setDtModalOpen] = useState(false); // 특정날짜+시간 날짜 선택 모달
   const [draftStart, setDraftStart] = useState(workdayStart);
   const [draftEnd, setDraftEnd] = useState(workdayEnd);
   // 복사완료 토스트처럼 요소는 계속 렌더되고 open 클래스만 토글해 등장/사라짐을 전환한다.
@@ -800,15 +806,12 @@ export function ResponseForm(props: Props) {
     s === 0 ? identityName.trim().length > 0 : identityRole.trim().length > 0;
   const clauseVisible = (i: number) => i <= maxFormStep;
 
-  // 가능 시간 빌더: 0~4 (마지막=4). 도달한 단계까지 문장에 노출.
-  const AVAIL_LAST_STEP = 4;
+  // 가능 시간 빌더(불가 중심 2단계): 0=불가날짜, 1=특정날짜+시간(마지막=1). 도달한 단계까지 문장에 노출.
+  const AVAIL_LAST_STEP = 1;
   const availClauseVisible = (i: number) => i <= maxAvailStep;
   const personName = selected?.name ?? identityName;
   const AVAIL_QUESTIONS = [
-    `${personName}님, 특별히 공통적으로 피하고 싶은 시간대가 있으신가요? (예: 점심시간)`,
-    `${personName}님이 특별히 선호하시는 시간이 있나요?`,
-    "회의가 불가능한 날짜가 있나요?",
-    "선호하는 날짜가 있나요?",
+    `${personName}님, 회의가 불가능한 날짜가 있나요?`,
     "특별히 이 날 이 시간엔 안 되는 경우가 있나요?",
   ];
 
@@ -838,7 +841,7 @@ export function ResponseForm(props: Props) {
           setRole(found?.role ?? "");
           setIdentityName(found?.name ?? "");
           setIdentityRole(found?.role ?? "");
-          setStep("done");
+          setStep("result");
         } else {
           window.localStorage.removeItem(storageKey(meetingId));
           setSelectedId(null);
@@ -886,7 +889,7 @@ export function ResponseForm(props: Props) {
     return () => document.removeEventListener("keydown", onKey);
   }, [dtModalOpen]);
 
-  // 구조화된 입력(공통 시간대 + 불가/선호 날짜 + 특정 날짜+시간)을 우선순위로 cells → blocks 환원.
+  // 불가 입력(불가 날짜 + 특정 날짜+시간)을 cells → blocks(busy) 환원. busy 만 저장한다.
   function buildBlocks() {
     const cells: Record<string, CellStatus> = {};
     const lunchS = parseHm(lunchStart);
@@ -898,19 +901,17 @@ export function ResponseForm(props: Props) {
       for (const minute of rows) {
         // 점심시간과 겹치는 셀은 제외(서버가 점심 겹침 블록을 거부함)
         if (minute < lunchE && lunchS < minute + GRID_STEP_MINUTES) continue;
-        let status: CellStatus | null = null;
-        if (covers(dt, minute)) status = "busy"; // 특정 날짜+시간(가장 우선)
-        else if (busyDates.has(ds)) status = "busy"; // 불가 날짜(하루)
-        else if (prefDates.has(ds)) status = "preferred"; // 선호 날짜(하루)
-        else if (covers(commonAvoid, minute)) status = "avoid"; // 공통 피하고 싶은 시간
-        else if (covers(commonPref, minute)) status = "preferred"; // 공통 선호 시간
-        if (status) cells[cellKey(dIdx, minute)] = status;
+        // 불가 중심: 특정 날짜+시간 또는 불가 날짜(하루 전체)만 busy 로 저장.
+        if (covers(dt, minute) || busyDates.has(ds)) {
+          cells[cellKey(dIdx, minute)] = "busy";
+        }
       }
     });
     return cellsToBlocks(cells, dates);
   }
 
-  const addDraftRange = (target: "avoid" | "pref" | "dt") => {
+  const addDraftRange = () => {
+    if (!dtDate) return;
     const s = parseHm(draftStart);
     const e = parseHm(draftEnd);
     if (!(e > s)) {
@@ -918,41 +919,24 @@ export function ResponseForm(props: Props) {
       return;
     }
     // 근무시간 밖 시간은 시간 선택기(TimeSelect)에서 컨펌을 거쳐 허용된 값이므로 여기서 막지 않는다.
-    // 선호 시간이 '피하고 싶은 시간'과 겹치면 추가 불가.
-    if (target === "pref" && commonAvoid.some((a) => overlaps(s, e, a.start, a.end))) {
-      showToast("피하고 싶은 시간과 겹쳐요.");
-      return;
-    }
-    // 같은 구역에 이미 추가한 것과 동일한 시간대는 중복 추가하지 않는다.
-    const existing =
-      target === "avoid"
-        ? commonAvoid
-        : target === "pref"
-          ? commonPref
-          : dtDate
-            ? dateTimeBusy[dtDate] ?? []
-            : [];
+    // 같은 날짜에 이미 추가한 것과 동일한 시간대는 중복 추가하지 않는다.
+    const existing = dateTimeBusy[dtDate] ?? [];
     if (existing.some((x) => x.start === s && x.end === e)) {
       showToast("이미 추가한 시간대예요.");
       return;
     }
     const r: TimeRange = { start: s, end: e };
-    if (target === "avoid") setCommonAvoid((p) => [...p, r]);
-    else if (target === "pref") setCommonPref((p) => [...p, r]);
-    else if (dtDate) setDateTimeBusy((p) => ({ ...p, [dtDate]: [...(p[dtDate] ?? []), r] }));
+    setDateTimeBusy((p) => ({ ...p, [dtDate]: [...(p[dtDate] ?? []), r] }));
   };
 
-  const removeRange = (target: "avoid" | "pref" | "dt", index: number, ds?: string) => {
-    if (target === "avoid") setCommonAvoid((p) => p.filter((_, i) => i !== index));
-    else if (target === "pref") setCommonPref((p) => p.filter((_, i) => i !== index));
-    else if (ds)
-      setDateTimeBusy((p) => {
-        const rest = (p[ds] ?? []).filter((_, i) => i !== index);
-        const next = { ...p };
-        if (rest.length) next[ds] = rest;
-        else delete next[ds];
-        return next;
-      });
+  const removeRange = (index: number, ds: string) => {
+    setDateTimeBusy((p) => {
+      const rest = (p[ds] ?? []).filter((_, i) => i !== index);
+      const next = { ...p };
+      if (rest.length) next[ds] = rest;
+      else delete next[ds];
+      return next;
+    });
   };
 
   const toggleBusyDate = (ds: string) => {
@@ -962,21 +946,7 @@ export function ResponseForm(props: Props) {
       else next.add(ds);
       return next;
     });
-    // 불가능으로 고른 날짜는 선호 날짜에서 제외(겹침 방지).
-    setPrefDates((prev) => {
-      if (!prev.has(ds)) return prev;
-      const n = new Set(prev);
-      n.delete(ds);
-      return n;
-    });
   };
-  const togglePrefDate = (ds: string) =>
-    setPrefDates((prev) => {
-      const next = new Set(prev);
-      if (next.has(ds)) next.delete(ds);
-      else next.add(ds);
-      return next;
-    });
 
   const goAvail = (next: number) => {
     setAvailStep(next);
@@ -985,13 +955,7 @@ export function ResponseForm(props: Props) {
   const editAvailStep = (i: number) => setAvailStep(i);
   // 해당 단계 값이 입력됐는지. (없음=빈 값)
   const hasAvailValue = (i: number) =>
-    [
-      commonAvoid.length > 0,
-      commonPref.length > 0,
-      busyDates.size > 0,
-      prefDates.size > 0,
-      Object.keys(dateTimeBusy).length > 0,
-    ][i] ?? false;
+    [busyDates.size > 0, Object.keys(dateTimeBusy).length > 0][i] ?? false;
   // 값이 정해졌는지: 다음으로 넘어가 확정했거나(=i<max), 값이 입력된 경우.
   // 아직 안 정해진(현재 진행 중) 항목은 상단 문장에서 점 3개 로딩으로 표시한다.
   const availDetermined = (i: number) => i < maxAvailStep || hasAvailValue(i);
@@ -1008,16 +972,11 @@ export function ResponseForm(props: Props) {
   );
   const handleAvailNext = () => {
     if (availStep < AVAIL_LAST_STEP) goAvail(availStep + 1);
-    else void handleSubmit();
+    else setStep("review");
   };
 
-  // 시간 범위 추가 입력(시작~종료 + 추가) + 추가된 범위 칩 목록.
-  const renderTimeAdder = (
-    target: "avoid" | "pref" | "dt",
-    ranges: TimeRange[],
-    tone: "blue" | "red",
-    onRemove: (i: number) => void,
-  ) => (
+  // 특정 날짜의 안 되는 시간 범위 추가 입력(시작~종료 + 추가) + 추가된 범위 칩 목록.
+  const renderTimeAdder = (ranges: TimeRange[], onRemove: (i: number) => void) => (
     <div>
       <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1">
@@ -1046,7 +1005,7 @@ export function ResponseForm(props: Props) {
         size="md"
         display="block"
         className="mt-2"
-        onClick={() => addDraftRange(target)}
+        onClick={addDraftRange}
       >
         추가
       </TDSButton>
@@ -1055,10 +1014,7 @@ export function ResponseForm(props: Props) {
           {ranges.map((r, i) => (
             <span
               key={`${r.start}-${r.end}-${i}`}
-              className={cn(
-                "inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-bold",
-                tone === "blue" ? "bg-blue-50 text-blue-700" : "bg-red-50 text-red-700",
-              )}
+              className="inline-flex items-center gap-1 rounded-full bg-red-50 px-3 py-1 text-sm font-bold text-red-700"
             >
               {fmtRange(r)}
               <button
@@ -1140,10 +1096,7 @@ export function ResponseForm(props: Props) {
 
     // 다른 사람으로 확인되면 입력값 초기화(가능 시간은 새로 받는다).
     if (res.participantId !== selectedId) {
-      setCommonAvoid([]);
-      setCommonPref([]);
       setBusyDates(new Set());
-      setPrefDates(new Set());
       setDateTimeBusy({});
     }
 
@@ -1177,7 +1130,7 @@ export function ResponseForm(props: Props) {
     }
     setToken(res.token);
     persistIdentity(res.participantId, res.token);
-    setStep("done");
+    setStep("result");
   }
 
   // 본인확인 단계가 바뀌면 입력에 포커스(최초 진입은 건너뜀, 스크롤 점프 방지).
@@ -1233,25 +1186,144 @@ export function ResponseForm(props: Props) {
     );
   }
 
-  if (step === "done") {
+  // 입력 최종 확인 화면 → '다음' 으로 제출.
+  if (step === "review") {
+    const busyDatesText =
+      busyDates.size > 0 ? [...busyDates].sort().map(fmtMD).join(", ") : null;
+    const dtText =
+      Object.keys(dateTimeBusy).length > 0
+        ? Object.entries(dateTimeBusy)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([ds, rs]) => `${fmtMD(ds)} ${rs.map(fmtRange).join("·")}`)
+            .join(", ")
+        : null;
     return (
       <>
-        <SubmittedCalendarScreen
-          meetingId={meetingId}
-          participantId={selectedId}
-          token={token}
-          selectedName={selected?.name ?? identityName}
-          dates={dates}
-          rows={rows}
-          onEdit={() => {
-            // 본인은 이미 확인됨 → 가능 시간 화면 처음부터 다시.
-            setAvailStep(0);
-            setMaxAvailStep(0);
-            setStep("availability");
-          }}
-        />
-        <ExpiryNotice className="mt-8" />
+        <Toast open={toastOpen} message={toastMessage} icon={toastIcon} />
+        <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
+          <div className="flex-1">
+            <p className="text-sm font-medium text-slate-400">입력 확인</p>
+            <div className="mt-3 break-keep text-left text-xl leading-relaxed text-slate-800 sm:text-2xl sm:leading-relaxed">
+              저는{" "}
+              {busyDatesText ? (
+                <>
+                  <EditValue
+                    fieldLabel="불가능한 날짜"
+                    tone="negative"
+                    onEdit={() => {
+                      setAvailStep(0);
+                      setStep("availability");
+                    }}
+                  >
+                    {busyDatesText}
+                  </EditValue>
+                  에는 회의가 불가능하고,{" "}
+                </>
+              ) : (
+                <EditValue
+                  fieldLabel="불가능한 날짜"
+                  tone="negative"
+                  onEdit={() => {
+                    setAvailStep(0);
+                    setStep("availability");
+                  }}
+                >
+                  불가능한 날짜는 없고,
+                </EditValue>
+              )}{" "}
+              {dtText ? (
+                <>
+                  특별히{" "}
+                  <EditValue
+                    fieldLabel="특정 날짜 시간"
+                    tone="negative"
+                    onEdit={() => {
+                      setAvailStep(1);
+                      setStep("availability");
+                    }}
+                  >
+                    {dtText}
+                  </EditValue>
+                  에는 안 돼요.
+                </>
+              ) : (
+                <EditValue
+                  fieldLabel="특정 날짜 시간"
+                  tone="negative"
+                  onEdit={() => {
+                    setAvailStep(1);
+                    setStep("availability");
+                  }}
+                >
+                  특정 시간에 안 되는 날은 없어요.
+                </EditValue>
+              )}
+            </div>
+            <p className="mt-5 text-sm text-slate-500">
+              이대로 제출할까요? 제출 후에도 수정할 수 있어요.
+            </p>
+          </div>
+          <MobileStickyAction className="mt-auto">
+            <div className="space-y-2">
+              <TDSButton
+                size="xl"
+                display="block"
+                onClick={() => void handleSubmit()}
+                disabled={submitting}
+                loading={submitting}
+              >
+                {submitting ? "제출 중..." : "다음"}
+              </TDSButton>
+              <TDSButton
+                size="xl"
+                tone="secondary"
+                display="block"
+                onClick={() => {
+                  setAvailStep(0);
+                  setStep("availability");
+                }}
+              >
+                수정하기
+              </TDSButton>
+            </div>
+          </MobileStickyAction>
+        </div>
       </>
+    );
+  }
+
+  // 제출 후 결과 화면 — 응답 현황 + 현재 후보 순위. 캘린더는 버튼으로 이동.
+  if (step === "result") {
+    return (
+      <ResultScreen
+        caseId={caseId}
+        onSelectCase={setCaseId}
+        dates={dates}
+        onViewCalendar={() => setStep("done")}
+        onEdit={() => {
+          setAvailStep(0);
+          setMaxAvailStep(0);
+          setStep("availability");
+        }}
+      />
+    );
+  }
+
+  if (step === "done") {
+    return (
+      <SubmittedCalendarScreen
+        caseId={caseId}
+        onSelectCase={setCaseId}
+        dates={dates}
+        rows={rows}
+        onBack={() => setStep("result")}
+        onEdit={() => {
+          // 본인은 이미 확인됨 → 가능 시간 화면 처음부터 다시.
+          setAvailStep(0);
+          setMaxAvailStep(0);
+          setStep("availability");
+        }}
+      />
     );
   }
 
@@ -1351,7 +1423,7 @@ export function ResponseForm(props: Props) {
   return (
     <>
       <Toast open={toastOpen} message={toastMessage} icon={toastIcon} />
-      <div className="mx-auto w-full max-w-2xl">
+      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
         {/* 상단: 답변이 쌓이는 문장 */}
         <p className="pt-2 text-sm font-medium text-slate-400">가능 시간</p>
         <div
@@ -1360,19 +1432,22 @@ export function ResponseForm(props: Props) {
         >
           {availClauseVisible(0) && (
             <span className="animate-fade-in motion-reduce:animate-none">
-              저는 모든 요일 공통적으로{" "}
+              저는{" "}
               {!availDetermined(0) ? (
-                availDots("피하고 싶은 시간", () => editAvailStep(0))
-              ) : commonAvoid.length > 0 ? (
                 <>
-                  <EditValue fieldLabel="피하고 싶은 시간" tone="negative" onEdit={() => editAvailStep(0)}>
-                    {commonAvoid.map(fmtRange).join(", ")}
+                  {availDots("불가능한 날짜", () => editAvailStep(0))}
+                  에는 회의가 불가능하고,{" "}
+                </>
+              ) : busyDates.size > 0 ? (
+                <>
+                  <EditValue fieldLabel="불가능한 날짜" tone="negative" onEdit={() => editAvailStep(0)}>
+                    {[...busyDates].sort().map(fmtMD).join(", ")}
                   </EditValue>
-                  는 피하고 싶어요.{" "}
+                  에는 회의가 불가능하고,{" "}
                 </>
               ) : (
-                <EditValue fieldLabel="피하고 싶은 시간" tone="negative" onEdit={() => editAvailStep(0)}>
-                  특별히 피하고 싶은 시간은 없어요.
+                <EditValue fieldLabel="불가능한 날짜" tone="negative" onEdit={() => editAvailStep(0)}>
+                  불가능한 날짜는 없고,
                 </EditValue>
               )}{" "}
             </span>
@@ -1380,64 +1455,14 @@ export function ResponseForm(props: Props) {
           {availClauseVisible(1) && (
             <span className="animate-fade-in motion-reduce:animate-none">
               {!availDetermined(1) ? (
-                availDots("선호 시간", () => editAvailStep(1))
-              ) : commonPref.length > 0 ? (
                 <>
-                  <EditValue fieldLabel="선호 시간" onEdit={() => editAvailStep(1)}>
-                    {commonPref.map(fmtRange).join(", ")}
-                  </EditValue>
-                  는 선호해요!{" "}
+                  특별히 {availDots("특정 날짜 시간", () => editAvailStep(1))}
+                  에는 안 돼요.
                 </>
-              ) : (
-                <EditValue fieldLabel="선호 시간" onEdit={() => editAvailStep(1)}>
-                  특별히 선호하는 시간은 없어요.
-                </EditValue>
-              )}{" "}
-            </span>
-          )}
-          {availClauseVisible(2) && (
-            <span className="animate-fade-in motion-reduce:animate-none">
-              {!availDetermined(2) ? (
-                availDots("불가능한 날짜", () => editAvailStep(2))
-              ) : busyDates.size > 0 ? (
-                <>
-                  <EditValue fieldLabel="불가능한 날짜" tone="negative" onEdit={() => editAvailStep(2)}>
-                    {[...busyDates].sort().map(fmtMD).join(", ")}
-                  </EditValue>
-                  에는 회의가 불가능해요.{" "}
-                </>
-              ) : (
-                <EditValue fieldLabel="불가능한 날짜" tone="negative" onEdit={() => editAvailStep(2)}>
-                  불가능한 날짜는 없어요.
-                </EditValue>
-              )}{" "}
-            </span>
-          )}
-          {availClauseVisible(3) && (
-            <span className="animate-fade-in motion-reduce:animate-none">
-              {!availDetermined(3) ? (
-                availDots("선호하는 날짜", () => editAvailStep(3))
-              ) : prefDates.size > 0 ? (
-                <>
-                  <EditValue fieldLabel="선호하는 날짜" onEdit={() => editAvailStep(3)}>
-                    {[...prefDates].sort().map(fmtMD).join(", ")}
-                  </EditValue>
-                  는 선호해요!{" "}
-                </>
-              ) : (
-                <EditValue fieldLabel="선호하는 날짜" onEdit={() => editAvailStep(3)}>
-                  특별히 선호하는 날짜는 없어요.
-                </EditValue>
-              )}{" "}
-            </span>
-          )}
-          {availClauseVisible(4) && (
-            <span className="animate-fade-in motion-reduce:animate-none">
-              {!availDetermined(4) ? (
-                availDots("특정 날짜 시간", () => editAvailStep(4))
               ) : Object.keys(dateTimeBusy).length > 0 ? (
                 <>
-                  <EditValue fieldLabel="특정 날짜 시간" tone="negative" onEdit={() => editAvailStep(4)}>
+                  특별히{" "}
+                  <EditValue fieldLabel="특정 날짜 시간" tone="negative" onEdit={() => editAvailStep(1)}>
                     {Object.entries(dateTimeBusy)
                       .sort(([a], [b]) => a.localeCompare(b))
                       .map(([ds, rs]) => `${fmtMD(ds)} ${rs.map(fmtRange).join("·")}`)
@@ -1446,7 +1471,7 @@ export function ResponseForm(props: Props) {
                   에는 안 돼요.
                 </>
               ) : (
-                <EditValue fieldLabel="특정 날짜 시간" tone="negative" onEdit={() => editAvailStep(4)}>
+                <EditValue fieldLabel="특정 날짜 시간" tone="negative" onEdit={() => editAvailStep(1)}>
                   특정 시간에 안 되는 날은 없어요.
                 </EditValue>
               )}
@@ -1458,11 +1483,7 @@ export function ResponseForm(props: Props) {
         <div key={availStep} className="mt-6 animate-fade-up motion-reduce:animate-none">
           <p className="text-lg font-bold text-slate-800">{AVAIL_QUESTIONS[availStep]}</p>
           <div className="mt-3">
-            {availStep === 0 &&
-              renderTimeAdder("avoid", commonAvoid, "red", (i) => removeRange("avoid", i))}
-            {availStep === 1 &&
-              renderTimeAdder("pref", commonPref, "blue", (i) => removeRange("pref", i))}
-            {availStep === 2 && (
+            {availStep === 0 && (
               <CalendarModalField
                 title="불가능한 날짜"
                 placeholder="날짜 선택"
@@ -1472,20 +1493,9 @@ export function ResponseForm(props: Props) {
                 tone="busy"
               />
             )}
-            {availStep === 3 && (
-              <CalendarModalField
-                title="선호하는 날짜"
-                placeholder="날짜 선택"
-                dates={dates}
-                selected={prefDates}
-                onToggle={togglePrefDate}
-                tone="pref"
-                blockedDates={busyDates}
-              />
-            )}
-            {availStep === 4 && (
+            {availStep === 1 && (
               <div className="space-y-3">
-                {/* 날짜 선택 트리거 → 모달(불가능·선호로 고른 날짜는 차단) */}
+                {/* 날짜 선택 트리거 → 모달(불가능으로 고른 날짜는 차단) */}
                 <button
                   type="button"
                   onClick={() => setDtModalOpen(true)}
@@ -1517,7 +1527,7 @@ export function ResponseForm(props: Props) {
                           <div>
                             <p className="text-sm font-bold text-slate-900">특정 시간이 안 되는 날</p>
                             <p className="mt-0.5 text-xs text-slate-400">
-                              불가능·선호로 고른 날은 선택할 수 없어요
+                              불가능으로 고른 날은 선택할 수 없어요
                             </p>
                           </div>
                           <button
@@ -1538,7 +1548,7 @@ export function ResponseForm(props: Props) {
                               setDtModalOpen(false);
                             }}
                             tone="busy"
-                            blockedDates={new Set([...busyDates, ...prefDates])}
+                            blockedDates={busyDates}
                           />
                         </div>
                       </div>
@@ -1550,9 +1560,7 @@ export function ResponseForm(props: Props) {
                   <div className="rounded-2xl bg-slate-50 p-3">
                     <p className="text-sm font-bold text-slate-700">{fmtMD(dtDate)} 안 되는 시간</p>
                     <div className="mt-2">
-                      {renderTimeAdder("dt", dateTimeBusy[dtDate] ?? [], "red", (i) =>
-                        removeRange("dt", i, dtDate),
-                      )}
+                      {renderTimeAdder(dateTimeBusy[dtDate] ?? [], (i) => removeRange(i, dtDate))}
                     </div>
                   </div>
                 )}
@@ -1579,31 +1587,216 @@ export function ResponseForm(props: Props) {
             )}
           </div>
         </div>
+        {/* 하단 고정 CTA */}
+        <MobileStickyAction className="mt-auto">
+          <TDSButton size="xl" display="block" onClick={handleAvailNext}>
+            다음
+          </TDSButton>
+        </MobileStickyAction>
+      </div>
+    </>
+  );
+}
+
+// 제품 흐름 데모용 케이스 선택 (후보·캘린더 화면 공용).
+// 평소엔 선택한 케이스만, 마우스 호버(또는 탭)하면 1~8번 전부 노출.
+function CaseSelector({ caseId, onSelect }: { caseId: number; onSelect: (id: number) => void }) {
+  const [hovered, setHovered] = useState(false);
+  // 선택된 케이스가 항상 맨 왼쪽(첫 번째)에 오도록 정렬한다.
+  const ordered = [caseId, ...DEMO_CASES.map((c) => c.id).filter((id) => id !== caseId)];
+  const GAP = 40; // 칩 간격(px)
+  const expandedWidth = (DEMO_CASES.length - 1) * GAP + 32;
+  return (
+    <div className="select-none">
+      <p className="text-xs font-bold text-slate-400">케이스 선택</p>
+      {/* 호버 시 너비가 늘며 마우스 인식 영역을 제어. 안의 칩들은 절대배치로 펼쳐진다. */}
+      <div
+        className="relative mt-1.5 h-8 cursor-pointer transition-[width] duration-500 ease-out motion-reduce:transition-none"
+        style={{ width: hovered ? `${expandedWidth}px` : "32px" }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      >
+        {DEMO_CASES.map((c) => {
+          // 정렬된 배열 안에서 이 칩이 차지할 위치(선택 칩=0=맨 왼쪽).
+          const index = ordered.indexOf(c.id);
+          const isSelected = c.id === caseId;
+          const visible = hovered || isSelected;
+          return (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => onSelect(c.id)}
+              aria-pressed={isSelected}
+              aria-label={`케이스 ${c.id} ${c.title}`}
+              style={{
+                transform: `translateX(${hovered ? index * GAP : 0}px)`,
+                opacity: visible ? 1 : 0,
+                pointerEvents: visible ? "auto" : "none",
+              }}
+              className={cn(
+                "absolute left-0 top-0 flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold transition-all duration-500 ease-out motion-reduce:transition-none",
+                isSelected
+                  ? "z-20 scale-100 bg-brand-500 text-white shadow-md"
+                  : "z-10 scale-95 border border-slate-200 bg-white text-slate-600 shadow-sm hover:scale-100 hover:bg-slate-50",
+              )}
+            >
+              {c.id}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// 선택된 케이스의 상황·판단·경고 설명.
+function CaseDescription({ caseId }: { caseId: number }) {
+  const current = DEMO_CASES.find((c) => c.id === caseId) ?? DEMO_CASES[0];
+  return (
+    <div className="rounded-2xl bg-slate-50 p-3.5">
+      <p className="text-sm font-extrabold text-slate-900">
+        케이스 {current.id}. {current.title}
+      </p>
+      <div className="mt-2 space-y-1.5">
+        <p className="flex gap-1.5 break-keep text-sm text-slate-600">
+          <span className="shrink-0 font-bold text-slate-400">상황</span>
+          <span>{current.situation}</span>
+        </p>
+        <p className="flex gap-1.5 break-keep text-sm text-slate-700">
+          <span className="shrink-0 font-bold text-brand-600">솔루션</span>
+          <span>{current.judgment}</span>
+        </p>
+      </div>
+      {current.banner && (
+        <p
+          className={cn(
+            "mt-2.5 break-keep rounded-xl px-2.5 py-2 text-xs font-bold",
+            current.banner.tone === "danger"
+              ? "bg-red-50 text-red-700"
+              : current.banner.tone === "caution"
+                ? "bg-amber-50 text-amber-700"
+                : "bg-brand-50 text-brand-700",
+          )}
+        >
+          {current.banner.text}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// 제출 후 결과 화면: 케이스별 응답 현황 + 후보 순위(더미). 캘린더는 '캘린더 보기'로 이동.
+function ResultScreen({
+  caseId,
+  onSelectCase,
+  dates,
+  onViewCalendar,
+  onEdit,
+}: {
+  caseId: number;
+  onSelectCase: (id: number) => void;
+  dates: string[];
+  onViewCalendar: () => void;
+  onEdit: () => void;
+}) {
+  const current = DEMO_CASES.find((c) => c.id === caseId) ?? DEMO_CASES[0];
+  const candidates = useMemo(() => buildCaseCandidates(current, dates), [current, dates]);
+  const total = DEMO_PEOPLE.length;
+  // 데모: 한 번에 한 후보에만 투표. 다른 후보에 투표하면 벳지가 이동한다.
+  const [votedIndex, setVotedIndex] = useState<number | null>(null);
+  // 케이스를 바꾸면 후보가 달라지므로 투표 상태를 초기화한다.
+  useEffect(() => {
+    setVotedIndex(null);
+  }, [caseId]);
+
+  return (
+    <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col pt-2">
+      {/* 고정: 진행 현황 + 케이스 버튼 */}
+      <div className="shrink-0 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-xl font-extrabold tracking-tight text-slate-900">후보</h1>
+          <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
+            {total}명 중 {current.submitted}명 응답
+          </span>
+        </div>
+        <CaseSelector caseId={caseId} onSelect={onSelectCase} />
       </div>
 
-      {/* 하단 고정 CTA */}
-      <MobileStickyAction
-        bleed={false}
-        className="sm:p-0"
-        innerClassName="max-w-2xl sm:px-6 sm:py-3"
-      >
-        <TDSButton
-          size="xl"
-          display="block"
-          onClick={handleAvailNext}
-          disabled={availStep === AVAIL_LAST_STEP && submitting}
-          loading={availStep === AVAIL_LAST_STEP && submitting}
-        >
-          {availStep === AVAIL_LAST_STEP
-            ? submitting
-              ? "저장 중..."
-              : token
-                ? "수정 저장하기"
-                : "응답 제출하기"
-            : "다음"}
-        </TDSButton>
-      </MobileStickyAction>
-    </>
+      {/* 스크롤: 케이스 설명 + 후보 카드 */}
+      <div className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto pb-1">
+        <CaseDescription caseId={caseId} />
+        {candidates.length === 0 ? (
+          <p className="text-sm text-slate-500">표시할 후보가 없어요.</p>
+        ) : (
+          <ol className="space-y-2">
+            {candidates.map((c, i) => (
+              <li
+                key={`${c.startAt}-${c.endAt}-${i}`}
+                className="group relative rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-colors hover:bg-slate-100"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-xs font-bold text-brand-700">
+                    {i + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <p className="font-bold text-slate-900">
+                        {formatKoreanDateTimeRange(c.startAt, c.endAt)}
+                      </p>
+                      <span
+                        className={cn(
+                          "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold",
+                          c.grade === "best"
+                            ? "bg-brand-50 text-brand-700"
+                            : c.grade === "caution"
+                              ? "bg-amber-50 text-amber-700"
+                              : "bg-slate-100 text-slate-600",
+                        )}
+                      >
+                        {GRADE_LABELS[c.grade]}
+                      </span>
+                      {c.votes != null && (
+                        <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
+                          {c.votes}표
+                        </span>
+                      )}
+                      {votedIndex === i && (
+                        <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
+                          투표됨
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 break-keep text-sm text-slate-500">{c.reason}</p>
+                  </div>
+                </div>
+                {/* 호버 시 우측 가운데에 투표하기 버튼 — 누르면 이 후보로 투표(벳지 이동) */}
+                {votedIndex !== i && (
+                  <button
+                    type="button"
+                    onClick={() => setVotedIndex(i)}
+                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-bold text-white opacity-0 transition-opacity duration-150 hover:bg-brand-600 focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+                  >
+                    투표하기
+                  </button>
+                )}
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+
+      {/* 고정 하단 CTA */}
+      <div className="shrink-0 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-2">
+        <div className="space-y-2">
+          <TDSButton size="xl" display="block" onClick={onViewCalendar}>
+            캘린더 보기
+          </TDSButton>
+          <TDSButton size="xl" tone="secondary" display="block" onClick={onEdit}>
+            응답 수정하기
+          </TDSButton>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1663,27 +1856,27 @@ function StatusGroup({
 }
 
 function SubmittedCalendarScreen({
-  meetingId,
-  participantId,
-  token,
-  selectedName,
+  caseId,
+  onSelectCase,
   dates,
   rows,
+  onBack,
   onEdit,
 }: {
-  meetingId: string;
-  participantId: string | null;
-  token: string | null;
-  selectedName: string;
+  caseId: number;
+  onSelectCase: (id: number) => void;
   dates: string[];
   rows: number[];
+  onBack: () => void;
   onEdit: () => void;
 }) {
-  // 데모 단계: 항상 더미 6명 응답으로 캘린더를 채운다.
+  // 데모 단계: 선택한 케이스의 더미 응답으로 캘린더를 채운다.
+  const current = DEMO_CASES.find((c) => c.id === caseId) ?? DEMO_CASES[0];
   const { participants, blocks } = useMemo(
-    () => buildDummySnapshot(dates, rows),
-    [dates, rows],
+    () => buildCaseSnapshot(current, dates),
+    [current, dates],
   );
+  const respondedCount = participants.filter((p) => p.responseStatus === "submitted").length;
 
   // 마우스로 잡고 끌어 가로 스크롤.
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1720,29 +1913,23 @@ function SubmittedCalendarScreen({
   }, []);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <Emoji symbol="📅" size={22} />
-            <h2 className="text-xl font-extrabold text-slate-900">회의 캘린더</h2>
-          </div>
-          <p className="mt-1 text-sm text-slate-600">
-            모든 참석자의 선호·불가 시간을 시간대별로 모았어요.
-          </p>
+    <div className="space-y-4 pt-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Emoji symbol="📅" size={22} />
+          <h2 className="text-xl font-extrabold text-slate-900">회의 캘린더</h2>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge tone="green">{participants.length}명 응답</Badge>
-          <TDSButton type="button" size="sm" tone="secondary" onClick={onEdit}>
-            응답 수정
-          </TDSButton>
-        </div>
+        <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
+          {DEMO_PEOPLE.length}명 중 {respondedCount}명 응답
+        </span>
       </div>
 
+      <CaseSelector caseId={caseId} onSelect={onSelectCase} />
+      <CaseDescription caseId={caseId} />
+
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-slate-500">
-        <LegendDot className="bg-green-400" label="선호" />
         <LegendDot className="bg-red-400" label="불가능" />
-        <span className="text-slate-400">칸 안의 이름 색은 참석자별로 달라요.</span>
+        <span className="text-slate-400">칸 안의 이름 색은 참석자별로 달라요. (불가능 시간만 표시)</span>
       </div>
 
       {/* 일주일 그리드 — 마우스로 잡고 끌어 가로 스크롤 */}
@@ -1792,16 +1979,12 @@ function SubmittedCalendarScreen({
                     colorClass: PERSON_COLORS[idx % PERSON_COLORS.length],
                     status: participantStatusForSlot(p, blocks, slotStart, slotEnd),
                   }));
-                  const preferred = evaluated.filter((e) => e.status === "preferred");
                   const busy = evaluated.filter((e) => e.status === "busy");
                   return (
                     <div
                       key={date}
                       className="w-52 shrink-0 space-y-1 border-r border-slate-100 p-1.5 last:border-r-0"
                     >
-                      {preferred.length > 0 && (
-                        <StatusGroup tone="green" label="선호" people={preferred} />
-                      )}
                       {busy.length > 0 && (
                         <StatusGroup tone="red" label="불가능" people={busy} />
                       )}
@@ -1814,15 +1997,28 @@ function SubmittedCalendarScreen({
         </div>
       </Card>
 
-      {participantId && token && (
-        <section className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-slate-900">후보 시간대 투표</h3>
-            <span className="text-sm text-slate-500">다수결 기준</span>
-          </div>
-          <VotingPanel meetingId={meetingId} participantId={participantId} token={token} />
-        </section>
-      )}
+      <div className="flex gap-2 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-2">
+        <TDSButton
+          type="button"
+          size="xl"
+          tone="secondary"
+          display="block"
+          className="flex-1"
+          onClick={onBack}
+        >
+          후보 보기
+        </TDSButton>
+        <TDSButton
+          type="button"
+          size="xl"
+          tone="secondary"
+          display="block"
+          className="flex-1"
+          onClick={onEdit}
+        >
+          응답 수정
+        </TDSButton>
+      </div>
     </div>
   );
 }

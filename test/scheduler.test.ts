@@ -100,15 +100,6 @@ describe("recommendSlots — 감점/가점 규칙", () => {
     const free = recs.find((c) => c.startAt === iso("09:00"))!;
     expect(slot.score).toBeGreaterThan(free.score);
   });
-
-  it("13:00~14:00 점심 직후 시간대는 감점한다", () => {
-    const recs = recommendSlots(input([P("a", "required")], []));
-    const afterLunch = recs.find((c) => c.startAt === iso("13:00"))!;
-    expect(afterLunch.afterLunch).toBe(true);
-    const normal = recs.find((c) => c.startAt === iso("10:00"))!;
-    expect(normal.afterLunch).toBe(false);
-    expect(afterLunch.score).toBeLessThan(normal.score);
-  });
 });
 
 describe("recommendSlots — 미응답 / 등급 / 설명", () => {

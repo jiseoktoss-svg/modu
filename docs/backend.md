@@ -71,7 +71,7 @@ DB 컬럼명은 Supabase/Postgres 기준으로 snake_case를 사용한다.
 | `admin_token` | 주최자 관리 토큰 |
 | `confirmed_slot_id` | 확정 슬롯 ID |
 | `created_at` | 생성일 |
-| `expires_at` | 만료 예정일 |
+| `expires_at` | 만료 예정일. 데이터 보존 정책용 내부 값이며, 화면에는 만료/삭제 안내를 노출하지 않는다 |
 
 ### participants
 
@@ -369,7 +369,7 @@ lib/scheduler/
 
 - 선택 참석자의 `busy`와 겹침
 - 참석자의 `avoid`와 겹침
-- 점심 제외 시간이 활성화된 회의에서 점심 직후 시간대와 겹침. 신규 회의는 점심 제외가 비활성화되어 이 감점이 사실상 적용되지 않는다.
+- 필수 참석자가 아직 응답하지 않음(불확실성 감점)
 
 미응답자가 있는 경우에는 후보를 제외하지 않고, 추천 카드에 `미응답자 있음` 상태를 표시한다.
 
@@ -381,6 +381,8 @@ lib/scheduler/
 - 필수 참석자가 모두 가능함
 - 선택 참석자도 많이 참석 가능함
 - 비선호 충돌이 적음
+
+> 현재 참석자 응답 폼은 불가 중심 입력으로 `busy` 블록만 생성한다. `avoid`/`preferred` 채점·가점 경로는 엔진과 타입에 남아 있으나 기존 데이터 호환용이며, 신규 응답에서는 이 두 상태가 더 이상 만들어지지 않는다.
 
 ### 후보 투표 및 확정
 
@@ -430,7 +432,6 @@ Supabase 정책:
 - 선택 참석자의 `busy`와 겹치는 후보는 제외되지 않고 감점된다.
 - `avoid`는 감점된다.
 - `preferred`는 가점된다.
-- 점심 제외 시간이 활성화된 회의에서는 점심 직후 시간대가 감점된다.
 - `loadCalendarSnapshot`은 토큰 검증 후 캘린더 집계용 데이터만 반환하고 메모 원문은 반환하지 않는다.
 - 미응답자가 있으면 추천 카드에 상태가 표시된다.
 
@@ -504,7 +505,6 @@ Route Handler: `app/api/meetings/[meetingId]/ics/route.ts` — 확정 슬롯 있
 | **하드 제외** | 필수 참석자(응답함)가 `busy` → `scoreSlot`이 `null` | — |
 | 선택 참석자 busy | `PENALTY_OPTIONAL_BUSY` | −15 |
 | 필수 미응답(불확실성) | `PENALTY_REQUIRED_PENDING` | −12 |
-| 점심 직후 밴드 `[lunchEnd, lunchEnd+60]` | `PENALTY_AFTER_LUNCH` | −10 |
 | `avoid` 겹침(소프트) | `PENALTY_AVOID` | −8 |
 | `preferred` 겹침(1건당) | `BONUS_PREFERRED` | +6 |
 

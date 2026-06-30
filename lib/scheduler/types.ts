@@ -74,7 +74,6 @@ export interface SlotCandidate {
 
   avoidConflictCount: number;
   preferredCount: number;
-  afterLunch: boolean;
 
   pendingCount: number;
   hasPendingParticipants: boolean;

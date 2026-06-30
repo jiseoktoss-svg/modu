@@ -16,7 +16,7 @@ function formatDeadline(dateStr: string): string {
 
 // 문장 안에서 강조되는 값(생성 화면의 파란 강조와 동일한 톤).
 function Val({ children }: { children: ReactNode }) {
-  return <span className="font-semibold text-brand-600">{children}</span>;
+  return <span className="modu-value-shine font-bold text-brand-600">{children}</span>;
 }
 
 interface MeetingSummarySentenceProps {

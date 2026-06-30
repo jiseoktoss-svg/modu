@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/layout/SiteHeader";
-import { ExpiryNotice } from "@/components/layout/ExpiryNotice";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { Emoji } from "@/components/ui/Emoji";
@@ -114,8 +113,6 @@ export default async function AdminPage({
             />
           </section>
         )}
-
-        <ExpiryNotice className="pt-4" />
       </main>
     </div>
   );

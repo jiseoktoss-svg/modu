@@ -253,6 +253,36 @@ body {
   }
 }
 
+/* 회의 안내(intro) 필드값 — 은은한 shine 스윕 (밝은 파랑 띠가 천천히 한 번씩 지나감) */
+.modu-value-shine {
+  background-image: linear-gradient(
+    100deg,
+    #2272eb 0%,
+    #2272eb 45%,
+    #93c0ff 50%,
+    #2272eb 55%,
+    #2272eb 100%
+  );
+  background-size: 300% 100%;
+  background-position: 100% center;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: modu-value-shine 5.5s ease-in-out infinite;
+}
+
+@keyframes modu-value-shine {
+  0% {
+    background-position: 100% center;
+  }
+
+  73%,
+  100% {
+    background-position: 0% center;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .modu-tds-button {
     transition: none;
@@ -275,5 +305,13 @@ body {
   .completion-burst circle {
     animation: none;
     opacity: 0;
+  }
+
+  /* 저감 모션: shine 끄고 단색 brand-600 으로 표시 */
+  .modu-value-shine {
+    animation: none;
+    background-image: none;
+    color: #2272eb;
+    -webkit-text-fill-color: #2272eb;
   }
 }

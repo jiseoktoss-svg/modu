@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/layout/SiteHeader";
-import { ExpiryNotice } from "@/components/layout/ExpiryNotice";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { ConfirmedMeetingSummary } from "@/components/meeting/ConfirmedMeetingSummary";
 import {
@@ -66,7 +65,6 @@ export default async function ConfirmedPage({
             </div>
           </Card>
         )}
-        <ExpiryNotice className="mt-10" />
       </main>
     </div>
   );

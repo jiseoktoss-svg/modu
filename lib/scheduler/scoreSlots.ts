@@ -1,4 +1,4 @@
-import { getKstParts, isoToEpoch, parseHm } from "@/lib/time";
+import { isoToEpoch } from "@/lib/time";
 import { explainRecommendation } from "./explainRecommendation";
 import type { RawSlot } from "./generateSlots";
 import type {
@@ -13,14 +13,8 @@ import type {
 export const SCORE_BASE = 100;
 export const PENALTY_OPTIONAL_BUSY = 15; // 선택 참석자 1명 불가
 export const PENALTY_AVOID = 8; // 비선호 1건
-export const PENALTY_AFTER_LUNCH = 10; // 점심 직후
 export const PENALTY_REQUIRED_PENDING = 12; // 필수인데 미응답 (불확실성)
 export const BONUS_PREFERRED = 6; // 선호 1건
-
-/** 점심 직후 회피 밴드(분). 기본은 점심 종료 후 1시간. (기본값 기준 13:00~14:00) */
-function afterLunchBand(lunchEnd: number): [number, number] {
-  return [lunchEnd, lunchEnd + 60];
-}
 
 function overlaps(aStart: number, aEnd: number, bStart: number, bEnd: number): boolean {
   return aStart < bEnd && bStart < aEnd;
@@ -110,18 +104,6 @@ export function scoreSlot(slot: RawSlot, input: SchedulerInput): SlotCandidate |
     });
   }
 
-  // 점심 직후 여부 (KST 분 기준).
-  const startMin = (() => {
-    const kp = getKstParts(slot.startAt);
-    return kp.hours * 60 + kp.minutes;
-  })();
-  const endMin = (() => {
-    const kp = getKstParts(slot.endAt);
-    return kp.hours * 60 + kp.minutes;
-  })();
-  const [bandStart, bandEnd] = afterLunchBand(parseHm(input.meeting.lunchEnd));
-  const afterLunch = overlaps(startMin, endMin, bandStart, bandEnd);
-
   const requiredAllAvailable =
     requiredTotalCount === 0 || requiredAvailableCount === requiredTotalCount;
   const requiredPending = requiredTotalCount - requiredAvailableCount;
@@ -130,7 +112,6 @@ export function scoreSlot(slot: RawSlot, input: SchedulerInput): SlotCandidate |
   let score = SCORE_BASE;
   score -= busyOptionalCount * PENALTY_OPTIONAL_BUSY;
   score -= avoidConflictCount * PENALTY_AVOID;
-  score -= afterLunch ? PENALTY_AFTER_LUNCH : 0;
   score -= requiredPending * PENALTY_REQUIRED_PENDING;
   score += preferredCount * BONUS_PREFERRED;
 
@@ -138,7 +119,7 @@ export function scoreSlot(slot: RawSlot, input: SchedulerInput): SlotCandidate |
   let grade: RecommendationGrade;
   if (!requiredAllAvailable) {
     grade = "caution"; // 필수 참석자 일부가 아직 불확실
-  } else if (busyOptionalCount === 0 && avoidConflictCount === 0 && !afterLunch) {
+  } else if (busyOptionalCount === 0 && avoidConflictCount === 0) {
     grade = "best";
   } else if (busyOptionalCount === 0 && avoidConflictCount <= 1) {
     grade = "recommended";
@@ -159,7 +140,6 @@ export function scoreSlot(slot: RawSlot, input: SchedulerInput): SlotCandidate |
     busyOptionalCount,
     avoidConflictCount,
     preferredCount,
-    afterLunch,
     pendingCount,
     hasPendingParticipants: pendingCount > 0,
     impacts,

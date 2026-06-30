@@ -61,7 +61,6 @@ export function RecommendationCard({
         )}
         {c.avoidConflictCount > 0 && <Badge tone="amber">비선호 {c.avoidConflictCount}건</Badge>}
         {c.preferredCount > 0 && <Badge tone="blue">선호 {c.preferredCount}명</Badge>}
-        {c.afterLunch && <Badge tone="amber">점심 직후</Badge>}
         {c.hasPendingParticipants && <Badge tone="gray">미응답 {c.pendingCount}명</Badge>}
         <Badge tone={canConfirm ? "green" : "gray"}>
           {hasVotes ? `투표 ${voteCount}표` : "투표 대기"}

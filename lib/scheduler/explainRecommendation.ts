@@ -27,12 +27,9 @@ export function explainRecommendation(c: CandidateFacts): string {
     }
   }
 
-  // 3) 기존 데이터 호환용 비선호 조건 / 점심 직후
-  if (c.avoidConflictCount > 0 || c.afterLunch) {
-    const demerits: string[] = [];
-    if (c.avoidConflictCount > 0) demerits.push(`비선호 조건 ${c.avoidConflictCount}건`);
-    if (c.afterLunch) demerits.push(`점심 직후 시간`);
-    parts.push(`${demerits.join("과 ")} 때문에 우선순위를 약간 낮췄습니다`);
+  // 3) 비선호 조건 (기존 데이터 호환)
+  if (c.avoidConflictCount > 0) {
+    parts.push(`비선호 조건 ${c.avoidConflictCount}건 때문에 우선순위를 약간 낮췄습니다`);
   }
 
   // 4) 선호

@@ -60,8 +60,6 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
   const justDraggedRef = useRef(false);
 
   const selectedKeys = new Set(participants.map(employeeKey));
-  const requiredCount = participants.filter((p) => p.attendanceType === "required").length;
-  const optionalCount = participants.length - requiredCount;
   const participantLimitReached = participants.length >= MAX_MEETING_PARTICIPANTS;
   const normalizedQuery = query.trim().toLowerCase();
   const filteredEmployees = MOCK_EMPLOYEES.filter((employee) => {
@@ -337,25 +335,6 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
 
       {/* 필수참석 / 선택참석 구역 — 빈 곳 드래그로 범위 선택, 뱃지를 끌어 이동 */}
       <div className="flex min-h-0 flex-[0.85_1_0] flex-col gap-1.5 sm:flex-1 sm:gap-2">
-        <div className="hidden flex-nowrap items-center gap-1.5 sm:flex">
-          <span
-            className={cn(
-              "whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-bold",
-              requiredCount > 0 ? "bg-brand-50 text-brand-700" : "bg-slate-100 text-slate-500",
-            )}
-          >
-            필수 {requiredCount}명
-          </span>
-          <span
-            className={cn(
-              "whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-bold",
-              optionalCount > 0 ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500",
-            )}
-          >
-            선택 {optionalCount}명
-          </span>
-        </div>
-
         <div
           ref={zonesRef}
           onMouseDown={handleZonesMouseDown}

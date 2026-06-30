@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/layout/SiteHeader";
-import { ExpiryNotice } from "@/components/layout/ExpiryNotice";
 import { ResponseForm } from "@/components/scheduler/ResponseForm";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Emoji } from "@/components/ui/Emoji";
@@ -24,7 +23,7 @@ export default async function ParticipantPage({
   return (
     <div className="flex min-h-dvh flex-col bg-white/95">
       <SiteHeader />
-      <main className="mx-auto flex w-full max-w-screen-2xl flex-1 flex-col px-4 pt-8 sm:px-6">
+      <main className="mx-auto flex min-h-0 w-full max-w-screen-2xl flex-1 flex-col px-4 pt-8 sm:px-6">
         {meeting.confirmedSlotId ? (
           <>
             <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
@@ -44,10 +43,8 @@ export default async function ParticipantPage({
                 </TDSButton>
               </Card>
             </div>
-            <ExpiryNotice className="mt-10" />
           </>
         ) : (
-          // 응답 흐름(intro/select/fill/done)은 ExpiryNotice를 단계별로 CTA 위에 직접 렌더한다.
           <ResponseForm
             meetingId={meeting.id}
             meetingTitle={meeting.title}
