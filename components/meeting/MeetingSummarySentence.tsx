@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
+import { formatKoreanDate, formatKoreanTime } from "@/lib/time";
 
 // 회의 생성 화면(MeetingCreateForm) 상단 안내 문장을 읽기 전용으로 재사용한다.
 // 참가자 이름/명수는 의도적으로 제외한다.
@@ -24,6 +25,7 @@ interface MeetingSummarySentenceProps {
   agenda: string;
   location: string;
   deadlineDate: string; // YYYY-MM-DD (meeting.dateEnd)
+  responseDeadline?: string | null; // ISO(+09:00), 응답 마감 시각
   durationMinutes: number;
   className?: string;
 }
@@ -33,6 +35,7 @@ export function MeetingSummarySentence({
   agenda,
   location,
   deadlineDate,
+  responseDeadline,
   durationMinutes,
   className,
 }: MeetingSummarySentenceProps) {
@@ -65,6 +68,15 @@ export function MeetingSummarySentence({
         {deadlineText !== "" && (
           <>
             <Val>{deadlineText}</Val> 까지는 회의가 완료되어야 해요.{" "}
+          </>
+        )}
+        {responseDeadline && (
+          <>
+            응답은{" "}
+            <Val>
+              {formatKoreanDate(responseDeadline)} {formatKoreanTime(responseDeadline)}
+            </Val>{" "}
+            까지 부탁드려요.{" "}
           </>
         )}
         예상 회의 진행 시간은{" "}

@@ -29,6 +29,7 @@ interface DemoMeetingPayload {
   workdayEnd: string;
   lunchStart: string;
   lunchEnd: string;
+  responseDeadline?: string | null;
   participants: DemoParticipantInput[];
 }
 
@@ -136,6 +137,8 @@ function parseDemoMeetingPayload(meetingId: string): DemoMeetingPayload | null {
     workdayEnd: payload.workdayEnd,
     lunchStart: payload.lunchStart,
     lunchEnd: payload.lunchEnd,
+    responseDeadline:
+      typeof payload.responseDeadline === "string" ? payload.responseDeadline : null,
     participants,
   };
 }
@@ -160,6 +163,7 @@ export function getDemoMeeting(meetingId: string): Meeting | null {
     confirmedSlotId: null,
     createdAt: `${payload.dateStart}T00:00:00+09:00`,
     expiresAt: `${addDaysToDateStr(payload.dateStart, 30)}T00:00:00+09:00`,
+    responseDeadline: payload.responseDeadline ?? null,
   };
 }
 

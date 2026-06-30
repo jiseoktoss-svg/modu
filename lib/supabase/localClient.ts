@@ -117,6 +117,7 @@ function withDefaults(table: LocalTableName, row: Record<string, unknown>): Loca
       confirmed_slot_id: (row.confirmed_slot_id as string | null | undefined) ?? null,
       created_at: String(row.created_at ?? nowIso),
       expires_at: String(row.expires_at ?? addDays(now, 30).toISOString()),
+      response_deadline: (row.response_deadline as string | null | undefined) ?? null,
     };
   }
 

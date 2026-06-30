@@ -14,6 +14,7 @@ import { MobileStickyAction } from "@/components/layout/MobileStickyAction";
 import { Emoji } from "@/components/ui/Emoji";
 import { Input, Label } from "@/components/ui/Input";
 import { DatePicker } from "@/components/ui/DatePicker";
+import { Select } from "@/components/ui/Select";
 import { TDSButton } from "@/components/ui/TDSButton";
 import { cn } from "@/lib/cn";
 import { useScrollLock } from "@/lib/useScrollLock";
@@ -31,7 +32,6 @@ import {
 } from "@/lib/meetingLimits";
 
 interface Props {
-  defaultDeadlineDate: string;
   minDeadlineDate: string;
   initialMeeting?: {
     id: string;
@@ -40,13 +40,15 @@ interface Props {
     agenda: string;
     location: string;
     deadlineDate: string;
+    responseDeadlineDate?: string;
+    responseDeadlineTime?: string;
     durationMinutes: number;
     participants: ParticipantDraft[];
   };
 }
 
 const INITIAL_PARTICIPANTS: ParticipantDraft[] = [];
-const LAST_STEP = 5;
+const LAST_STEP = 6;
 const WORKDAY_MINUTES = 9 * 60; // 09:00~18:00 (서버 기본 근무시간과 일치)
 
 // 단계별 하단 입력의 포커스 대상 element id.
@@ -55,6 +57,7 @@ const FOCUS_IDS = [
   "agenda",
   "location",
   "deadlineDate",
+  "responseDeadlineDate",
   "durationHours",
   "participantSelect",
 ];
@@ -226,7 +229,6 @@ function NumberStepper({
 }
 
 export function MeetingCreateForm({
-  defaultDeadlineDate,
   minDeadlineDate,
   initialMeeting,
 }: Props) {
@@ -241,8 +243,15 @@ export function MeetingCreateForm({
   const [title, setTitle] = useState(initialMeeting?.title ?? "");
   const [agenda, setAgenda] = useState(initialMeeting?.agenda ?? "");
   const [location, setLocation] = useState(initialMeeting?.location ?? "");
+  // 신규 생성 시에는 날짜를 비워 두어 사용자가 직접 선택하게 한다(자동 선택 방지).
   const [deadlineDate, setDeadlineDate] = useState(
-    initialMeeting?.deadlineDate ?? defaultDeadlineDate,
+    initialMeeting?.deadlineDate ?? "",
+  );
+  const [responseDeadlineDate, setResponseDeadlineDate] = useState(
+    initialMeeting?.responseDeadlineDate ?? "",
+  );
+  const [responseDeadlineTime, setResponseDeadlineTime] = useState(
+    initialMeeting?.responseDeadlineTime ?? "18:00",
   );
   // 시간/분은 문자열로 보관해 타이핑 중 빈 칸을 허용한다(즉시 0으로 튀지 않게).
   const [durationHours, setDurationHours] = useState(String(initialDurationHours));
@@ -252,6 +261,8 @@ export function MeetingCreateForm({
   );
   const [showParticipantModal, setShowParticipantModal] = useState(false);
   const [participantError, setParticipantError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
 
   // step: 하단에 표시 중인 입력 단계. maxStep: 지금까지 도달한 가장 먼 단계.
   const [step, setStep] = useState(isEditing ? LAST_STEP : 0);
@@ -285,6 +296,14 @@ export function MeetingCreateForm({
 
   // 단계별 유효성(모두 필수). 서버 검증과 일치시킨다.
   const dateOk = deadlineDate.trim().length > 0 && deadlineDate >= minDeadlineDate;
+  // 응답 마감일: 오늘 이후 + 회의 마감일 이전(같은 날 허용) + 시간 형식. (분 단위는 쓰지 않음 → 항상 :00)
+  const rdHour = responseDeadlineTime.split(":")[0] || "18";
+  const responseDateOk =
+    responseDeadlineDate.trim().length > 0 &&
+    responseDeadlineDate >= minDeadlineDate &&
+    responseDeadlineDate <= deadlineDate;
+  const responseTimeOk = /^\d{2}:\d{2}$/.test(responseDeadlineTime);
+  const responseDeadlineOk = responseDateOk && responseTimeOk;
   const titleTooLong = title.length > MAX_MEETING_TITLE_LENGTH;
   const agendaTooLong = agenda.length > MAX_MEETING_AGENDA_LENGTH;
   const locationTooLong = location.length > MAX_MEETING_LOCATION_LENGTH;
@@ -293,6 +312,7 @@ export function MeetingCreateForm({
     agenda.trim().length > 0 && !agendaTooLong,
     location.trim().length > 0 && !locationTooLong,
     dateOk,
+    responseDeadlineOk,
     durationOk,
     filledParticipants.length >= MIN_MEETING_PARTICIPANTS &&
       filledParticipants.length <= MAX_MEETING_PARTICIPANTS,
@@ -302,6 +322,9 @@ export function MeetingCreateForm({
   // 도달한 단계(i<=maxStep)는 항상 절을 노출하고, 값이 비면 dot 애니메이션을 표시한다.
   const clauseVisible = (i: number) => i <= maxStep;
   const deadlineText = formatDeadline(deadlineDate);
+  const responseDeadlineText = responseDeadlineDate
+    ? `${formatDeadline(responseDeadlineDate)} ${responseDeadlineTime}`
+    : "";
 
   const goTo = (next: number) => {
     setStep(next);
@@ -318,8 +341,30 @@ export function MeetingCreateForm({
     focusOverride.current = focusId ?? null;
     setStep(i);
   };
+  const showToast = (message: string) => {
+    setToast(message);
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 2800);
+  };
+  // 회의 마감일을 응답 마감일보다 앞당기면 응답 마감일을 회의 마감일에 맞춰 자동 조정한다.
+  const handleDeadlineChange = (next: string) => {
+    setDeadlineDate(next);
+    if (responseDeadlineDate && responseDeadlineDate > next) {
+      setResponseDeadlineDate(next);
+      showToast("회의 마감일에 맞춰 응답 마감일을 조정했어요.");
+    }
+  };
+  // 응답 마감일은 회의 마감일을 넘길 수 없다 → 가까운 회의 마감일로 자동 지정 + 경고 토스트.
+  const handleResponseDeadlineDateChange = (next: string) => {
+    if (deadlineDate && next > deadlineDate) {
+      setResponseDeadlineDate(deadlineDate);
+      showToast("응답 마감일은 회의 마감일까지만 정할 수 있어 회의 마감일로 맞췄어요.");
+      return;
+    }
+    setResponseDeadlineDate(next);
+  };
   const openParticipantModal = () => {
-    editStep(5);
+    editStep(LAST_STEP);
     setShowParticipantModal(true);
   };
 
@@ -454,6 +499,18 @@ export function MeetingCreateForm({
       action={formAction}
       className="flex flex-1 flex-col"
     >
+      {/* 경고 토스트(응답 마감일 자동 보정 등) */}
+      <div
+        aria-live="assertive"
+        className={cn(
+          "pointer-events-none fixed inset-x-0 top-4 z-50 mx-auto flex w-fit max-w-[calc(100vw-2rem)] items-center gap-2 rounded-full bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-all duration-200",
+          toast ? "translate-y-0 opacity-100" : "-translate-y-2 opacity-0",
+        )}
+      >
+        <Emoji symbol="⚠️" size={16} />
+        <span className="break-keep">{toast}</span>
+      </div>
+
       {/* 상단: 입력에 따라 완성되는 안내 문장 */}
       <div className="flex-1 pt-6 sm:pt-8">
         <p className="text-sm font-medium text-slate-400">회의 만들기</p>
@@ -463,28 +520,28 @@ export function MeetingCreateForm({
         >
           <p>
             {clauseVisible(0) && (
-              <span className="animate-fade-in motion-reduce:animate-none">
+              <span className="relative animate-fade-up-blur motion-reduce:animate-none">
                 이번 회의명은{" "}
                 {valueSlot(title.trim() === "", "회의명", () => editStep(0), title)}{" "}
                 에요.{" "}
               </span>
             )}
             {clauseVisible(1) && (
-              <span className="animate-fade-in motion-reduce:animate-none">
+              <span className="relative animate-fade-up-blur motion-reduce:animate-none">
                 회의 안건은{" "}
                 {valueSlot(agenda.trim() === "", "안건", () => editStep(1), agenda)}{" "}
                 입니다.{" "}
               </span>
             )}
             {clauseVisible(2) && (
-              <span className="animate-fade-in motion-reduce:animate-none">
+              <span className="relative animate-fade-up-blur motion-reduce:animate-none">
                 회의 장소는{" "}
                 {valueSlot(location.trim() === "", "장소", () => editStep(2), location)}{" "}
                 이며,{" "}
               </span>
             )}
             {clauseVisible(3) && (
-              <span className="animate-fade-in motion-reduce:animate-none">
+              <span className="relative animate-fade-up-blur motion-reduce:animate-none">
                 {valueSlot(
                   deadlineText === "",
                   "회의 마감 날짜",
@@ -495,11 +552,23 @@ export function MeetingCreateForm({
               </span>
             )}
             {clauseVisible(4) && (
-              <span className="animate-fade-in motion-reduce:animate-none">
+              <span className="relative animate-fade-up-blur motion-reduce:animate-none">
+                참여자는{" "}
+                {valueSlot(
+                  responseDeadlineText === "",
+                  "응답 마감",
+                  () => editStep(4),
+                  responseDeadlineText,
+                )}{" "}
+                까지 응답해주세요.{" "}
+              </span>
+            )}
+            {clauseVisible(5) && (
+              <span className="relative animate-fade-up-blur motion-reduce:animate-none">
                 예상 회의 진행 시간은{" "}
                 {showDurationHours && (
                   <>
-                    {valueSlot(!hoursOk, "회의 길이", () => editStep(4), hoursNum)}{" "}
+                    {valueSlot(!hoursOk, "회의 길이", () => editStep(5), hoursNum)}{" "}
                     시간{showDurationMin ? " " : ""}
                   </>
                 )}
@@ -508,7 +577,7 @@ export function MeetingCreateForm({
                     {valueSlot(
                       !minOk,
                       "회의 길이",
-                      () => editStep(4, "durationMinutePart"),
+                      () => editStep(5, "durationMinutePart"),
                       minNum,
                     )}{" "}
                     분
@@ -518,8 +587,8 @@ export function MeetingCreateForm({
               </span>
             )}
           </p>
-          {clauseVisible(5) && (
-            <p className="mt-4 animate-fade-up text-left motion-reduce:animate-none">
+          {clauseVisible(6) && (
+            <p className="mt-4 relative animate-fade-up-blur text-left motion-reduce:animate-none">
               회의 참석자 명단은{" "}
               {valueSlot(
                 filledParticipants.length === 0,
@@ -545,6 +614,8 @@ export function MeetingCreateForm({
       <input type="hidden" name="agenda" value={agenda} />
       <input type="hidden" name="location" value={location} />
       <input type="hidden" name="deadlineDate" value={deadlineDate} />
+      <input type="hidden" name="responseDeadlineDate" value={responseDeadlineDate} />
+      <input type="hidden" name="responseDeadlineTime" value={responseDeadlineTime} />
       <input type="hidden" name="durationHours" value={hoursOk ? hoursNum : 0} />
       <input type="hidden" name="durationMinutePart" value={minOk ? minNum : 0} />
       {initialMeeting && (
@@ -567,7 +638,7 @@ export function MeetingCreateForm({
 
       {/* 하단: 현재 단계 입력 + 액션 버튼 */}
       <MobileStickyAction className="mt-6 sm:mt-8">
-        <div key={step} className="animate-fade-up motion-reduce:animate-none">
+        <div key={step}>
           {step === 0 && (
             <>
               <LimitedFieldLabel htmlFor="title" invalid={titleTooLong}>
@@ -652,12 +723,42 @@ export function MeetingCreateForm({
               <DatePicker
                 id="deadlineDate"
                 value={deadlineDate}
-                onChange={setDeadlineDate}
+                onChange={handleDeadlineChange}
                 min={minDeadlineDate}
+                placeholder="날짜를 선택해주세요"
               />
             </>
           )}
           {step === 4 && (
+            <>
+              <Label htmlFor="responseDeadlineDate" className="text-lg">
+                참여자들이 언제까지 응답하면 될까요?
+              </Label>
+              <DatePicker
+                id="responseDeadlineDate"
+                value={responseDeadlineDate}
+                onChange={handleResponseDeadlineDateChange}
+                min={minDeadlineDate}
+                placeholder="날짜를 선택해주세요"
+              />
+              <div className="mt-2">
+                <Select
+                  aria-label="응답 마감 시각"
+                  value={rdHour}
+                  onChange={(e) => setResponseDeadlineTime(`${e.target.value}:00`)}
+                >
+                  {Array.from({ length: 24 }, (_, h) =>
+                    String(h).padStart(2, "0"),
+                  ).map((h) => (
+                    <option key={h} value={h}>
+                      {h}시
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </>
+          )}
+          {step === 5 && (
             <>
               <Label htmlFor="durationHours" className="text-lg">예상 회의 진행 시간을 입력해주세요</Label>
               <div className="grid grid-cols-2 gap-3">
@@ -708,7 +809,7 @@ export function MeetingCreateForm({
               )}
             </>
           )}
-          {step === 5 &&
+          {step === LAST_STEP &&
             (filledParticipants.length < MIN_MEETING_PARTICIPANTS ||
               filledParticipants.length > MAX_MEETING_PARTICIPANTS) && (
             <Label htmlFor="participantSelect" className="text-lg">

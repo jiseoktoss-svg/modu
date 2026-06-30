@@ -51,6 +51,7 @@ export default async function ParticipantPage({
             agenda={meeting.agenda}
             location={meeting.location}
             deadlineDate={meeting.dateEnd}
+            responseDeadline={meeting.responseDeadline}
             durationMinutes={meeting.durationMinutes}
             dates={dates}
             workdayStart={meeting.workdayStart}

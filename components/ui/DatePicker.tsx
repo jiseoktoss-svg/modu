@@ -31,6 +31,7 @@ interface DatePickerProps {
   value: string; // YYYY-MM-DD
   onChange: (v: string) => void;
   min?: string; // YYYY-MM-DD
+  placeholder?: string; // 값이 없을 때 버튼에 표시할 안내 문구
 }
 
 function Chevron({ dir }: { dir: "left" | "right" }) {
@@ -47,7 +48,7 @@ function Chevron({ dir }: { dir: "left" | "right" }) {
   );
 }
 
-export function DatePicker({ id, value, onChange, min }: DatePickerProps) {
+export function DatePicker({ id, value, onChange, min, placeholder = "날짜 선택" }: DatePickerProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const sel = value ? parse(value) : null;
@@ -225,7 +226,7 @@ export function DatePicker({ id, value, onChange, min }: DatePickerProps) {
         aria-expanded={open}
         className="flex h-11 w-full items-center justify-between rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 transition-colors hover:border-slate-400 focus:border-2 focus:border-brand-400 focus:outline-none focus:ring-0"
       >
-        <span className={sel ? "" : "text-slate-400"}>{label}</span>
+        <span className={sel ? "" : "text-slate-400"}>{sel ? label : placeholder}</span>
         <Emoji symbol="📅" size={16} />
       </button>
 

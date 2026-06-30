@@ -29,7 +29,7 @@ import {
 } from "@/lib/demoMeeting";
 import { getSupabaseAdmin, hasSupabaseConfig } from "@/lib/supabase/server";
 import { generateToken } from "@/lib/tokens";
-import { parseHm, todayDateStrKst } from "@/lib/time";
+import { kstWallToIso, parseHm, todayDateStrKst } from "@/lib/time";
 import { mapMeeting, type MeetingRow, type ParticipantRow } from "@/lib/types";
 import {
   MAX_MEETING_AGENDA_LENGTH,
@@ -126,6 +126,8 @@ export async function createMeeting(
   const deadlineDate = String(
     formData.get("deadlineDate") ?? formData.get("meetingDate") ?? "",
   ).trim();
+  const responseDeadlineDate = String(formData.get("responseDeadlineDate") ?? "").trim();
+  const responseDeadlineTime = String(formData.get("responseDeadlineTime") ?? "").trim();
   const editMeetingId = String(formData.get("meetingId") ?? "").trim();
   const editAdminToken = String(formData.get("adminToken") ?? "").trim();
   const isEditing = editMeetingId.length > 0 || editAdminToken.length > 0;
@@ -165,6 +167,24 @@ export async function createMeeting(
   if (deadlineDate < dateStart) {
     return { error: "회의 마감 날짜는 오늘 이후로 선택해 주세요." };
   }
+
+  // 응답 마감일(날짜 + 시간). 폼에서 항상 전송되지만, 없으면 null 로 둔다(구버전 데모 링크 호환).
+  let responseDeadline: string | null = null;
+  if (responseDeadlineDate) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(responseDeadlineDate)) {
+      return { error: "응답 마감 날짜가 올바르지 않습니다." };
+    }
+    if (responseDeadlineTime && !/^\d{2}:\d{2}$/.test(responseDeadlineTime)) {
+      return { error: "응답 마감 시간이 올바르지 않습니다." };
+    }
+    if (responseDeadlineDate < dateStart) {
+      return { error: "응답 마감 날짜는 오늘 이후로 선택해 주세요." };
+    }
+    if (responseDeadlineDate > dateEnd) {
+      return { error: "응답 마감 날짜는 회의 마감 날짜보다 빠르거나 같아야 해요." };
+    }
+    responseDeadline = kstWallToIso(responseDeadlineDate, parseHm(responseDeadlineTime || "18:00"));
+  }
   if (
     !Number.isFinite(durationHours) ||
     !Number.isFinite(durationMinutePart) ||
@@ -200,6 +220,7 @@ export async function createMeeting(
       workdayEnd,
       lunchStart,
       lunchEnd,
+      responseDeadline,
       participants,
     });
     redirect(`/meetings/${demoMeetingId}/share`);
@@ -248,6 +269,7 @@ export async function createMeeting(
         workday_end: workdayEnd,
         lunch_start: lunchStart,
         lunch_end: lunchEnd,
+        response_deadline: responseDeadline,
       })
       .eq("id", editMeetingId)
       .eq("admin_token", editAdminToken);
@@ -301,6 +323,7 @@ export async function createMeeting(
       workday_end: workdayEnd,
       lunch_start: lunchStart,
       lunch_end: lunchEnd,
+      response_deadline: responseDeadline,
       admin_token: adminToken,
     })
     .select("id")

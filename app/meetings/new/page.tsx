@@ -2,7 +2,16 @@ import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { MeetingCreateForm } from "@/components/meeting/MeetingCreateForm";
 import { fetchMeeting, fetchParticipants } from "@/lib/data";
-import { addDaysToDateStr, todayDateStrKst } from "@/lib/time";
+import { getKstParts, todayDateStrKst } from "@/lib/time";
+
+function splitKstDeadline(iso: string): { date: string; time: string } {
+  const p = getKstParts(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return {
+    date: `${p.year}-${pad(p.month)}-${pad(p.day)}`,
+    time: `${pad(p.hours)}:${pad(p.minutes)}`,
+  };
+}
 
 export default async function NewMeetingPage({
   searchParams,
@@ -10,7 +19,6 @@ export default async function NewMeetingPage({
   searchParams?: { meetingId?: string; adminToken?: string };
 }) {
   const today = todayDateStrKst(new Date());
-  const defaultDeadlineDate = addDaysToDateStr(today, 7);
   const editMeetingId = searchParams?.meetingId;
   const editAdminToken = searchParams?.adminToken;
 
@@ -32,7 +40,6 @@ export default async function NewMeetingPage({
       <SiteHeader />
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 sm:px-6">
         <MeetingCreateForm
-          defaultDeadlineDate={defaultDeadlineDate}
           minDeadlineDate={today}
           initialMeeting={
             editMeeting
@@ -43,6 +50,12 @@ export default async function NewMeetingPage({
                   agenda: editMeeting.agenda,
                   location: editMeeting.location,
                   deadlineDate: editMeeting.dateEnd,
+                  responseDeadlineDate: editMeeting.responseDeadline
+                    ? splitKstDeadline(editMeeting.responseDeadline).date
+                    : undefined,
+                  responseDeadlineTime: editMeeting.responseDeadline
+                    ? splitKstDeadline(editMeeting.responseDeadline).time
+                    : undefined,
                   durationMinutes: editMeeting.durationMinutes,
                   participants: editParticipants.map((participant) => ({
                     name: participant.name,

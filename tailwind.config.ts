@@ -59,6 +59,12 @@ const config: Config = {
           "0%": { opacity: "0" },
           "100%": { opacity: "1" },
         },
+        // AOS 느낌: 아래에서 위로 + 흐릿(blur)→뚜렷. 인라인 요소에서도 동작하도록
+        // transform(translateY) 대신 position:relative + top 으로 이동시킨다(함께 'relative' 클래스 필요).
+        "fade-up-blur": {
+          "0%": { opacity: "0", top: "10px", filter: "blur(5px)" },
+          "100%": { opacity: "1", top: "0", filter: "blur(0)" },
+        },
         // 빈 값 자리표시용 dot 3개 파도타기.
         "dot-wave": {
           "0%, 60%, 100%": { transform: "translateY(0)", opacity: "0.35" },
@@ -68,6 +74,7 @@ const config: Config = {
       animation: {
         "fade-up": "fade-up 0.35s ease-out both",
         "fade-in": "fade-in 0.3s ease-out both",
+        "fade-up-blur": "fade-up-blur 0.5s ease-out both",
         "dot-wave": "dot-wave 1.1s ease-in-out infinite",
       },
       maxWidth: {

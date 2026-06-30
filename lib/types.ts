@@ -27,6 +27,8 @@ export interface Meeting {
   confirmedSlotId: string | null;
   createdAt: string;
   expiresAt: string;
+  /** 응답 마감 시각(ISO +09:00). 미설정이면 null. */
+  responseDeadline: string | null;
 }
 
 export interface Participant {
@@ -89,6 +91,7 @@ export interface MeetingRow {
   confirmed_slot_id: string | null;
   created_at: string;
   expires_at: string;
+  response_deadline?: string | null;
 }
 
 export interface ParticipantRow {
@@ -153,6 +156,7 @@ export function mapMeeting(row: MeetingRow): Meeting {
     confirmedSlotId: row.confirmed_slot_id,
     createdAt: row.created_at,
     expiresAt: row.expires_at,
+    responseDeadline: row.response_deadline ?? null,
   };
 }
 

@@ -34,6 +34,7 @@ import {
   formatHm,
   formatKoreanDate,
   formatKoreanDateTimeRange,
+  formatKoreanTime,
   formatKoreanTimeRange,
   kstWallToIso,
   parseHm,
@@ -60,6 +61,7 @@ interface Props {
   agenda: string;
   location: string;
   deadlineDate: string;
+  responseDeadline?: string | null;
   durationMinutes: number;
   dates: string[];
   workdayStart: string;
@@ -69,7 +71,15 @@ interface Props {
   initialParticipants: PublicParticipant[];
 }
 
-type Step = "loading" | "intro" | "identity" | "availability" | "review" | "result" | "done";
+type Step =
+  | "loading"
+  | "intro"
+  | "identity"
+  | "availability"
+  | "review"
+  | "waiting"
+  | "result"
+  | "done";
 type DateSummaryStatus = "available" | "preferred" | "busy" | "mixed";
 type CalendarStatus = "available" | "preferred" | "avoid" | "busy" | "pending";
 
@@ -208,7 +218,7 @@ function DotWave() {
 }
 
 // 상단 문장에서 클릭하면 해당 단계로 돌아가 수정할 수 있는 값.
-// 긍정(선호)은 파란색, 부정(피하고 싶은/불가/안 되는)은 회색으로 구분한다.
+// 긍정(선호)은 파란색, 부정(불가/안 되는)은 연한 빨간색으로 구분한다.
 function EditValue({
   fieldLabel,
   onEdit,
@@ -228,7 +238,7 @@ function EditValue({
       className={cn(
         "inline rounded font-semibold decoration-2 underline-offset-4 transition-colors hover:underline focus:outline-none focus-visible:underline focus-visible:ring-2 focus-visible:ring-brand-200",
         tone === "negative"
-          ? "text-slate-500 decoration-slate-300 hover:text-slate-600"
+          ? "text-red-400 decoration-red-300 hover:text-red-500"
           : "text-brand-600 decoration-brand-400 hover:text-brand-700",
       )}
     >
@@ -753,6 +763,7 @@ export function ResponseForm(props: Props) {
     agenda,
     location,
     deadlineDate,
+    responseDeadline,
     durationMinutes,
     dates,
     workdayStart,
@@ -841,7 +852,7 @@ export function ResponseForm(props: Props) {
           setRole(found?.role ?? "");
           setIdentityName(found?.name ?? "");
           setIdentityRole(found?.role ?? "");
-          setStep("result");
+          setStep("waiting");
         } else {
           window.localStorage.removeItem(storageKey(meetingId));
           setSelectedId(null);
@@ -1130,7 +1141,7 @@ export function ResponseForm(props: Props) {
     }
     setToken(res.token);
     persistIdentity(res.participantId, res.token);
-    setStep("result");
+    setStep("waiting");
   }
 
   // 본인확인 단계가 바뀌면 입력에 포커스(최초 진입은 건너뜀, 스크롤 점프 방지).
@@ -1161,11 +1172,12 @@ export function ResponseForm(props: Props) {
         <div className="flex-1">
           <p className="text-sm font-medium text-slate-400">회의 안내</p>
           <MeetingSummarySentence
-            className="mt-3"
+            className="relative mt-3 animate-fade-up-blur motion-reduce:animate-none"
             title={meetingTitle}
             agenda={agenda}
             location={location}
             deadlineDate={deadlineDate}
+            responseDeadline={responseDeadline}
             durationMinutes={durationMinutes}
           />
         </div>
@@ -1204,7 +1216,7 @@ export function ResponseForm(props: Props) {
           <div className="flex-1">
             <p className="text-sm font-medium text-slate-400">입력 확인</p>
             <div className="mt-3 break-keep text-left text-xl leading-relaxed text-slate-800 sm:text-2xl sm:leading-relaxed">
-              저는{" "}
+              {personName}님은{" "}
               {busyDatesText ? (
                 <>
                   <EditValue
@@ -1292,6 +1304,21 @@ export function ResponseForm(props: Props) {
     );
   }
 
+  // 제출 후 대기 화면 — 응답 마감 시각까지 기다린 뒤 후보/캘린더로 이동.
+  if (step === "waiting") {
+    return (
+      <WaitingScreen
+        responseDeadline={responseDeadline}
+        onProceed={() => setStep("result")}
+        onEdit={() => {
+          setAvailStep(0);
+          setMaxAvailStep(0);
+          setStep("availability");
+        }}
+      />
+    );
+  }
+
   // 제출 후 결과 화면 — 응답 현황 + 현재 후보 순위. 캘린더는 버튼으로 이동.
   if (step === "result") {
     return (
@@ -1341,14 +1368,14 @@ export function ResponseForm(props: Props) {
             >
               <p>
                 {clauseVisible(0) && (
-                  <span className="animate-fade-in motion-reduce:animate-none">
+                  <span className="relative animate-fade-up-blur motion-reduce:animate-none">
                     저는{" "}
                     {valueSlot(identityName.trim() === "", "이름", () => editFormStep(0), identityName)}
                     이고,{" "}
                   </span>
                 )}
                 {clauseVisible(1) && (
-                  <span className="animate-fade-in motion-reduce:animate-none">
+                  <span className="relative animate-fade-up-blur motion-reduce:animate-none">
                     직무는{" "}
                     {valueSlot(identityRole.trim() === "", "직무", () => editFormStep(1), identityRole)}
                     {hasBatchim(identityRole) ? "이에요." : "예요."}
@@ -1359,7 +1386,7 @@ export function ResponseForm(props: Props) {
           </div>
 
           <MobileStickyAction className="mt-8">
-            <div key={formStep} className="animate-fade-up motion-reduce:animate-none">
+            <div key={formStep}>
               {formStep === 0 ? (
                 <>
                   <Label htmlFor="pName" className="text-lg">이름을 입력해주세요</Label>
@@ -1431,7 +1458,7 @@ export function ResponseForm(props: Props) {
           className="mt-3 break-keep text-left text-xl leading-relaxed text-slate-800 sm:text-2xl sm:leading-relaxed"
         >
           {availClauseVisible(0) && (
-            <span className="animate-fade-in motion-reduce:animate-none">
+            <span className="relative animate-fade-up-blur motion-reduce:animate-none">
               저는{" "}
               {!availDetermined(0) ? (
                 <>
@@ -1453,7 +1480,7 @@ export function ResponseForm(props: Props) {
             </span>
           )}
           {availClauseVisible(1) && (
-            <span className="animate-fade-in motion-reduce:animate-none">
+            <span className="relative animate-fade-up-blur motion-reduce:animate-none">
               {!availDetermined(1) ? (
                 <>
                   특별히 {availDots("특정 날짜 시간", () => editAvailStep(1))}
@@ -1479,8 +1506,8 @@ export function ResponseForm(props: Props) {
           )}
         </div>
 
-        {/* 질문 + 단계별 입력 */}
-        <div key={availStep} className="mt-6 animate-fade-up motion-reduce:animate-none">
+        {/* 질문 + 단계별 입력 — 페이지 하단으로 내려 배치(mt-auto) */}
+        <div key={availStep} className="mt-auto pt-6">
           <p className="text-lg font-bold text-slate-800">{AVAIL_QUESTIONS[availStep]}</p>
           <div className="mt-3">
             {availStep === 0 && (
@@ -1588,7 +1615,7 @@ export function ResponseForm(props: Props) {
           </div>
         </div>
         {/* 하단 고정 CTA */}
-        <MobileStickyAction className="mt-auto">
+        <MobileStickyAction className="mt-4">
           <TDSButton size="xl" display="block" onClick={handleAvailNext}>
             다음
           </TDSButton>
@@ -1608,7 +1635,24 @@ function CaseSelector({ caseId, onSelect }: { caseId: number; onSelect: (id: num
   const expandedWidth = (DEMO_CASES.length - 1) * GAP + 32;
   return (
     <div className="select-none">
-      <p className="text-xs font-bold text-slate-400">케이스 선택</p>
+      <div className="relative flex items-center gap-1.5">
+        <p className="text-xs font-bold text-slate-400">케이스 선택</p>
+        {/* 데모 안내: 케이스 선택은 흐름 파악용 임시 영역이라는 점을 ? 아이콘 툴팁으로 알린다. */}
+        <button
+          type="button"
+          aria-label="케이스 선택 영역 안내"
+          className="peer flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 text-[10px] font-bold leading-none text-slate-400 transition-colors hover:border-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+        >
+          ?
+        </button>
+        {/* 폭을 넓혀 두 줄로 보이게 하고, 모바일에서 화면 밖으로 넘치지 않도록 뷰포트 기준으로 제한한다. */}
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute left-0 top-7 z-30 w-[22rem] max-w-[calc(100vw-2rem)] rounded-lg bg-slate-800 px-3 py-2 text-xs font-medium leading-relaxed text-white opacity-0 shadow-lg transition-opacity duration-150 peer-hover:opacity-100 peer-focus:opacity-100"
+        >
+          지금 보이는 케이스 선택은 사용 흐름을 파악하기 위해 임의로 노출한 영역이에요. 실제 사용 시에는 보이지 않아요.
+        </span>
+      </div>
       {/* 호버 시 너비가 늘며 마우스 인식 영역을 제어. 안의 칩들은 절대배치로 펼쳐진다. */}
       <div
         className="relative mt-1.5 h-8 cursor-pointer transition-[width] duration-500 ease-out motion-reduce:transition-none"
@@ -1686,6 +1730,146 @@ function CaseDescription({ caseId }: { caseId: number }) {
 }
 
 // 제출 후 결과 화면: 케이스별 응답 현황 + 후보 순위(더미). 캘린더는 '캘린더 보기'로 이동.
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
+      <path
+        d="M5 10.5 8.5 14 15 6.5"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+// 제출 후 대기 화면(세로형 스텝퍼 + 응답 마감 카운트다운).
+// 제품 흐름 확인 단계라 타이머는 5초 고정이며, 0이 되면 후보/캘린더로 넘어갈 수 있다.
+function WaitingScreen({
+  responseDeadline,
+  onProceed,
+  onEdit,
+}: {
+  responseDeadline?: string | null;
+  onProceed: () => void;
+  onEdit: () => void;
+}) {
+  const WAIT_SECONDS = 5; // 실제 서비스에서는 응답 마감 시각까지의 남은 시간으로 대체.
+  const [remaining, setRemaining] = useState(WAIT_SECONDS);
+
+  useEffect(() => {
+    const startedAt = Date.now();
+    setRemaining(WAIT_SECONDS);
+    const id = window.setInterval(() => {
+      const left = Math.max(0, WAIT_SECONDS - Math.floor((Date.now() - startedAt) / 1000));
+      setRemaining(left);
+      if (left <= 0) window.clearInterval(id);
+    }, 250);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const ready = remaining <= 0;
+  const mmss = `${String(Math.floor(remaining / 60)).padStart(2, "0")}:${String(
+    remaining % 60,
+  ).padStart(2, "0")}`;
+  const deadlineText = responseDeadline
+    ? `${formatKoreanDate(responseDeadline)} ${formatKoreanTime(responseDeadline)}`
+    : null;
+
+  const steps = [
+    { state: "done" as const, label: "내 가능한 시간을 보냈어요" },
+    { state: "current" as const, label: "다른 참여자들의 응답을 기다리고 있어요" },
+    { state: "todo" as const, label: "응답이 마감되면 추천 시간을 확인해요" },
+  ];
+
+  return (
+    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col pt-2">
+      <div className="flex-1">
+        <p className="text-sm font-medium text-slate-400">응답 완료</p>
+        <h1 className="mt-3 break-keep text-2xl font-extrabold leading-snug tracking-tight text-slate-900 sm:text-3xl sm:leading-snug">
+          이제 모두가 응답하면
+          <br />
+          가장 좋은 시간을 찾아드려요
+        </h1>
+
+        <ol className="mt-8">
+          {steps.map((s, i) => {
+            const isLast = i === steps.length - 1;
+            return (
+              <li key={i} className="relative flex gap-4 pb-7 last:pb-0">
+                {!isLast && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute left-[1.375rem] top-11 h-[calc(100%-2.75rem)] w-px bg-slate-200"
+                  />
+                )}
+                <span className="relative z-10 shrink-0">
+                  {s.state === "done" ? (
+                    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand-500 text-white">
+                      <CheckIcon />
+                    </span>
+                  ) : s.state === "current" ? (
+                    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand-50">
+                      <span className="h-3 w-3 rounded-full bg-brand-500" />
+                    </span>
+                  ) : (
+                    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-base font-bold text-slate-400">
+                      {i + 1}
+                    </span>
+                  )}
+                </span>
+                <div className="pt-2.5">
+                  <p
+                    className={cn(
+                      "break-keep text-lg font-bold",
+                      s.state === "current"
+                        ? "text-brand-600"
+                        : s.state === "done"
+                          ? "text-slate-800"
+                          : "text-slate-400",
+                    )}
+                  >
+                    {s.label}
+                  </p>
+                  {s.state === "current" && (
+                    <>
+                      <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-brand-50 px-3 py-1.5">
+                        <Emoji symbol="⏳" size={16} />
+                        <span className="text-sm font-bold tabular-nums text-brand-700">
+                          응답 마감까지 {mmss}
+                        </span>
+                      </div>
+                      {deadlineText && (
+                        <p className="mt-1.5 text-xs text-slate-400">마감 {deadlineText}</p>
+                      )}
+                    </>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+
+      <MobileStickyAction className="mt-8">
+        <div className="space-y-2">
+          <TDSButton size="xl" display="block" onClick={onProceed} disabled={!ready}>
+            {ready ? "추천 시간 확인하러 가기" : `잠시만요… ${mmss}`}
+          </TDSButton>
+          <button
+            type="button"
+            onClick={onEdit}
+            className="block w-full rounded-xl py-2 text-sm font-semibold text-slate-500 transition-colors hover:text-slate-700"
+          >
+            내 응답 수정하기
+          </button>
+        </div>
+      </MobileStickyAction>
+    </div>
+  );
+}
+
 function ResultScreen({
   caseId,
   onSelectCase,

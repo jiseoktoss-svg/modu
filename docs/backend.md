@@ -72,6 +72,7 @@ DB 컬럼명은 Supabase/Postgres 기준으로 snake_case를 사용한다.
 | `confirmed_slot_id` | 확정 슬롯 ID |
 | `created_at` | 생성일 |
 | `expires_at` | 만료 예정일. 데이터 보존 정책용 내부 값이며, 화면에는 만료/삭제 안내를 노출하지 않는다 |
+| `response_deadline` | 응답 마감 시각(`timestamptz`, nullable). 참여자 응답을 받는 마감이며, 회의 마감 날짜(`date_end`) 이전이어야 한다. 회의 안내·대기 화면에 노출 |
 
 ### participants
 
@@ -163,6 +164,7 @@ create table if not exists meetings (
   confirmed_slot_id uuid,
   created_at timestamptz not null default now(),
   expires_at timestamptz not null default (now() + interval '30 days'),
+  response_deadline timestamptz,
   check (date_start <= date_end),
   check (workday_start < workday_end),
   check (lunch_start < lunch_end)
@@ -170,6 +172,7 @@ create table if not exists meetings (
 
 alter table meetings add column if not exists agenda text not null default '';
 alter table meetings add column if not exists location text not null default '';
+alter table meetings add column if not exists response_deadline timestamptz;
 
 create table if not exists participants (
   id uuid primary key default gen_random_uuid(),
@@ -272,12 +275,13 @@ grant all on meeting_votes to service_role;
 권장 서버 기능:
 
 - `createMeeting`
-  - 회의명, 안건, 장소, 회의 마감 날짜, 회의 길이, 참석자를 생성한다.
+  - 회의명, 안건, 장소, 회의 마감 날짜, 응답 마감일, 회의 길이, 참석자를 생성한다.
   - 모든 항목이 필수다. 회의명·안건·장소가 비어 있으면 각각 에러를 반환한다.
   - 회의명은 공백 포함 최대 20글자, 안건은 공백 포함 최대 30글자, 장소는 공백 포함 최대 20글자까지 허용한다.
   - 참석자는 최소 2명 이상, 최대 8명까지 허용한다.
   - 회의 길이는 `durationHours`(시간)와 `durationMinutePart`(분) 입력값을 합산해 `duration_minutes`로 저장한다. 분은 0~59 정수여야 한다.
   - 회의 마감 날짜(`deadlineDate`)는 `date_end`로 저장하고, `date_start`는 생성 시점의 오늘(KST) 날짜로 채운다. 마감 날짜가 오늘 이전이면 에러를 반환한다.
+  - 응답 마감일(`responseDeadlineDate` + `responseDeadlineTime`, 분 없음 → 항상 `:00`)을 KST ISO로 합쳐 `response_deadline`에 저장한다. 오늘 이전이거나 회의 마감 날짜(`date_end`)보다 늦으면 에러를 반환한다(클라이언트가 미리 토스트로 자동 보정).
   - 주최자에게 근무 시작/종료 시간과 점심 시간은 받지 않고 서버 기본값을 저장한다.
   - 참석자 기본 `attendance_type`은 클라이언트에서 `required`로 전달되며(필수참석), 서버는 `required`가 아니면 `optional`로 정규화한다.
   - `meetingId`, `adminToken`, 참석자별 `participantToken`을 생성한다.
@@ -483,7 +487,7 @@ Supabase 정책:
 
 | 함수 | 검증 | 핵심 동작 |
 | --- | --- | --- |
-| `createMeeting` | 입력 검증(필수·길이·인원 2~8·마감일) | 회의+참석자 insert, `admin_token`/참석자별 `participant_token` 발급, 공유 화면 redirect. **운영+env 없음** 시 `lib/demoMeeting` 데모 ID로 우회 |
+| `createMeeting` | 입력 검증(필수·길이·인원 2~8·회의 마감일·응답 마감일≤마감일) | 회의(`response_deadline` 포함)+참석자 insert, `admin_token`/참석자별 `participant_token` 발급, 공유 화면 redirect. **운영+env 없음** 시 `lib/demoMeeting` 데모 ID로 우회 |
 | `verifyParticipantIdentity` | 이름+직무 명단 대조 | `participant_token` 반환(기존 제출자는 토큰 일치 시 수정 허용) |
 | `submitAvailability` | `participantId`+토큰, 미확정 | 기존 블록 교체(delete→insert), `response_status='submitted'`, **회의 투표 초기화** |
 | `loadParticipantResponse` / `loadCalendarSnapshot` | participant 토큰 | 본인 응답 / 캘린더 집계용 최소 데이터(메모 원문 제외) |
@@ -526,4 +530,5 @@ Route Handler: `app/api/meetings/[meetingId]/ics/route.ts` — 확정 슬롯 있
 - **권한은 평문 토큰 `===` 비교**(상수시간 아님). RLS는 service_role만 grant라 보안이 앱 내부 토큰 비교에 전적으로 의존.
 - **데모 소비 경로는 env 게이트 안 됨**: 생성은 `production && !hasSupabaseConfig()`로 막지만, 읽기/액션 단락은 `isDemoMeetingId`만으로 발동(운영에서도 `demo_` ID 위조 가능). 데모 토큰은 추측 가능·페이로드 무서명.
 - **`expires_at`은 선언만** 있고 삭제 잡 없음. 점심 비활성화는 `lunch_start='00:00'/lunch_end='00:01'` 센티넬(서버가 점심 겹침 블록 거부, DDL 기본값 `12:00/13:00`과 다름 — 코드가 insert 시 센티넬 명시).
+- **`localClient`(`lib/supabase/localClient.ts`)는 스키마리스가 아니다**: `withDefaults`가 테이블별 컬럼을 화이트리스트로 재구성하므로, `meetings` 등에 새 컬럼(예: `response_deadline`)을 추가하면 거기에도 넣어야 insert 시 보존된다(누락하면 조용히 버려짐). 실제 Supabase는 위 DDL `alter table … add column` 마이그레이션을 적용해야 컬럼이 생긴다.
 - 신규 코드(`demoMeeting.ts` 등)·서버 액션은 **테스트 0%**(테스트는 `lib/scheduler`·`lib/grid`만).
