@@ -52,7 +52,7 @@ export default async function AdminPage({
   return (
     <div className="min-h-dvh bg-white/95">
       <SiteHeader />
-      <main className="mx-auto w-full max-w-2xl space-y-6 px-4 py-8 sm:px-6">
+      <main className="mx-auto w-full max-w-2xl space-y-6 px-4 pb-8 pt-4 sm:px-6 sm:pt-8">
         <header>
           <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
             {meeting.title}

@@ -154,7 +154,6 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
 
   const participantPath = `/m/${meeting.id}`;
   const participantUrl = origin ? `${origin}${participantPath}` : participantPath;
-  const editPath = `/meetings/new?meetingId=${encodeURIComponent(meeting.id)}&adminToken=${encodeURIComponent(meeting.adminToken)}`;
 
   const details = useMemo(
     () =>
@@ -206,8 +205,8 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
         복사 완료
       </div>
 
-      <div className="flex flex-1 flex-col py-3 sm:py-6">
-        <div className="my-auto w-full">
+      <div className="flex flex-1 flex-col [justify-content:safe_center] py-3 sm:py-6">
+        <div className="w-full">
           <div className="shrink-0 text-center">
             <CompletionLottie />
           <h1 className="mt-4 text-2xl font-extrabold tracking-tight text-slate-900">
@@ -274,18 +273,17 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
       </div>
 
       <MobileStickyAction className="mt-4 sm:mt-0">
-        <div className="grid grid-cols-[0.85fr_1.15fr] gap-2 sm:gap-3">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3">
           <TDSButton
             type="button"
             tone="secondary"
             size="xl"
             display="block"
             className="modu-secondary-cta"
-            onClick={() => {
-              window.location.href = editPath;
-            }}
+            onClick={copyParticipantUrl}
+            aria-live="polite"
           >
-            수정하기
+            {copied ? "복사됨" : "링크 복사"}
           </TDSButton>
           <TDSButton
             type="button"

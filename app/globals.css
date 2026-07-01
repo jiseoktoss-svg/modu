@@ -269,7 +269,26 @@ body {
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
-  animation: modu-value-shine 5.5s ease-in-out infinite;
+  animation: modu-value-shine 4.5s ease-in-out infinite;
+}
+
+/* 입력확인 필드값 — 연한 빨강(red-400) shine 변형(가능시간 입력 화면의 불가 값과 동일 톤) */
+.modu-value-shine-red {
+  background-image: linear-gradient(
+    100deg,
+    #f87171 0%,
+    #f87171 45%,
+    #fecaca 50%,
+    #f87171 55%,
+    #f87171 100%
+  );
+  background-size: 300% 100%;
+  background-position: 100% center;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: modu-value-shine 4.5s ease-in-out infinite;
 }
 
 @keyframes modu-value-shine {
@@ -277,10 +296,42 @@ body {
     background-position: 100% center;
   }
 
-  73%,
+  89%,
   100% {
     background-position: 0% center;
   }
+}
+
+/* 대기 스텝 원형 pulse — 느리고 부드럽게 퍼지며 사라짐 */
+@keyframes modu-pulse-ring {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.5;
+  }
+
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+.modu-pulse-ring {
+  animation: modu-pulse-ring 2.2s ease-out infinite;
+}
+
+/* 스텝퍼 연결선 — 위 → 아래로 파란 선이 채워짐(origin-top 유틸과 함께 사용) */
+@keyframes modu-line-fill {
+  0% {
+    transform: scaleY(0);
+  }
+
+  100% {
+    transform: scaleY(1);
+  }
+}
+
+.modu-line-fill {
+  animation: modu-line-fill 0.45s ease-out both;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -313,5 +364,17 @@ body {
     background-image: none;
     color: #2272eb;
     -webkit-text-fill-color: #2272eb;
+  }
+
+  .modu-value-shine-red {
+    animation: none;
+    background-image: none;
+    color: #f87171;
+    -webkit-text-fill-color: #f87171;
+  }
+
+  .modu-pulse-ring,
+  .modu-line-fill {
+    animation: none;
   }
 }

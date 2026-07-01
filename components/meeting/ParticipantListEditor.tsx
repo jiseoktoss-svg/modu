@@ -281,7 +281,7 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
       </div>
 
       {/* 직원 목록 — 클릭으로 추가/해제 토글 (위아래 페이드 + 스크롤) */}
-      <div className="relative min-h-40 flex-[1.45_1_0] sm:h-64 sm:min-h-0 sm:max-h-none sm:flex-none">
+      <div className="relative min-h-40 flex-[1.45_1_0] sm:h-80 sm:min-h-0 sm:max-h-none sm:flex-none">
         <div className="h-full space-y-1.5 overflow-y-auto px-0.5 py-1 sm:space-y-2">
           {filteredEmployees.map((employee) => {
             const selected = selectedKeys.has(employeeKey(employee));

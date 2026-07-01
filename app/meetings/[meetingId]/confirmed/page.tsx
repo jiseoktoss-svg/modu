@@ -42,7 +42,7 @@ export default async function ConfirmedPage({
   return (
     <div className="min-h-dvh bg-white/95">
       <SiteHeader />
-      <main className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6">
+      <main className="mx-auto w-full max-w-2xl px-4 pb-10 pt-4 sm:px-6 sm:pt-10">
         {slot ? (
           <ConfirmedMeetingSummary
             meeting={meeting}

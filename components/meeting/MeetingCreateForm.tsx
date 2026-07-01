@@ -298,6 +298,10 @@ export function MeetingCreateForm({
   const dateOk = deadlineDate.trim().length > 0 && deadlineDate >= minDeadlineDate;
   // 응답 마감일: 오늘 이후 + 회의 마감일 이전(같은 날 허용) + 시간 형식. (분 단위는 쓰지 않음 → 항상 :00)
   const rdHour = responseDeadlineTime.split(":")[0] || "18";
+  const rdHourOptions = Array.from({ length: 24 }, (_, h) => {
+    const hh = String(h).padStart(2, "0");
+    return { value: hh, label: `${hh}시` };
+  });
   const responseDateOk =
     responseDeadlineDate.trim().length > 0 &&
     responseDeadlineDate >= minDeadlineDate &&
@@ -512,7 +516,7 @@ export function MeetingCreateForm({
       </div>
 
       {/* 상단: 입력에 따라 완성되는 안내 문장 */}
-      <div className="flex-1 pt-6 sm:pt-8">
+      <div className="flex-1 pt-4 sm:pt-8">
         <p className="text-sm font-medium text-slate-400">회의 만들기</p>
         <div
           aria-live="polite"
@@ -743,18 +747,12 @@ export function MeetingCreateForm({
               />
               <div className="mt-2">
                 <Select
+                  variant="menu"
                   aria-label="응답 마감 시각"
                   value={rdHour}
-                  onChange={(e) => setResponseDeadlineTime(`${e.target.value}:00`)}
-                >
-                  {Array.from({ length: 24 }, (_, h) =>
-                    String(h).padStart(2, "0"),
-                  ).map((h) => (
-                    <option key={h} value={h}>
-                      {h}시
-                    </option>
-                  ))}
-                </Select>
+                  options={rdHourOptions}
+                  onValueChange={(v) => setResponseDeadlineTime(`${v}:00`)}
+                />
               </div>
             </>
           )}
@@ -876,7 +874,7 @@ export function MeetingCreateForm({
           <div
             ref={modalPanelRef}
             tabIndex={-1}
-            className="mx-auto flex h-dvh max-h-dvh w-full max-w-2xl flex-col overflow-hidden bg-white p-4 shadow-xl focus:outline-none sm:h-[680px] sm:max-h-[calc(100vh-3rem)] sm:rounded-3xl sm:p-5"
+            className="mx-auto flex h-dvh max-h-dvh w-full max-w-2xl flex-col overflow-hidden bg-white p-4 shadow-xl focus:outline-none sm:h-[744px] sm:max-h-[calc(100vh-3rem)] sm:rounded-3xl sm:p-5"
           >
             <div className="mb-0.5 flex shrink-0 items-start justify-between gap-3 sm:mb-1 sm:gap-4">
               <h3 className="text-base font-bold text-slate-900 sm:text-lg">참석자 선택</h3>

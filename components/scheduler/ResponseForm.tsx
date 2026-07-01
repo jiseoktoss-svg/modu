@@ -26,6 +26,7 @@ import { Input, Label } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { TDSButton } from "@/components/ui/TDSButton";
 import { MeetingSummarySentence } from "@/components/meeting/MeetingSummarySentence";
+import { CalendarModal } from "@/components/scheduler/CalendarModal";
 import { MobileStickyAction } from "@/components/layout/MobileStickyAction";
 import { cn } from "@/lib/cn";
 import { useScrollLock } from "@/lib/useScrollLock";
@@ -224,11 +225,13 @@ function EditValue({
   fieldLabel,
   onEdit,
   tone = "positive",
+  withShine = false,
   children,
 }: {
   fieldLabel: string;
   onEdit: () => void;
   tone?: "positive" | "negative";
+  withShine?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -237,10 +240,17 @@ function EditValue({
       onClick={onEdit}
       aria-label={`${fieldLabel} 수정`}
       className={cn(
-        "inline rounded font-semibold decoration-2 underline-offset-4 transition-colors hover:underline focus:outline-none focus-visible:underline focus-visible:ring-2 focus-visible:ring-brand-200",
-        tone === "negative"
-          ? "text-red-400 decoration-red-300 hover:text-red-500"
-          : "text-brand-600 decoration-brand-400 hover:text-brand-700",
+        // text-left/align-baseline: 여러 줄로 감싸질 때 button 기본 center 정렬을 막아 좌측정렬 유지([11]).
+        "inline rounded text-left align-baseline font-semibold decoration-2 underline-offset-4 transition-colors hover:underline focus:outline-none focus-visible:underline focus-visible:ring-2 focus-visible:ring-brand-200",
+        // shine 은 -webkit-text-fill-color:transparent 라 tone 색과 동시 적용 불가 → 상호배타([12]).
+        // negative + shine 이면 빨간색 shine 변형(입력확인 필드값 = 클릭 가능한 키워드).
+        withShine
+          ? tone === "negative"
+            ? "modu-value-shine-red"
+            : "modu-value-shine"
+          : tone === "negative"
+            ? "text-red-400 decoration-red-300 hover:text-red-500"
+            : "text-brand-600 decoration-brand-400 hover:text-brand-700",
       )}
     >
       {children}
@@ -288,147 +298,6 @@ function fmtMD(ds: string): string {
 }
 function pad2(n: number): string {
   return n < 10 ? `0${n}` : `${n}`;
-}
-
-const CAL_WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
-
-// 월 이동 화살표 아이콘(DatePicker 와 동일 톤).
-function CalChevron({ dir }: { dir: "left" | "right" }) {
-  return (
-    <svg viewBox="0 0 12 12" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
-      <path
-        d={dir === "left" ? "M7.5 3 4.5 6l3 3" : "M4.5 3 7.5 6l-3 3"}
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-// 한 번에 한 달만 보여주고 < > 로 월을 이동하는 달력(유효 날짜가 있는 월 범위 안에서만).
-function MonthCalendar({
-  dates,
-  selected,
-  onToggle,
-  tone,
-  blockedDates,
-}: {
-  dates: string[];
-  selected: Set<string>;
-  onToggle: (ds: string) => void;
-  tone: "busy" | "pref";
-  blockedDates?: Set<string>;
-}) {
-  const validSet = new Set(dates);
-  // 유효 날짜가 들어있는 월 목록(정렬). 이 안에서만 이동한다.
-  const months = useMemo(() => {
-    const map = new Map<string, { y: number; m: number }>();
-    for (const ds of dates) {
-      const [y, m] = ds.split("-").map(Number);
-      map.set(`${y}-${m}`, { y, m });
-    }
-    return Array.from(map.values()).sort((a, b) => a.y - b.y || a.m - b.m);
-  }, [dates]);
-
-  const [monthIdx, setMonthIdx] = useState(0);
-  const safeIdx = months.length === 0 ? 0 : Math.min(monthIdx, months.length - 1);
-  const cur = months[safeIdx];
-
-  const selStyle =
-    tone === "busy"
-      ? "border-red-300 bg-red-100 text-red-700"
-      : "border-blue-300 bg-blue-100 text-blue-700";
-
-  if (!cur) return null;
-
-  const { y, m } = cur;
-  const lead = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
-  const daysIn = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  const grid: (number | null)[] = [];
-  for (let i = 0; i < lead; i += 1) grid.push(null);
-  for (let d = 1; d <= daysIn; d += 1) grid.push(d);
-
-  return (
-    <div className="w-full max-w-[18rem]">
-      {/* 월 이동 헤더 */}
-      <div className="mb-1.5 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={() => setMonthIdx(safeIdx - 1)}
-          disabled={safeIdx === 0}
-          aria-label="이전 달"
-          className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30"
-        >
-          <CalChevron dir="left" />
-        </button>
-        <span className="text-sm font-bold text-slate-700">
-          {y}년 {m}월
-        </span>
-        <button
-          type="button"
-          onClick={() => setMonthIdx(safeIdx + 1)}
-          disabled={safeIdx === months.length - 1}
-          aria-label="다음 달"
-          className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30"
-        >
-          <CalChevron dir="right" />
-        </button>
-      </div>
-
-      <div className="grid grid-cols-7 gap-1 text-center">
-        {CAL_WEEKDAYS.map((w, i) => (
-          <span
-            key={w}
-            className={cn(
-              "py-0.5 text-xs font-bold",
-              i === 0 ? "text-red-400" : i === 6 ? "text-blue-400" : "text-slate-400",
-            )}
-          >
-            {w}
-          </span>
-        ))}
-        {grid.map((d, i) => {
-          if (d == null) return <span key={`b${i}`} />;
-          const ds = `${y}-${pad2(m)}-${pad2(d)}`;
-          const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-          const isWeekend = dow === 0 || dow === 6;
-          const blocked = blockedDates?.has(ds) ?? false;
-          const inRange = validSet.has(ds) && !isWeekend;
-          const enabled = inRange && !blocked;
-          const isSel = selected.has(ds);
-          return (
-            <button
-              key={ds}
-              type="button"
-              disabled={!enabled}
-              onClick={() => onToggle(ds)}
-              aria-pressed={isSel}
-              aria-label={blocked ? `${m}월 ${d}일 — 불가능한 날짜` : undefined}
-              className={cn(
-                "relative flex aspect-square flex-col items-center justify-center rounded-lg border text-sm font-semibold leading-none transition-colors",
-                blocked
-                  ? "cursor-not-allowed border-red-200 bg-red-50 text-red-400"
-                  : !inRange
-                    ? "cursor-not-allowed border-transparent text-slate-300"
-                    : isSel
-                      ? selStyle
-                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
-              )}
-            >
-              <span className={cn(blocked && "line-through")}>{d}</span>
-              {blocked && (
-                <span className="mt-0.5 text-[8px] font-bold leading-none text-red-500">
-                  불가
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
 }
 
 // 30분 단위 하루 전체 시간 목록(00:00~23:30).
@@ -647,9 +516,33 @@ function useIsMobile() {
 function HelpTooltip({ text, label = "도움말" }: { text: string; label?: string }) {
   const [open, setOpen] = useState(false);
   const tipId = useId();
+  const isMobile = useIsMobile();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  // 모바일: 트리거가 화면 좌우 어디에 있든 뷰포트 안에 고정되도록 portal + fixed로 배치.
+  const [mobilePos, setMobilePos] = useState<{ bottom: number } | null>(null);
+
+  useEffect(() => {
+    if (!open || !isMobile) return;
+    const measure = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (rect) {
+        // 트리거 '위쪽'으로 8px 띄워 펼친다(하단 고정 CTA 가림 방지 목적 유지).
+        setMobilePos({ bottom: window.innerHeight - rect.top + 8 });
+      }
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+    };
+  }, [open, isMobile]);
+
   return (
     <span className="relative inline-flex">
       <button
+        ref={triggerRef}
         type="button"
         aria-label={label}
         aria-expanded={open}
@@ -660,120 +553,32 @@ function HelpTooltip({ text, label = "도움말" }: { text: string; label?: stri
       >
         ?
       </button>
-      {open && (
-        // 하단 고정 CTA 영역에서도 입력칸을 가리지 않도록 트리거 '위쪽'으로 펼친다.
-        <span
-          id={tipId}
-          role="tooltip"
-          className="absolute bottom-full left-0 mb-2 z-40 w-[16rem] max-w-[calc(100vw-2rem)] break-keep rounded-lg bg-slate-800 px-3 py-2 text-xs font-medium leading-relaxed text-white shadow-lg"
-        >
-          {text}
-        </span>
-      )}
+      {open &&
+        (isMobile
+          ? // 모바일: 뷰포트 기준 fixed + 좌우 16px 여백(left-4 right-4)으로 절대 화면을 벗어나지 않게 한다.
+            typeof document !== "undefined" &&
+            createPortal(
+              <span
+                id={tipId}
+                role="tooltip"
+                style={{ bottom: mobilePos?.bottom ?? 8 }}
+                className="fixed inset-x-4 z-50 break-keep rounded-lg bg-slate-800 px-3 py-2 text-xs font-medium leading-relaxed text-white shadow-lg"
+              >
+                {text}
+              </span>,
+              document.body,
+            )
+          : // 데스크톱: 트리거 '왼쪽 기준'으로 오른쪽을 향해 펼쳐 화면 왼쪽 이탈 방지 + 폭 고정으로 2줄 표현.
+            (
+              <span
+                id={tipId}
+                role="tooltip"
+                className="absolute bottom-full left-0 mb-2 z-40 w-[25rem] max-w-[calc(100vw-2rem)] whitespace-normal break-keep rounded-lg bg-slate-800 px-3 py-2 text-xs font-medium leading-relaxed text-white shadow-lg"
+              >
+                {text}
+              </span>
+            ))}
     </span>
-  );
-}
-
-// 선택 시트: 모바일은 전체화면, 데스크톱은 회의 만들기 달력 모달과 같은 톤의 가운데 카드.
-// 날짜/시간을 고른 뒤 '확인'(또는 헤더 X·배경 탭)으로 닫는다.
-function PickerSheet({
-  title,
-  subtitle,
-  confirmLabel = "확인",
-  onClose,
-  onConfirm,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  confirmLabel?: string;
-  onClose: () => void;
-  onConfirm: () => void;
-  children: ReactNode;
-}) {
-  const isMobile = useIsMobile();
-
-  if (isMobile) {
-    return createPortal(
-      <div
-        className="fixed inset-0 z-50 flex items-stretch justify-center bg-slate-900/40"
-        onMouseDown={(e) => {
-          if (e.target === e.currentTarget) onClose();
-        }}
-      >
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={title}
-          className="flex h-dvh max-h-dvh w-full flex-col overflow-hidden bg-white shadow-2xl"
-        >
-          <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
-            <div>
-              <p className="text-sm font-bold text-slate-900">{title}</p>
-              {subtitle && <p className="mt-0.5 text-xs text-slate-400">{subtitle}</p>}
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label={`${title} 닫기`}
-              className="-mr-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-            >
-              <Emoji symbol="✕" size={20} />
-            </button>
-          </div>
-          <div className="flex flex-1 items-start justify-center overflow-y-auto p-4">
-            {children}
-          </div>
-          <div className="shrink-0 border-t border-slate-100 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-            <TDSButton size="xl" display="block" onClick={onConfirm}>
-              {confirmLabel}
-            </TDSButton>
-          </div>
-        </div>
-      </div>,
-      document.body,
-    );
-  }
-
-  // 데스크톱: 회의 만들기 달력 모달과 동일 톤의 컴팩트한 가운데 카드.
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4 py-6"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        className="max-h-[calc(100dvh-3rem)] w-full max-w-[22rem] overflow-y-auto rounded-[22px] border border-slate-200 bg-white p-4 shadow-2xl"
-      >
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-bold text-slate-900">{title}</p>
-            {subtitle && <p className="mt-0.5 text-xs text-slate-400">{subtitle}</p>}
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={`${title} 닫기`}
-            className="-mr-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-          >
-            <Emoji symbol="✕" size={20} />
-          </button>
-        </div>
-        <div className="flex justify-center">{children}</div>
-        <button
-          type="button"
-          onClick={onConfirm}
-          className="mt-3 w-full rounded-xl bg-brand-500 py-2.5 text-sm font-bold text-white transition-colors hover:bg-brand-600"
-        >
-          {confirmLabel}
-        </button>
-      </div>
-    </div>,
-    document.body,
   );
 }
 
@@ -797,36 +602,11 @@ function CalendarModalField({
   blockedDates?: Set<string>;
 }) {
   const [open, setOpen] = useState(false);
-  useScrollLock(open);
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open]);
+  const isMobile = useIsMobile();
 
   const list = [...selected].sort();
   const chipTone =
     tone === "busy" ? "bg-red-50 text-red-700" : "bg-blue-50 text-blue-700";
-
-  const dialog = open ? (
-    <PickerSheet
-      title={title}
-      subtitle="여러 날짜를 선택할 수 있어요"
-      onClose={() => setOpen(false)}
-      onConfirm={() => setOpen(false)}
-    >
-      <MonthCalendar
-        dates={dates}
-        selected={selected}
-        onToggle={onToggle}
-        tone={tone}
-        blockedDates={blockedDates}
-      />
-    </PickerSheet>
-  ) : null;
 
   return (
     <div>
@@ -865,7 +645,20 @@ function CalendarModalField({
           ))}
         </div>
       )}
-      {dialog}
+      <CalendarModal
+        open={open}
+        title={title}
+        subtitle="여러 날짜를 선택할 수 있어요"
+        isMobile={isMobile}
+        dates={dates}
+        selected={selected}
+        onToggle={onToggle}
+        tone={tone}
+        blockedDates={blockedDates}
+        showSelectedChips
+        onClose={() => setOpen(false)}
+        onConfirm={() => setOpen(false)}
+      />
     </div>
   );
 }
@@ -932,8 +725,11 @@ export function ResponseForm(props: Props) {
   const [dateTimeBusy, setDateTimeBusy] = useState<Record<string, TimeRange[]>>({});
   const [dtDate, setDtDate] = useState<string | null>(null); // 특정날짜+시간 단계에서 시간 입력 중인 날짜
   const [dtModalOpen, setDtModalOpen] = useState(false); // 특정날짜+시간 날짜 선택 모달
-  const [draftStart, setDraftStart] = useState(workdayStart);
-  const [draftEnd, setDraftEnd] = useState(workdayEnd);
+  // 시간 입력 기본값: 시작=근무 시작(보통 오전 09:00), 끝=시작+1시간(오전 10:00).
+  const DEFAULT_DRAFT_START = workdayStart;
+  const DEFAULT_DRAFT_END = minToHm(parseHm(workdayStart) + 60);
+  const [draftStart, setDraftStart] = useState(DEFAULT_DRAFT_START);
+  const [draftEnd, setDraftEnd] = useState(DEFAULT_DRAFT_END);
   // 복사완료 토스트처럼 요소는 계속 렌더되고 open 클래스만 토글해 등장/사라짐을 전환한다.
   // (사라지는 동안 message 를 유지해야 텍스트가 즉시 사라지지 않고 부드럽게 페이드아웃된다.)
   const [toastMessage, setToastMessage] = useState("");
@@ -1072,6 +868,7 @@ export function ResponseForm(props: Props) {
     }
     const r: TimeRange = { start: s, end: e };
     setDateTimeBusy((p) => ({ ...p, [dtDate]: [...(p[dtDate] ?? []), r] }));
+    showToast("안 되는 시간을 추가했어요", "✅");
   };
 
   const removeRange = (index: number, ds: string) => {
@@ -1178,7 +975,7 @@ export function ResponseForm(props: Props) {
           {ranges.map((r, i) => (
             <span
               key={`${r.start}-${r.end}-${i}`}
-              className="inline-flex items-center gap-1 rounded-full bg-red-50 px-3 py-1 text-sm font-bold text-red-700"
+              className="relative inline-flex items-center gap-1 rounded-full bg-red-50 px-3 py-1 text-sm font-bold text-red-700 animate-fade-up-blur motion-reduce:animate-none"
             >
               {fmtRange(r)}
               <button
@@ -1375,6 +1172,7 @@ export function ResponseForm(props: Props) {
                   <EditValue
                     fieldLabel="불가능한 날짜"
                     tone="negative"
+                    withShine
                     onEdit={() => {
                       setAvailStep(0);
                       setStep("availability");
@@ -1402,6 +1200,7 @@ export function ResponseForm(props: Props) {
                   <EditValue
                     fieldLabel="특정 날짜 시간"
                     tone="negative"
+                    withShine
                     onEdit={() => {
                       setAvailStep(1);
                       setStep("availability");
@@ -1425,32 +1224,19 @@ export function ResponseForm(props: Props) {
               )}
             </div>
             <p className="mt-5 text-sm text-slate-500">
-              응답 시간 마감 전까지 수정할 수 있어요.
+              응답 시간 마감 전까지 수정할 수 있어요. 수정하려면 키워드를 눌러 응답화면으로 이동하세요.
             </p>
           </div>
           <MobileStickyAction className="mt-auto">
-            <div className="space-y-2">
-              <TDSButton
-                size="xl"
-                display="block"
-                onClick={() => void handleSubmit()}
-                disabled={submitting}
-                loading={submitting}
-              >
-                {submitting ? "제출 중..." : "다음"}
-              </TDSButton>
-              <TDSButton
-                size="xl"
-                tone="secondary"
-                display="block"
-                onClick={() => {
-                  setAvailStep(0);
-                  setStep("availability");
-                }}
-              >
-                수정하기
-              </TDSButton>
-            </div>
+            <TDSButton
+              size="xl"
+              display="block"
+              onClick={() => void handleSubmit()}
+              disabled={submitting}
+              loading={submitting}
+            >
+              {submitting ? "제출 중..." : "다음"}
+            </TDSButton>
           </MobileStickyAction>
         </div>
       </>
@@ -1462,6 +1248,7 @@ export function ResponseForm(props: Props) {
     return (
       <WaitingScreen
         responseDeadline={responseDeadline}
+        totalParticipants={participants.length}
         onProceed={() => setStep("result")}
         onEdit={() => {
           setAvailStep(0);
@@ -1556,17 +1343,16 @@ export function ResponseForm(props: Props) {
                 <>
                   <Label htmlFor="pRole" className="text-lg">직무를 선택해주세요</Label>
                   <Select
+                    variant="menu"
                     id="pRole"
+                    aria-label="직무"
                     value={identityRole}
-                    onChange={(e) => setIdentityRole(e.target.value)}
-                  >
-                    <option value="">직무 선택</option>
-                    {roleOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </Select>
+                    onValueChange={setIdentityRole}
+                    options={[
+                      { value: "", label: "직무 선택" },
+                      ...roleOptions.map((option) => ({ value: option, label: option })),
+                    ]}
+                  />
                 </>
               )}
             </div>
@@ -1740,7 +1526,8 @@ export function ResponseForm(props: Props) {
 
                 {/* 날짜 선택 시트(모바일=전체화면+시간 입력기까지, 데스크톱=가운데 카드·날짜만) */}
                 {dtModalOpen && (
-                  <PickerSheet
+                  <CalendarModal
+                    open={dtModalOpen}
                     title="특정 시간이 안 되는 날"
                     subtitle={
                       isMobile
@@ -1749,40 +1536,78 @@ export function ResponseForm(props: Props) {
                           : "날짜를 고르면 시간을 추가할 수 있어요"
                         : "안 되는 날짜를 골라주세요"
                     }
+                    isMobile={isMobile}
+                    dates={dates}
+                    selected={new Set([...Object.keys(dateTimeBusy), ...(dtDate ? [dtDate] : [])])}
+                    onToggle={(ds) => {
+                      setDtDate(ds);
+                      // 데스크톱은 날짜를 고르면 모달을 닫고 페이지에서 시간을 입력(이전 방식).
+                      if (!isMobile) setDtModalOpen(false);
+                    }}
+                    tone="busy"
+                    blockedDates={busyDates}
+                    extra={
+                      isMobile ? (
+                        <div className="space-y-3">
+                          {dtDate ? (
+                            <div className="rounded-2xl bg-slate-50 p-3">
+                              <p className="text-sm font-bold text-slate-700">
+                                {fmtMD(dtDate)} 안 되는 시간
+                              </p>
+                              <div className="mt-2">
+                                {renderTimeAdder(dateTimeBusy[dtDate] ?? [], (i) => removeRange(i, dtDate))}
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-center text-xs text-slate-400">
+                              날짜를 고르면 안 되는 시간을 추가할 수 있어요.
+                            </p>
+                          )}
+
+                          {/* 지금까지 추가한 모든 날짜의 안 되는 시간 — 다른 날짜를 골라도 계속 보이게([F4]) */}
+                          {Object.keys(dateTimeBusy).length > 0 && (
+                            <div className="space-y-1.5">
+                              <p className="text-xs font-semibold text-slate-500">지금까지 추가한 안 되는 시간</p>
+                              {Object.entries(dateTimeBusy)
+                                .sort(([a], [b]) => a.localeCompare(b))
+                                .map(([ds, ranges]) => (
+                                  <div
+                                    key={ds}
+                                    className={cn(
+                                      "flex items-center justify-between gap-2 rounded-xl border px-3 py-2",
+                                      ds === dtDate
+                                        ? "border-red-300 bg-red-100"
+                                        : "border-red-100 bg-red-50",
+                                    )}
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() => setDtDate(ds)}
+                                      className="min-w-0 flex-1 text-left text-sm"
+                                    >
+                                      <span className="font-bold text-red-800">{fmtMD(ds)}</span>{" "}
+                                      <span className="break-keep font-semibold text-red-600">
+                                        {ranges.map(fmtRange).join(", ")}
+                                      </span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeWholeDate(ds)}
+                                      aria-label={`${fmtMD(ds)} 삭제`}
+                                      className="shrink-0 text-red-500 opacity-70 transition-opacity hover:opacity-100"
+                                    >
+                                      <ChipRemoveIcon />
+                                    </button>
+                                  </div>
+                                ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : undefined
+                    }
                     onClose={() => setDtModalOpen(false)}
                     onConfirm={() => setDtModalOpen(false)}
-                  >
-                    <div className="w-full max-w-[20rem] space-y-4">
-                      <div className="flex justify-center">
-                        <MonthCalendar
-                          dates={dates}
-                          selected={new Set([...Object.keys(dateTimeBusy), ...(dtDate ? [dtDate] : [])])}
-                          onToggle={(ds) => {
-                            setDtDate(ds);
-                            // 데스크톱은 날짜를 고르면 모달을 닫고 페이지에서 시간을 입력(이전 방식).
-                            if (!isMobile) setDtModalOpen(false);
-                          }}
-                          tone="busy"
-                          blockedDates={busyDates}
-                        />
-                      </div>
-                      {isMobile &&
-                        (dtDate ? (
-                          <div className="rounded-2xl bg-slate-50 p-3">
-                            <p className="text-sm font-bold text-slate-700">
-                              {fmtMD(dtDate)} 안 되는 시간
-                            </p>
-                            <div className="mt-2">
-                              {renderTimeAdder(dateTimeBusy[dtDate] ?? [], (i) => removeRange(i, dtDate))}
-                            </div>
-                          </div>
-                        ) : (
-                          <p className="text-center text-xs text-slate-400">
-                            날짜를 고르면 안 되는 시간을 추가할 수 있어요.
-                          </p>
-                        ))}
-                    </div>
-                  </PickerSheet>
+                  />
                 )}
               </div>
             )}
@@ -1921,35 +1746,44 @@ function CheckIcon() {
 // 제출 후 대기 화면(세로형 스텝퍼 + 응답 마감 카운트다운).
 // 제품 흐름 확인 단계라 타이머는 5초 고정이며, 0이 되면 후보/캘린더로 넘어갈 수 있다.
 function WaitingScreen({
-  responseDeadline,
+  totalParticipants,
   onProceed,
   onEdit,
 }: {
   responseDeadline?: string | null;
+  totalParticipants: number;
   onProceed: () => void;
   onEdit: () => void;
 }) {
-  const WAIT_SECONDS = 5; // 실제 서비스에서는 응답 마감 시각까지의 남은 시간으로 대체.
+  const WAIT_SECONDS = 7; // 실제 서비스에서는 응답 마감 시각까지의 남은 시간으로 대체.
+  const total = Math.max(1, totalParticipants);
   const [remaining, setRemaining] = useState(WAIT_SECONDS);
+  // 응답률(데모): 내 응답 1건에서 시작해 마감 전에 전원 응답으로 수렴한다.
+  const [responded, setResponded] = useState(() => Math.min(total, 1));
 
   useEffect(() => {
     const startedAt = Date.now();
     setRemaining(WAIT_SECONDS);
+    setResponded(Math.min(total, 1));
+    // 마감 약 2초 전에 전원 응답이 도착하도록(마감 전 완료 시나리오 시연).
+    const fillSeconds = Math.max(3, WAIT_SECONDS - 2);
     const id = window.setInterval(() => {
-      const left = Math.max(0, WAIT_SECONDS - Math.floor((Date.now() - startedAt) / 1000));
+      const elapsed = (Date.now() - startedAt) / 1000;
+      const left = Math.max(0, WAIT_SECONDS - Math.floor(elapsed));
+      const filled = Math.min(total, 1 + Math.floor(((total - 1) * elapsed) / fillSeconds));
       setRemaining(left);
-      if (left <= 0) window.clearInterval(id);
-    }, 250);
+      setResponded(filled);
+      if (left <= 0 || filled >= total) window.clearInterval(id);
+    }, 200);
     return () => window.clearInterval(id);
-  }, []);
+  }, [total]);
 
-  const ready = remaining <= 0;
+  // 마감 시간이 지나거나, 마감 전이라도 전원이 응답하면 추천 시간을 열람할 수 있다.
+  const allResponded = responded >= total;
+  const ready = allResponded || remaining <= 0;
   const mmss = `${String(Math.floor(remaining / 60)).padStart(2, "0")}:${String(
     remaining % 60,
   ).padStart(2, "0")}`;
-  const deadlineText = responseDeadline
-    ? `${formatKoreanDate(responseDeadline)} ${formatKoreanTime(responseDeadline)}`
-    : null;
 
   // 응답 마감(ready)이 되면 마지막 스텝(추천 확인)이 활성화(current)된다.
   type StepState = "done" | "current" | "todo";
@@ -1962,29 +1796,51 @@ function WaitingScreen({
     : [
         { state: "done", label: "내 가능한 시간을 보냈어요" },
         { state: "current", label: "다른 참여자들의 응답을 기다리고 있어요" },
-        { state: "todo", label: "응답이 마감되면 추천 시간을 확인해요" },
+        { state: "todo", label: "추천시간을 확인해보세요" },
       ];
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col pt-2">
       <div className="flex-1">
-        <p className="text-sm font-medium text-slate-400">응답 완료</p>
-        <h1 className="mt-3 break-keep text-2xl font-extrabold leading-snug tracking-tight text-slate-900 sm:text-3xl sm:leading-snug">
-          이제 모두가 응답하면
-          <br />
-          가장 좋은 시간을 찾아드려요
-        </h1>
+        <div className="relative animate-fade-up-blur" style={{ animationDuration: "0.6s" }}>
+          <p className="text-sm font-medium text-slate-400">응답 완료</p>
+          <h1 className="mt-3 break-keep text-2xl font-extrabold leading-snug tracking-tight text-slate-900 sm:text-3xl sm:leading-snug">
+            이제 모두가 응답하면
+            <br />
+            가장 좋은 시간을 찾아드려요
+          </h1>
+        </div>
 
         <ol className="mt-8">
           {steps.map((s, i) => {
             const isLast = i === steps.length - 1;
             return (
-              <li key={i} className="relative flex gap-4 pb-7 last:pb-0">
+              <li
+                key={i}
+                className={cn(
+                  // 스텝 사이 간격은 고정 높이로 통일 — 카운트다운 pill 이 두 번째 스텝에 들어갈 만큼
+                  // 넉넉히 잡아, pill 유무(카운트다운 진행/완료)와 무관하게 간격이 변하지 않는다.
+                  "relative flex animate-fade-up-blur gap-4",
+                  // 모바일은 살짝 좁게(2줄 라벨+pill+마감일 최소 높이), 데스크톱은 조금 더 넉넉하게.
+                  !isLast && "h-[8rem] sm:h-[8.5rem]",
+                )}
+                style={{ animationDelay: `${150 + i * 220}ms`, animationDuration: "0.6s" }}
+              >
                 {!isLast && (
-                  <span
-                    aria-hidden="true"
-                    className="absolute left-[1.375rem] top-11 h-[calc(100%-2.75rem)] w-px bg-slate-200"
-                  />
+                  <>
+                    <span
+                      aria-hidden="true"
+                      className="absolute left-[20.5px] top-[50px] h-[calc(100%-56px)] w-[3px] rounded-full bg-slate-200"
+                    />
+                    {/* 위 스텝이 완료(done)된 구간만 파랗게 채움 — 카운트다운 완료 시 다음 구간이 순서대로 이어짐 */}
+                    {s.state === "done" && (
+                      <span
+                        aria-hidden="true"
+                        style={{ animationDelay: `${260 + i * 220}ms` }}
+                        className="modu-line-fill absolute left-[20.5px] top-[50px] h-[calc(100%-56px)] w-[3px] origin-top rounded-full bg-brand-500"
+                      />
+                    )}
+                  </>
                 )}
                 <span className="relative z-10 shrink-0">
                   {s.state === "done" ? (
@@ -1992,8 +1848,15 @@ function WaitingScreen({
                       <CheckIcon />
                     </span>
                   ) : s.state === "current" ? (
-                    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand-50">
-                      <span className="h-3 w-3 rounded-full bg-brand-500" />
+                    <span className="relative flex h-11 w-11 items-center justify-center rounded-full bg-brand-50">
+                      {/* 카운트다운 진행 중에는 느리고 부드러운 원형 pulse */}
+                      {!ready && (
+                        <span
+                          aria-hidden="true"
+                          className="modu-pulse-ring absolute inset-0 rounded-full bg-brand-400"
+                        />
+                      )}
+                      <span className="relative h-3 w-3 rounded-full bg-brand-500" />
                     </span>
                   ) : (
                     <span className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-base font-bold text-slate-400">
@@ -2002,29 +1865,55 @@ function WaitingScreen({
                   )}
                 </span>
                 <div className="pt-2.5">
-                  <p
-                    className={cn(
-                      "break-keep text-lg font-bold",
-                      s.state === "current"
-                        ? "text-brand-600"
-                        : s.state === "done"
-                          ? "text-slate-800"
-                          : "text-slate-400",
-                    )}
-                  >
-                    {s.label}
-                  </p>
+                  {i === 1 ? (
+                    // 대기중 → 완료 전환: 문장 '전체'(색상 포함)를 겹쳐서 교체한다.
+                    // 대기 문장(brand-600)은 페이드아웃, 완료 문장(slate-800)은 clip-path 로
+                    // 문장 맨 앞부터 좌→우로 쓸려 드러나 색까지 처음부터 바뀐다.
+                    <p className="relative break-keep text-lg font-bold">
+                      <span
+                        aria-hidden={ready}
+                        className={cn(
+                          "text-brand-600 transition-opacity duration-700 delay-300",
+                          ready ? "opacity-0" : "opacity-100",
+                        )}
+                      >
+                        다른 참여자들의 응답을 기다리고 있어요
+                      </span>
+                      <span
+                        aria-hidden={!ready}
+                        className="absolute inset-0 break-keep text-slate-800"
+                        style={{
+                          clipPath: ready ? "inset(0 0 0 0)" : "inset(0 100% 0 0)",
+                          transition: "clip-path 1.2s cubic-bezier(0.65, 0, 0.35, 1)",
+                        }}
+                      >
+                        다른 참여자들의 응답을 받았어요
+                      </span>
+                    </p>
+                  ) : (
+                    <p
+                      className={cn(
+                        "break-keep text-lg font-bold",
+                        s.state === "current"
+                          ? "text-brand-600"
+                          : s.state === "done"
+                            ? "text-slate-800"
+                            : "text-slate-400",
+                      )}
+                    >
+                      {s.label}
+                    </p>
+                  )}
+                  {/* 두 번째 스텝: 응답률(사람 아이콘 N/M) + 마감 카운트다운. 고정 높이라 pill 유무로 간격이 안 바뀐다. */}
                   {s.state === "current" && !ready && (
                     <>
-                      <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-brand-50 px-3 py-1.5">
-                        <Emoji symbol="⏳" size={16} />
+                      <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1.5">
+                        <Emoji symbol="👥" size={16} />
                         <span className="text-sm font-bold tabular-nums text-brand-700">
-                          응답 마감까지 {mmss}
+                          {responded}/{total} 응답 완료
                         </span>
                       </div>
-                      {deadlineText && (
-                        <p className="mt-1.5 text-xs text-slate-400">마감 {deadlineText}</p>
-                      )}
+                      <p className="mt-1.5 text-xs text-slate-400">응답 마감까지 {mmss}</p>
                     </>
                   )}
                 </div>
@@ -2036,16 +1925,19 @@ function WaitingScreen({
 
       <MobileStickyAction className="mt-8">
         <div className="space-y-2">
+          {/* 카운트다운 진행 중에는 파란 CTA '위'에 응답 수정 링크 노출(완료 후에는 숨김) */}
+          {!ready && (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="block w-full rounded-xl py-2 text-sm font-semibold text-slate-500 transition-colors hover:text-slate-700"
+            >
+              내 응답 수정하기
+            </button>
+          )}
           <TDSButton size="xl" display="block" onClick={onProceed} disabled={!ready}>
             {ready ? "추천 시간 확인하러 가기" : `잠시만요… ${mmss}`}
           </TDSButton>
-          <button
-            type="button"
-            onClick={onEdit}
-            className="block w-full rounded-xl py-2 text-sm font-semibold text-slate-500 transition-colors hover:text-slate-700"
-          >
-            내 응답 수정하기
-          </button>
         </div>
       </MobileStickyAction>
     </div>
@@ -2068,16 +1960,28 @@ function ResultScreen({
   const total = DEMO_PEOPLE.length;
   // 데모: 한 번에 한 후보에만 투표. 다른 후보에 투표하면 벳지가 이동한다.
   const [votedIndex, setVotedIndex] = useState<number | null>(null);
-  // 케이스를 바꾸면 후보가 달라지므로 투표 상태를 초기화한다.
+  // 선택된 추천안 — 선택 시 하단에서 '투표하기' 버튼이 올라와 '캘린더 보기'를 덮는다.
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  // 케이스를 바꾸면 후보가 달라지므로 선택/투표 상태를 초기화한다.
   useEffect(() => {
     setVotedIndex(null);
+    setSelectedIndex(null);
   }, [caseId]);
 
+  const handleVote = () => {
+    if (selectedIndex === null) return;
+    setVotedIndex(selectedIndex);
+    setSelectedIndex(null);
+  };
+
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col pt-2">
+    <div
+      className="mx-auto flex w-full max-w-2xl flex-1 flex-col pt-2"
+      onClick={() => setSelectedIndex(null)}
+    >
       <div className="flex-1 space-y-3">
         <div className="flex items-center justify-between gap-2">
-          <h1 className="text-xl font-extrabold tracking-tight text-slate-900">후보</h1>
+          <h1 className="text-xl font-extrabold tracking-tight text-slate-900">추천안</h1>
           <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
             {total}명 중 {current.submitted}명 응답
           </span>
@@ -2085,13 +1989,31 @@ function ResultScreen({
         <CaseSelector caseId={caseId} onSelect={onSelectCase} />
         <CaseDescription caseId={caseId} />
         {candidates.length === 0 ? (
-          <p className="text-sm text-slate-500">표시할 후보가 없어요.</p>
+          <p className="text-sm text-slate-500">표시할 추천안이 없어요.</p>
         ) : (
           <ol className="space-y-2">
             {candidates.map((c, i) => (
               <li
                 key={`${c.startAt}-${c.endAt}-${i}`}
-                className="group relative rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-colors hover:bg-slate-100"
+                role="button"
+                tabIndex={0}
+                aria-pressed={selectedIndex === i}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedIndex((prev) => (prev === i ? null : i));
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedIndex((prev) => (prev === i ? null : i));
+                  }
+                }}
+                className={cn(
+                  "group relative cursor-pointer rounded-2xl bg-white p-4 shadow-[0_1px_4px_rgba(15,23,42,0.12)] transition-colors hover:bg-slate-100 focus:outline-none",
+                  selectedIndex === i
+                    ? "ring-2 ring-brand-500"
+                    : "focus-visible:ring-2 focus-visible:ring-brand-300",
+                )}
               >
                 <div className="flex items-start gap-3">
                   <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-xs font-bold text-brand-700">
@@ -2128,16 +2050,6 @@ function ResultScreen({
                     <p className="mt-1 break-keep text-sm text-slate-500">{c.reason}</p>
                   </div>
                 </div>
-                {/* 호버 시 우측 가운데에 투표하기 버튼 — 누르면 이 후보로 투표(벳지 이동) */}
-                {votedIndex !== i && (
-                  <button
-                    type="button"
-                    onClick={() => setVotedIndex(i)}
-                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-bold text-white opacity-0 transition-opacity duration-150 hover:bg-brand-600 focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
-                  >
-                    투표하기
-                  </button>
-                )}
               </li>
             ))}
           </ol>
@@ -2145,9 +2057,30 @@ function ResultScreen({
       </div>
 
       <MobileStickyAction className="mt-4">
-        <TDSButton size="xl" display="block" onClick={onViewCalendar}>
-          캘린더 보기
-        </TDSButton>
+        {/* 캘린더 보기 ↔ 투표하기 세로 스왑: 캘린더 보기는 아래로 내려가고, 투표하기는 위로 올라온다.
+            두 버튼 모두 brand 블루라 교차 중 생기는 빈틈은 컨테이너 배경(brand-500)으로 가린다. */}
+        <div className="relative overflow-hidden rounded-[18px] bg-brand-500">
+          <div
+            className={cn(
+              "transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
+              selectedIndex !== null ? "pointer-events-none translate-y-full" : "translate-y-0",
+            )}
+          >
+            <TDSButton size="xl" display="block" onClick={onViewCalendar}>
+              캘린더 보기
+            </TDSButton>
+          </div>
+          <div
+            className={cn(
+              "absolute inset-0 transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
+              selectedIndex !== null ? "translate-y-0" : "pointer-events-none translate-y-full",
+            )}
+          >
+            <TDSButton size="xl" display="block" onClick={handleVote}>
+              투표하기
+            </TDSButton>
+          </div>
+        </div>
       </MobileStickyAction>
     </div>
   );
@@ -2359,7 +2292,7 @@ function SubmittedCalendarScreen({
           className="flex-1"
           onClick={onBack}
         >
-          후보 보기
+          추천안 보기
         </TDSButton>
         <TDSButton
           type="button"
