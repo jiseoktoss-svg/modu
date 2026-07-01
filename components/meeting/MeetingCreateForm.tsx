@@ -56,9 +56,9 @@ const FOCUS_IDS = [
   "title",
   "agenda",
   "location",
+  "durationHours",
   "deadlineDate",
   "responseDeadlineDate",
-  "durationHours",
   "participantSelect",
 ];
 
@@ -315,9 +315,9 @@ export function MeetingCreateForm({
     title.trim().length > 0 && !titleTooLong,
     agenda.trim().length > 0 && !agendaTooLong,
     location.trim().length > 0 && !locationTooLong,
+    durationOk,
     dateOk,
     responseDeadlineOk,
-    durationOk,
     filledParticipants.length >= MIN_MEETING_PARTICIPANTS &&
       filledParticipants.length <= MAX_MEETING_PARTICIPANTS,
   ];
@@ -546,33 +546,10 @@ export function MeetingCreateForm({
             )}
             {clauseVisible(3) && (
               <span className="relative animate-fade-up-blur motion-reduce:animate-none">
-                {valueSlot(
-                  deadlineText === "",
-                  "회의 마감 날짜",
-                  () => editStep(3),
-                  deadlineText,
-                )}{" "}
-                까지는 회의가 완료되어야 해요.{" "}
-              </span>
-            )}
-            {clauseVisible(4) && (
-              <span className="relative animate-fade-up-blur motion-reduce:animate-none">
-                참여자는{" "}
-                {valueSlot(
-                  responseDeadlineText === "",
-                  "응답 마감",
-                  () => editStep(4),
-                  responseDeadlineText,
-                )}{" "}
-                까지 응답해주세요.{" "}
-              </span>
-            )}
-            {clauseVisible(5) && (
-              <span className="relative animate-fade-up-blur motion-reduce:animate-none">
                 예상 회의 진행 시간은{" "}
                 {showDurationHours && (
                   <>
-                    {valueSlot(!hoursOk, "회의 길이", () => editStep(5), hoursNum)}{" "}
+                    {valueSlot(!hoursOk, "회의 길이", () => editStep(3), hoursNum)}{" "}
                     시간{showDurationMin ? " " : ""}
                   </>
                 )}
@@ -581,13 +558,36 @@ export function MeetingCreateForm({
                     {valueSlot(
                       !minOk,
                       "회의 길이",
-                      () => editStep(5, "durationMinutePart"),
+                      () => editStep(3, "durationMinutePart"),
                       minNum,
                     )}{" "}
                     분
                   </>
                 )}
-                입니다.
+                입니다.{" "}
+              </span>
+            )}
+            {clauseVisible(4) && (
+              <span className="relative animate-fade-up-blur motion-reduce:animate-none">
+                {valueSlot(
+                  deadlineText === "",
+                  "회의 마감 날짜",
+                  () => editStep(4),
+                  deadlineText,
+                )}{" "}
+                까지는 회의가 완료되어야 해요.{" "}
+              </span>
+            )}
+            {clauseVisible(5) && (
+              <span className="relative animate-fade-up-blur motion-reduce:animate-none">
+                참여자는{" "}
+                {valueSlot(
+                  responseDeadlineText === "",
+                  "응답 마감",
+                  () => editStep(5),
+                  responseDeadlineText,
+                )}{" "}
+                까지 응답해주세요.{" "}
               </span>
             )}
           </p>
@@ -721,7 +721,7 @@ export function MeetingCreateForm({
               />
             </>
           )}
-          {step === 3 && (
+          {step === 4 && (
             <>
               <Label htmlFor="deadlineDate" className="text-lg">이 날 까지는 회의가 진행되어야 해요.</Label>
               <DatePicker
@@ -733,7 +733,7 @@ export function MeetingCreateForm({
               />
             </>
           )}
-          {step === 4 && (
+          {step === 5 && (
             <>
               <Label htmlFor="responseDeadlineDate" className="text-lg">
                 참여자들이 언제까지 응답하면 될까요?
@@ -756,7 +756,7 @@ export function MeetingCreateForm({
               </div>
             </>
           )}
-          {step === 5 && (
+          {step === 3 && (
             <>
               <Label htmlFor="durationHours" className="text-lg">예상 회의 진행 시간을 입력해주세요</Label>
               <div className="grid grid-cols-2 gap-3">

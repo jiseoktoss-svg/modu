@@ -59,11 +59,20 @@ const config: Config = {
           "0%": { opacity: "0" },
           "100%": { opacity: "1" },
         },
+        "fade-out": {
+          "0%": { opacity: "1" },
+          "100%": { opacity: "0" },
+        },
         // AOS 느낌: 아래에서 위로 + 흐릿(blur)→뚜렷. 인라인 요소에서도 동작하도록
         // transform(translateY) 대신 position:relative + top 으로 이동시킨다(함께 'relative' 클래스 필요).
         "fade-up-blur": {
           "0%": { opacity: "0", top: "10px", filter: "blur(5px)" },
           "100%": { opacity: "1", top: "0", filter: "blur(0)" },
+        },
+        // 모바일 전체화면 시트: 아래에서 위로 슬라이드 인.
+        "sheet-up": {
+          "0%": { transform: "translateY(100%)" },
+          "100%": { transform: "translateY(0)" },
         },
         // 빈 값 자리표시용 dot 3개 파도타기.
         "dot-wave": {
@@ -74,7 +83,9 @@ const config: Config = {
       animation: {
         "fade-up": "fade-up 0.35s ease-out both",
         "fade-in": "fade-in 0.3s ease-out both",
+        "fade-out": "fade-out 0.25s ease-in both",
         "fade-up-blur": "fade-up-blur 0.5s ease-out both",
+        "sheet-up": "sheet-up 0.32s cubic-bezier(0.32, 0.72, 0, 1) both",
         "dot-wave": "dot-wave 1.1s ease-in-out infinite",
       },
       maxWidth: {

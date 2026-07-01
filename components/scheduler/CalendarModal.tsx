@@ -211,6 +211,23 @@ export function CalendarModal({
   onConfirm: () => void;
 }) {
   useScrollLock(open);
+  // 모바일 전용 닫힘 애니메이션: 닫기를 누르면 바로 언마운트하지 않고 페이드아웃을 재생한 뒤 실제 닫기를 호출.
+  const [closing, setClosing] = useState(false);
+  const CLOSE_MS = 250;
+  const closeWith = (done: () => void) => {
+    const reduce =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (!isMobile || reduce) {
+      done();
+      return;
+    }
+    if (closing) return;
+    setClosing(true);
+    window.setTimeout(done, CLOSE_MS);
+  };
+  const requestClose = () => closeWith(onClose);
+  const requestConfirm = () => closeWith(onConfirm);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -254,16 +271,22 @@ export function CalendarModal({
     // 모바일: 전체화면. 상/하단 테두리 제거, 달력 좌우 꽉 채움([7]), 선택 날짜 칩 하단 노출([8]).
     return createPortal(
       <div
-        className="fixed inset-0 z-50 flex items-stretch justify-center bg-slate-900/40"
+        className={cn(
+          "fixed inset-0 z-50 flex items-stretch justify-center bg-slate-900/40 motion-reduce:animate-none",
+          closing ? "animate-fade-out" : "animate-fade-in",
+        )}
         onMouseDown={(e) => {
-          if (e.target === e.currentTarget) onClose();
+          if (e.target === e.currentTarget) requestClose();
         }}
       >
         <div
           role="dialog"
           aria-modal="true"
           aria-label={title}
-          className="flex h-dvh max-h-dvh w-full flex-col overflow-hidden bg-white shadow-2xl"
+          className={cn(
+            "flex h-dvh max-h-dvh w-full flex-col overflow-hidden bg-white shadow-2xl will-change-transform motion-reduce:animate-none",
+            closing ? "animate-fade-out" : "animate-sheet-up",
+          )}
         >
           <div className="flex shrink-0 items-start justify-between gap-3 px-4 py-3">
             <div>
@@ -272,7 +295,7 @@ export function CalendarModal({
             </div>
             <button
               type="button"
-              onClick={onClose}
+              onClick={requestClose}
               aria-label={`${title} 닫기`}
               className="-mr-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
             >
@@ -294,7 +317,7 @@ export function CalendarModal({
           <div className="shrink-0 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
             <button
               type="button"
-              onClick={onConfirm}
+              onClick={requestConfirm}
               className="w-full rounded-xl bg-brand-500 py-3 text-base font-bold text-white transition-colors hover:bg-brand-600"
             >
               {confirmLabel}

@@ -909,6 +909,28 @@ export function ResponseForm(props: Props) {
     setDtDate((cur) => (cur === ds ? null : cur));
   };
 
+  // 요약 리스트 카드를 왼쪽으로 밀며 흐려지는 애니메이션 후 실제 삭제(모바일 모달).
+  const [removingDates, setRemovingDates] = useState<Set<string>>(new Set());
+  const requestRemoveDate = (ds: string) => {
+    const reduce =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) {
+      removeWholeDate(ds);
+      return;
+    }
+    if (removingDates.has(ds)) return;
+    setRemovingDates((prev) => new Set(prev).add(ds));
+    window.setTimeout(() => {
+      removeWholeDate(ds);
+      setRemovingDates((prev) => {
+        const next = new Set(prev);
+        next.delete(ds);
+        return next;
+      });
+    }, 250);
+  };
+
   const goAvail = (next: number) => {
     setAvailStep(next);
     setMaxAvailStep((m) => Math.max(m, next));
@@ -937,7 +959,11 @@ export function ResponseForm(props: Props) {
   };
 
   // 특정 날짜의 안 되는 시간 범위 추가 입력(시작~종료 + 추가) + 추가된 범위 칩 목록.
-  const renderTimeAdder = (ranges: TimeRange[], onRemove: (i: number) => void) => (
+  const renderTimeAdder = (
+    ranges: TimeRange[],
+    onRemove: (i: number) => void,
+    showChips = true,
+  ) => (
     <div>
       <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1">
@@ -970,7 +996,7 @@ export function ResponseForm(props: Props) {
       >
         추가
       </TDSButton>
-      {ranges.length > 0 && (
+      {showChips && ranges.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {ranges.map((r, i) => (
             <span
@@ -1483,33 +1509,33 @@ export function ResponseForm(props: Props) {
 
                 {/* 입력한 '이 날 이 시간' 요약 — 탭하면 시트에서 수정, ✕ 로 그 날 전체 삭제 */}
                 {Object.keys(dateTimeBusy).length > 0 && (
-                  <div className="space-y-1.5">
+                  <div className="flex flex-wrap gap-1.5">
                     {Object.entries(dateTimeBusy)
                       .sort(([a], [b]) => a.localeCompare(b))
                       .map(([ds, ranges]) => (
-                        <div
+                        <span
                           key={ds}
-                          className="flex items-center justify-between gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2"
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-full bg-red-50 px-3 py-1 text-sm font-bold text-red-700 motion-reduce:animate-none",
+                            removingDates.has(ds) ? "animate-fade-out" : "animate-fade-in",
+                          )}
                         >
                           <button
                             type="button"
                             onClick={() => (isMobile ? openDtEdit(ds) : setDtDate(ds))}
-                            className="min-w-0 flex-1 text-left text-sm"
+                            className="break-keep text-left focus:outline-none"
                           >
-                            <span className="font-bold text-red-800">{fmtMD(ds)}</span>{" "}
-                            <span className="break-keep font-semibold text-red-600">
-                              {ranges.map(fmtRange).join(", ")}
-                            </span>
+                            {fmtMD(ds)} {ranges.map(fmtRange).join(", ")}
                           </button>
                           <button
                             type="button"
-                            onClick={() => removeWholeDate(ds)}
+                            onClick={() => requestRemoveDate(ds)}
                             aria-label={`${fmtMD(ds)} 삭제`}
-                            className="shrink-0 text-red-500 opacity-70 transition-opacity hover:opacity-100"
+                            className="ml-0.5 opacity-60 hover:opacity-100"
                           >
                             <ChipRemoveIcon />
                           </button>
-                        </div>
+                        </span>
                       ))}
                   </div>
                 )}
@@ -1555,7 +1581,7 @@ export function ResponseForm(props: Props) {
                                 {fmtMD(dtDate)} 안 되는 시간
                               </p>
                               <div className="mt-2">
-                                {renderTimeAdder(dateTimeBusy[dtDate] ?? [], (i) => removeRange(i, dtDate))}
+                                {renderTimeAdder(dateTimeBusy[dtDate] ?? [], (i) => removeRange(i, dtDate), false)}
                               </div>
                             </div>
                           ) : (
@@ -1564,41 +1590,40 @@ export function ResponseForm(props: Props) {
                             </p>
                           )}
 
-                          {/* 지금까지 추가한 모든 날짜의 안 되는 시간 — 다른 날짜를 골라도 계속 보이게([F4]) */}
+                          {/* 지금까지 추가한 모든 날짜의 안 되는 시간 — 벳지 형태로 노출([F4]) */}
                           {Object.keys(dateTimeBusy).length > 0 && (
-                            <div className="space-y-1.5">
-                              <p className="text-xs font-semibold text-slate-500">지금까지 추가한 안 되는 시간</p>
+                            <div className="flex flex-wrap gap-1.5">
                               {Object.entries(dateTimeBusy)
                                 .sort(([a], [b]) => a.localeCompare(b))
                                 .map(([ds, ranges]) => (
-                                  <div
+                                  <span
                                     key={ds}
                                     className={cn(
-                                      "flex items-center justify-between gap-2 rounded-xl border px-3 py-2",
+                                      "inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-bold motion-reduce:animate-none",
+                                      removingDates.has(ds)
+                                        ? "animate-fade-out"
+                                        : "animate-fade-in",
                                       ds === dtDate
-                                        ? "border-red-300 bg-red-100"
-                                        : "border-red-100 bg-red-50",
+                                        ? "bg-red-100 text-red-700 ring-1 ring-red-300"
+                                        : "bg-red-50 text-red-700",
                                     )}
                                   >
                                     <button
                                       type="button"
                                       onClick={() => setDtDate(ds)}
-                                      className="min-w-0 flex-1 text-left text-sm"
+                                      className="break-keep text-left focus:outline-none"
                                     >
-                                      <span className="font-bold text-red-800">{fmtMD(ds)}</span>{" "}
-                                      <span className="break-keep font-semibold text-red-600">
-                                        {ranges.map(fmtRange).join(", ")}
-                                      </span>
+                                      {fmtMD(ds)} {ranges.map(fmtRange).join(", ")}
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => removeWholeDate(ds)}
+                                      onClick={() => requestRemoveDate(ds)}
                                       aria-label={`${fmtMD(ds)} 삭제`}
-                                      className="shrink-0 text-red-500 opacity-70 transition-opacity hover:opacity-100"
+                                      className="ml-0.5 opacity-60 hover:opacity-100"
                                     >
                                       <ChipRemoveIcon />
                                     </button>
-                                  </div>
+                                  </span>
                                 ))}
                             </div>
                           )}

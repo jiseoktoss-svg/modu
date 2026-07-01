@@ -65,6 +65,18 @@ export function MeetingSummarySentence({
             회의 장소는 <Val>{location}</Val> 이며,{" "}
           </>
         )}
+        예상 회의 진행 시간은{" "}
+        {showHours && (
+          <>
+            <Val>{hours}</Val> 시간{showMin ? " " : ""}
+          </>
+        )}
+        {showMin && (
+          <>
+            <Val>{mins}</Val> 분
+          </>
+        )}{" "}
+        입니다.{" "}
         {deadlineText !== "" && (
           <>
             <Val>{deadlineText}</Val> 까지는 회의가 완료되어야 해요.{" "}
@@ -79,18 +91,6 @@ export function MeetingSummarySentence({
             까지 부탁드려요.{" "}
           </>
         )}
-        예상 회의 진행 시간은{" "}
-        {showHours && (
-          <>
-            <Val>{hours}</Val> 시간{showMin ? " " : ""}
-          </>
-        )}
-        {showMin && (
-          <>
-            <Val>{mins}</Val> 분
-          </>
-        )}{" "}
-        입니다.
       </p>
     </div>
   );

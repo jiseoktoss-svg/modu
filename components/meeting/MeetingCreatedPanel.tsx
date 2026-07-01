@@ -209,13 +209,19 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
         <div className="w-full">
           <div className="shrink-0 text-center">
             <CompletionLottie />
-          <h1 className="mt-4 text-2xl font-extrabold tracking-tight text-slate-900">
+          <h1
+            className="relative mt-4 text-2xl font-extrabold tracking-tight text-slate-900 animate-fade-up-blur motion-reduce:animate-none"
+            style={{ animationDelay: "120ms" }}
+          >
             회의가 만들어졌어요
           </h1>
         </div>
 
         <div className="mt-4 space-y-2 sm:mt-5 sm:space-y-3">
-          <div className="rounded-[22px] bg-white p-5 shadow-sm border-y border-slate-100">
+          <div
+            className="relative rounded-[22px] bg-white p-5 shadow-sm border-y border-slate-100 animate-fade-up-blur motion-reduce:animate-none"
+            style={{ animationDelay: "260ms" }}
+          >
             <dl className="space-y-2.5">
               {details.map((item) => (
                 <div key={item.label} className="grid grid-cols-[72px_1fr] gap-2.5 text-left">
@@ -252,7 +258,10 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
             </div>
           </div>
 
-          <div className="rounded-[22px] bg-white p-5 shadow-sm border-y border-slate-100">
+          <div
+            className="relative rounded-[22px] bg-white p-5 shadow-sm border-y border-slate-100 animate-fade-up-blur motion-reduce:animate-none"
+            style={{ animationDelay: "400ms" }}
+          >
             <h2 className="text-sm font-bold text-slate-400">참석자 전달 링크</h2>
             <div className="mt-3 flex items-center gap-2 rounded-[16px] bg-slate-50 px-3 py-2.5 ring-1 ring-slate-100">
               <p className="min-w-0 flex-1 truncate text-left text-sm font-medium text-slate-700">
@@ -286,12 +295,12 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
             {copied ? "복사됨" : "링크 복사"}
           </TDSButton>
           <TDSButton
-            type="button"
+            as="a"
+            href={participantPath}
+            target="_blank"
+            rel="noopener noreferrer"
             size="xl"
             display="block"
-            onClick={() => {
-              window.location.href = participantPath;
-            }}
           >
             회의시간 입력하기
           </TDSButton>
