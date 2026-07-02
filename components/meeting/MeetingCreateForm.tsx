@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useActionState,
   useEffect,
   useRef,
   useState,
@@ -8,7 +9,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
-import { useFormState, useFormStatus } from "react-dom";
+import { useFormStatus } from "react-dom";
 import { createMeeting } from "@/app/actions/meetings";
 import { MobileStickyAction } from "@/components/layout/MobileStickyAction";
 import { Emoji } from "@/components/ui/Emoji";
@@ -225,7 +226,7 @@ function NumberStepper({
 export function MeetingCreateForm({
   minDeadlineDate,
 }: Props) {
-  const [state, formAction] = useFormState<FormState, FormData>(createMeeting, {
+  const [state, formAction] = useActionState<FormState, FormData>(createMeeting, {
     error: null,
   });
   const initialDurationMinutes = 60;
