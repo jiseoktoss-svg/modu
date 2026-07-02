@@ -7,10 +7,11 @@ modu의 백엔드는 로그인 없는 링크 기반 알파 서비스에 맞춰, 
 핵심 목표:
 
 - 회의, 참석자, 응답, 후보 투표, 확정 정보를 안정적으로 저장한다.
-- 참석자 링크를 생성하고, admin token은 내부 관리/확정 권한 검증에 사용한다.
+- 참석자 링크와 참석자별 수정 토큰을 생성한다.
 - 참석자는 같은 브라우저에서만 본인 응답을 수정할 수 있다.
-- 참석자는 전원 응답 후 후보 시간대에 투표할 수 있다.
-- 주최자는 admin token으로만 추천 확인과 최다 득표 후보 확정을 수행한다.
+- 필수 참석자는 전원 응답 후 후보 시간대에 투표할 수 있다.
+- 회의 생성자는 참석자 중 한 명일 뿐이며, 별도 관리자 권한을 갖지 않는다.
+- 필수 참석자 투표가 모두 모이면 서비스 규칙에 따라 회의 시간이 확정된다.
 - 추천 알고리즘은 UI와 분리해 테스트 가능하게 만든다.
 
 ## 2. 기술 기준
@@ -68,7 +69,7 @@ DB 컬럼명은 Supabase/Postgres 기준으로 snake_case를 사용한다.
 | `workday_end` | 내부 계산용 근무 종료 시간, 기본 `18:00` |
 | `lunch_start` | 내부 계산값. 신규 회의는 점심 제외 비활성화를 위해 `00:00` 저장 |
 | `lunch_end` | 내부 계산값. 신규 회의는 점심 제외 비활성화를 위해 `00:01` 저장 |
-| `admin_token` | 주최자 관리 토큰 |
+| `admin_token` | 기존 DB 호환을 위해 남긴 내부 저장 컬럼. 제품 권한이나 화면 노출에는 사용하지 않는다 |
 | `confirmed_slot_id` | 확정 슬롯 ID |
 | `created_at` | 생성일 |
 | `expires_at` | 만료 예정일. 데이터 보존 정책용 내부 값이며, 화면에는 만료/삭제 안내를 노출하지 않는다 |
@@ -112,7 +113,7 @@ DB 컬럼명은 Supabase/Postgres 기준으로 snake_case를 사용한다.
 | `end_at` | 투표한 후보 종료 시각 |
 | `created_at` | 생성일 |
 
-참석자 1명은 회의 1개당 하나의 후보에만 투표할 수 있다. 다시 투표하면 기존 투표를 삭제하고 새 투표를 저장한다.
+필수 참석자 1명은 회의 1개당 하나의 후보에만 투표할 수 있다. 다시 투표하면 기존 투표를 삭제하고 새 투표를 저장한다.
 
 ### confirmed_slots
 
@@ -280,11 +281,12 @@ grant all on meeting_votes to service_role;
   - 회의명은 공백 포함 최대 20글자, 안건은 공백 포함 최대 30글자, 장소는 공백 포함 최대 20글자까지 허용한다.
   - 참석자는 최소 2명 이상, 최대 8명까지 허용한다.
   - 회의 길이는 `durationHours`(시간)와 `durationMinutePart`(분) 입력값을 합산해 `duration_minutes`로 저장한다. 분은 0~59 정수여야 한다.
-  - 회의 마감 날짜(`deadlineDate`)는 `date_end`로 저장하고, `date_start`는 생성 시점의 오늘(KST) 날짜로 채운다. 마감 날짜가 오늘 이전이면 에러를 반환한다.
-  - 응답 마감일(`responseDeadlineDate` + `responseDeadlineTime`, 분 없음 → 항상 `:00`)을 KST ISO로 합쳐 `response_deadline`에 저장한다. 오늘 이전이거나 회의 마감 날짜(`date_end`)보다 늦으면 에러를 반환한다(클라이언트가 미리 토스트로 자동 보정).
-  - 주최자에게 근무 시작/종료 시간과 점심 시간은 받지 않고 서버 기본값을 저장한다.
+  - 회의 마감 날짜(`deadlineDate`)는 `date_end`로 저장하고, `date_start`는 생성 시점의 오늘(KST) 날짜로 채운다. 마감 날짜가 **오늘부터 이틀 뒤(`오늘+2일`) 이전이면** 에러를 반환한다(응답 마감일이 회의 마감 2일 전까지여야 하므로 여유 확보).
+  - 응답 마감일(`responseDeadlineDate` + `responseDeadlineTime`, 분 없음 → 항상 `:00`)을 KST ISO로 합쳐 `response_deadline`에 저장한다. 오늘 이전이거나 **회의 마감 날짜 2일 전(`date_end −2일`)보다 늦으면** 에러를 반환한다(클라이언트가 미리 토스트로 자동 보정).
+  - 회의 생성자에게 근무 시작/종료 시간과 점심 시간은 받지 않고 서버 기본값을 저장한다.
   - 참석자 기본 `attendance_type`은 클라이언트에서 `required`로 전달되며(필수참석), 서버는 `required`가 아니면 `optional`로 정규화한다.
-  - `meetingId`, `adminToken`, 참석자별 `participantToken`을 생성한다.
+  - `meetingId`와 참석자별 `participantToken`을 생성한다.
+  - 회의 생성자도 참석자 명단에 포함된 한 명으로 취급한다.
   - 생성 후 공유 화면으로 이동한다.
   - 배포 환경에서 Supabase 환경변수가 없으면 실제 DB 저장 대신 데모 회의 ID를 생성해 공유 화면으로 이동한다.
 
@@ -307,27 +309,24 @@ grant all on meeting_votes to service_role;
   - 참석자별 상세 메모와 블록 note 원문은 반환하지 않는다.
   - 반환 데이터는 가능/선호/불가능/미응답 집계를 만들기 위한 최소 정보로 제한한다.
 
-- `updateAttendanceType`
-  - admin token을 검증한다.
-  - 참석자의 필수/선택 여부를 변경한다.
-  - 확정된 회의에서는 참석 유형을 변경할 수 없다.
-  - 변경 후 추천 결과가 다시 계산될 수 있게 후보 투표를 초기화한다.
-
 - `loadVotingOptions`
   - 참석자 `participantToken`을 검증한다.
   - 모든 참석자가 응답했을 때만 추천 후보를 투표 옵션으로 반환한다.
   - 후보별 현재 투표 수와 본인 투표 여부를 함께 반환한다.
+  - 필수 참석자에게는 투표 가능 상태를, 선택 참석자에게는 결과 확인 상태를 반환한다.
 
 - `submitVote`
   - 참석자 `participantToken`을 검증한다.
   - 모든 참석자가 응답한 뒤에만 투표를 저장한다.
+  - 필수 참석자만 투표할 수 있다.
   - 참석자당 1표만 유지한다.
   - 확정된 회의에서는 투표를 받지 않는다.
+  - 필수 참석자의 투표가 모두 모이면 확정 후보를 계산한다.
 
-- `confirmSlot`
-  - admin token을 검증한다.
-  - 모든 참석자가 응답하고 모든 참석자의 후보 투표가 모였는지 검증한다.
-  - 최다 득표 후보를 `confirmed_slots`에 저장한다. 동률이면 주최자가 고른 후보를 저장한다.
+- `finalizeMeeting`
+  - 별도 수동 요청 없이 서버가 서비스 규칙에 따라 실행한다.
+  - 모든 참석자가 응답하고 필수 참석자의 후보 투표가 모두 모였는지 검증한다.
+  - 최다 득표 후보를 `confirmed_slots`에 저장한다. 동률이면 사람이 고르지 않고 modu 추천순이 더 높은 후보를 저장한다.
   - `meetings.confirmed_slot_id`를 업데이트한다.
 
 Route Handler:
@@ -391,10 +390,11 @@ lib/scheduler/
 ### 후보 투표 및 확정
 
 - 모든 참석자가 `submitted` 상태가 되기 전에는 투표 옵션을 반환하지 않는다.
-- 참석자 1명은 후보 1개에 투표할 수 있고, 다시 투표하면 기존 투표를 교체한다.
-- 모든 참석자의 투표가 모이면 후보별 투표 수를 계산한다.
-- 확정은 주최자만 수행한다(자동 확정하지 않는다).
-- 주최자는 최다 득표 후보를 확정할 수 있다. 1위가 동률이면 그중 하나를 골라 확정한다.
+- 필수 참석자만 후보에 투표할 수 있고, 선택 참석자는 후보 설명과 결과를 확인한다.
+- 필수 참석자 1명은 후보 1개에 투표할 수 있고, 다시 투표하면 기존 투표를 교체한다.
+- 필수 참석자의 투표가 모두 모이면 후보별 투표 수를 계산한다.
+- 최다 득표 후보가 회의 시간으로 확정된다.
+- 1위가 동률이면 사람이 임의로 고르지 않고, 동률 후보 중 modu 추천순이 더 높은 후보가 확정된다.
 - 참석자가 응답을 수정하면 후보 투표를 초기화하고, 확정된 회의에서는 응답·투표를 잠근다.
 
 ### 추천 설명
@@ -415,7 +415,9 @@ lib/scheduler/
 권한 원칙:
 
 - 참석자 링크를 가진 사람은 응답 화면에 접근할 수 있다.
-- admin token이 포함된 주최자 화면에서만 추천 결과 확인과 최다 득표 후보 확정이 가능하다.
+- 별도 관리자 화면이나 관리자 토큰은 두지 않는다.
+- 회의 생성자는 참석자 중 한 명이며, 다른 참석자보다 더 높은 관리 권한을 갖지 않는다.
+- 추천 결과 확인, 전체 캘린더, 후보 투표는 참석자 화면에서 제공한다.
 - 참석자 수정은 같은 브라우저에 저장된 `participantToken`이 있을 때만 허용한다.
 - Supabase secret/service role key는 서버에서만 사용한다.
 - 브라우저에는 민감한 key를 노출하지 않는다.
@@ -441,14 +443,16 @@ Supabase 정책:
 
 서버 로직 테스트:
 
-- 회의 생성 시 admin token과 participant token이 생성된다.
+- 회의 생성 시 참석자별 `participantToken`이 생성된다.
 - 참석자 첫 제출이 저장된다.
 - 같은 `participantToken`으로 기존 응답을 수정할 수 있다.
 - 잘못된 `participantToken`으로 수정할 수 없다.
 - 모든 참석자가 응답하기 전에는 후보 투표를 할 수 없다.
-- 참석자당 후보 투표는 1표만 유지된다.
-- 잘못된 `adminToken`으로 참석 유형 변경이나 다수결 확정을 할 수 없다.
-- 전원 투표 전에는 확정할 수 없다. 1위가 동률이면 주최자가 후보를 골라 확정한다.
+- 필수 참석자당 후보 투표는 1표만 유지된다.
+- 선택 참석자는 후보에 투표할 수 없다.
+- 응답 이후 참석 유형을 임의로 변경할 수 없다.
+- 필수 참석자 전원 투표 전에는 확정할 수 없다.
+- 1위가 동률이면 modu 추천순이 더 높은 후보가 확정된다.
 - 확정된 회의에서는 응답·투표를 수정할 수 없다.
 - 확정된 회의만 `.ics` 파일을 다운로드할 수 있다.
 
@@ -487,13 +491,11 @@ Supabase 정책:
 
 | 함수 | 검증 | 핵심 동작 |
 | --- | --- | --- |
-| `createMeeting` | 입력 검증(필수·길이·인원 2~8·회의 마감일·응답 마감일≤마감일) | 회의(`response_deadline` 포함)+참석자 insert, `admin_token`/참석자별 `participant_token` 발급, 공유 화면 redirect. **운영+env 없음** 시 `lib/demoMeeting` 데모 ID로 우회 |
+| `createMeeting` | 입력 검증(필수·길이·인원 2~8·회의 마감일≥오늘+2일·응답 마감일≤마감일−2일) | 회의(`response_deadline` 포함)+참석자 insert, 참석자별 `participant_token` 발급, 공유 화면 redirect. **운영+env 없음** 시 `lib/demoMeeting` 데모 ID로 우회 |
 | `verifyParticipantIdentity` | 이름+직무 명단 대조 | `participant_token` 반환(기존 제출자는 토큰 일치 시 수정 허용) |
 | `submitAvailability` | `participantId`+토큰, 미확정 | 기존 블록 교체(delete→insert), `response_status='submitted'`, **회의 투표 초기화** |
 | `loadParticipantResponse` / `loadCalendarSnapshot` | participant 토큰 | 본인 응답 / 캘린더 집계용 최소 데이터(메모 원문 제외) |
-| `updateAttendanceType` | admin 토큰, 미확정 | 필수/선택 변경 + 투표 초기화 |
-| `loadVotingOptions` / `submitVote` | participant 토큰, 전원 응답 | 후보=추천결과, 1인 1표(재투표 교체) |
-| `confirmSlot` | admin 토큰, 전원 응답+전원 투표 | 최다 득표 슬롯 `confirmed_slots` 기록 + `confirmed_slot_id` 갱신(동률은 주최자 선택). 확정 시 응답·투표 잠금 |
+| `loadVotingOptions` / `submitVote` | participant 토큰, 전원 응답 | 후보=추천결과, 필수 참석자 1인 1표(재투표 교체), 필수 참석자 투표 완료 시 자동 확정 |
 
 Route Handler: `app/api/meetings/[meetingId]/ics/route.ts` — 확정 슬롯 있을 때만 `.ics`(`lib/ics.ts: buildIcs`).
 
@@ -522,11 +524,11 @@ Route Handler: `app/api/meetings/[meetingId]/ics/route.ts` — 확정 슬롯 있
 - **`lib/supabase/server.ts`** — `getSupabaseAdmin()`(키: `SUPABASE_SECRET_KEY ?? SUPABASE_SERVICE_ROLE_KEY`), `hasSupabaseConfig()`(데모 진입 게이트). `server-only`.
 - **`lib/supabase/localClient.ts`** — supabase-js thenable 체이닝 흉내 + `runExclusive` 직렬화. **unique/check/FK는 강제 안 함**(로컬은 되는데 운영은 실패 가능).
 - **`lib/tokens.ts`** — `generateToken(bytes=24)` = `randomBytes(24).toString('base64url')`(192비트 CSPRNG, 평문 저장).
-- **`lib/demoMeeting.ts`** — 회의 페이로드를 `demo_` + base64url(JSON) meetingId에 인코딩(무서명). `isDemoMeetingId`, `createDemoMeetingId`, `getDemoMeeting/Participants/VoteOptions`, 고정 토큰 `DEMO_ADMIN_TOKEN`/`demo-token-N`.
+- **`lib/demoMeeting.ts`** — 회의 페이로드를 `demo_` + base64url(JSON) meetingId에 인코딩(무서명). `isDemoMeetingId`, `createDemoMeetingId`, `getDemoMeeting/Participants/VoteOptions`, 고정 참석자 토큰 `demo-token-N`.
 
 ### 11.5 함정 / 주의
 
-- **비원자성**: `confirmSlot`(TOCTOU)·`submitAvailability`(delete→insert)·`createMeeting` 수정 분기가 트랜잭션 아님 → 부분 실패·경쟁 조건 가능.
+- **비원자성**: `submitVote`의 자동 확정·`submitAvailability`(delete→insert)·`createMeeting`이 트랜잭션 아님 → 부분 실패·경쟁 조건 가능.
 - **권한은 평문 토큰 `===` 비교**(상수시간 아님). RLS는 service_role만 grant라 보안이 앱 내부 토큰 비교에 전적으로 의존.
 - **데모 소비 경로는 env 게이트 안 됨**: 생성은 `production && !hasSupabaseConfig()`로 막지만, 읽기/액션 단락은 `isDemoMeetingId`만으로 발동(운영에서도 `demo_` ID 위조 가능). 데모 토큰은 추측 가능·페이로드 무서명.
 - **`expires_at`은 선언만** 있고 삭제 잡 없음. 점심 비활성화는 `lunch_start='00:00'/lunch_end='00:01'` 센티넬(서버가 점심 겹침 블록 거부, DDL 기본값 `12:00/13:00`과 다름 — 코드가 insert 시 센티넬 명시).

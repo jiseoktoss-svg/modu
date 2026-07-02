@@ -4,27 +4,16 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/cn";
 import { useScrollLock } from "@/lib/useScrollLock";
+import { CalendarGrid } from "@/components/ui/CalendarGrid";
 import { Emoji } from "@/components/ui/Emoji";
-
-const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
-
-function pad2(n: number) {
-  return n.toString().padStart(2, "0");
-}
-function ymd(y: number, m: number, d: number) {
-  return `${y}-${pad2(m)}-${pad2(d)}`;
-}
-function parse(s: string) {
-  const [y, m, d] = s.split("-").map(Number);
-  return { y, m, d };
-}
-// tz 드리프트를 피하려 UTC 정수 기준으로 계산한다(lib/time 과 동일 전략).
-function daysInMonth(y: number, m: number) {
-  return new Date(Date.UTC(y, m, 0)).getUTCDate();
-}
-function firstWeekday(y: number, m: number) {
-  return new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
-}
+import {
+  daysInCalendarMonth,
+  formatDateStr,
+  formatKoreanDateLabel,
+  nextCalendarMonth,
+  parseDateStr,
+  previousCalendarMonth,
+} from "@/components/ui/calendarUtils";
 
 interface DatePickerProps {
   id?: string;
@@ -35,20 +24,7 @@ interface DatePickerProps {
   minReason?: string; // min 이전(선택 불가) 날짜 호버 시 안내 툴팁
   maxReason?: string; // max 이후(선택 불가) 날짜 호버 시 안내 툴팁
   placeholder?: string; // 값이 없을 때 버튼에 표시할 안내 문구
-}
-
-function Chevron({ dir }: { dir: "left" | "right" }) {
-  return (
-    <svg viewBox="0 0 12 12" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
-      <path
-        d={dir === "left" ? "M7.5 3 4.5 6l3 3" : "M4.5 3 7.5 6l-3 3"}
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+  dialogEyebrow?: string; // 달력 모달 상단 작은 제목
 }
 
 export function DatePicker({
@@ -60,15 +36,16 @@ export function DatePicker({
   minReason,
   maxReason,
   placeholder = "날짜 선택",
+  dialogEyebrow = "회의 마감일",
 }: DatePickerProps) {
   const [open, setOpen] = useState(false);
   const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
-  const sel = value ? parse(value) : null;
+  const sel = value ? parseDateStr(value) : null;
   const [view, setView] = useState(() => {
     const base = value || min || "";
     if (base) {
-      const p = parse(base);
+      const p = parseDateStr(base);
       return { y: p.y, m: p.m };
     }
     return { y: 2026, m: 1 };
@@ -92,42 +69,23 @@ export function DatePicker({
 
   const minStr = min ?? "";
   const maxStr = max ?? "";
-  const dim = daysInMonth(view.y, view.m);
-  const lead = firstWeekday(view.y, view.m);
-  const cells: Array<number | null> = [];
-  for (let i = 0; i < lead; i++) cells.push(null);
-  for (let d = 1; d <= dim; d++) cells.push(d);
 
-  const prev = view.m === 1 ? { y: view.y - 1, m: 12 } : { y: view.y, m: view.m - 1 };
-  const prevLastDay = ymd(prev.y, prev.m, daysInMonth(prev.y, prev.m));
+  const prev = previousCalendarMonth(view);
+  const prevLastDay = formatDateStr(prev.y, prev.m, daysInCalendarMonth(prev.y, prev.m));
   const canPrev = !minStr || prevLastDay >= minStr;
-  const nextMonth = view.m === 12 ? { y: view.y + 1, m: 1 } : { y: view.y, m: view.m + 1 };
-  const nextFirstDay = ymd(nextMonth.y, nextMonth.m, 1);
+  const nextMonth = nextCalendarMonth(view);
+  const nextFirstDay = formatDateStr(nextMonth.y, nextMonth.m, 1);
   const canNext = !maxStr || nextFirstDay <= maxStr;
 
-  const label = sel
-    ? `${sel.y}년 ${sel.m}월 ${sel.d}일 ${WEEKDAYS[new Date(Date.UTC(sel.y, sel.m - 1, sel.d)).getUTCDay()]}요일`
-    : "날짜 선택";
+  const label = value ? formatKoreanDateLabel(value) : "날짜 선택";
 
   function go(delta: number) {
-    setView((v) => {
-      let m = v.m + delta;
-      let y = v.y;
-      if (m < 1) {
-        m = 12;
-        y -= 1;
-      } else if (m > 12) {
-        m = 1;
-        y += 1;
-      }
-      return { y, m };
-    });
+    setView((v) => (delta < 0 ? previousCalendarMonth(v) : nextCalendarMonth(v)));
   }
-  function pick(d: number) {
-    const s = ymd(view.y, view.m, d);
-    if (minStr && s < minStr) return;
-    if (maxStr && s > maxStr) return;
-    onChange(s);
+  function pick(date: string) {
+    if (minStr && date < minStr) return;
+    if (maxStr && date > maxStr) return;
+    onChange(date);
     setOpen(false);
   }
 
@@ -146,7 +104,7 @@ export function DatePicker({
       >
         <div className="mb-3 flex items-center justify-between gap-3 sm:mb-4">
           <div>
-            <p className="text-xs font-bold text-brand-600">회의 마감일</p>
+            <p className="text-xs font-bold text-brand-600">{dialogEyebrow}</p>
             <p className="mt-0.5 text-sm font-bold text-slate-900">{label}</p>
           </div>
           <button
@@ -159,58 +117,29 @@ export function DatePicker({
           </button>
         </div>
 
-        <div className="mb-3 flex items-center justify-between sm:mb-4">
-          <button
-            type="button"
-            onClick={() => go(-1)}
-            disabled={!canPrev}
-            aria-label="이전 달"
-            className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30"
-          >
-            <Chevron dir="left" />
-          </button>
-          <span className="text-sm font-bold text-slate-800">
-            {view.y}년 {view.m}월
-          </span>
-          <button
-            type="button"
-            onClick={() => go(1)}
-            disabled={!canNext}
-            aria-label="다음 달"
-            className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30"
-          >
-            <Chevron dir="right" />
-          </button>
-        </div>
-
-        <div className="grid grid-cols-7 gap-1.5 text-center">
-          {WEEKDAYS.map((w, i) => (
-            <div
-              key={w}
-              className={cn(
-                "py-1 text-xs font-semibold",
-                i === 0 ? "text-red-400" : i === 6 ? "text-blue-400" : "text-slate-400",
-              )}
-            >
-              {w}
-            </div>
-          ))}
-          {cells.map((d, i) => {
-            if (d === null) return <div key={`e${i}`} />;
-            const s = ymd(view.y, view.m, d);
+        <CalendarGrid
+          month={view}
+          canPrev={canPrev}
+          canNext={canNext}
+          onPrev={() => go(-1)}
+          onNext={() => go(1)}
+          emptyCellPrefix="e"
+          renderDate={(cell) => {
+            const s = cell.date;
+            const d = cell.day;
             const tooEarly = Boolean(minStr) && s < minStr;
             const tooLate = Boolean(maxStr) && s > maxStr;
             const disabled = tooEarly || tooLate;
             const reason = tooEarly ? minReason : tooLate ? maxReason : undefined;
             const selected = value === s;
-            const dow = (lead + (d - 1)) % 7;
+            const dow = cell.weekday;
             return (
               <button
                 key={s}
                 type="button"
                 aria-disabled={disabled || undefined}
                 tabIndex={disabled ? -1 : undefined}
-                onClick={() => pick(d)}
+                onClick={() => pick(s)}
                 onMouseEnter={
                   disabled
                     ? (e) => {
@@ -242,8 +171,8 @@ export function DatePicker({
                 {d}
               </button>
             );
-          })}
-        </div>
+          }}
+        />
       </div>
     </div>
   ) : null;

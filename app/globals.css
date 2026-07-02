@@ -330,6 +330,16 @@ body {
   }
 }
 
+/* 스크롤은 되지만 스크롤바는 숨김 (추천 시간 리스트 등) */
+.modu-scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.modu-scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 .modu-line-fill {
   animation: modu-line-fill 0.45s ease-out both;
 }

@@ -9,7 +9,6 @@ import type { Meeting, Participant } from "@/lib/types";
 import type { VoteOption } from "@/lib/actionTypes";
 
 export const DEMO_MEETING_ID_PREFIX = "demo_";
-export const DEMO_ADMIN_TOKEN = "demo-admin-token";
 
 interface DemoParticipantInput {
   name: string;
@@ -159,7 +158,6 @@ export function getDemoMeeting(meetingId: string): Meeting | null {
     workdayEnd: payload.workdayEnd,
     lunchStart: payload.lunchStart,
     lunchEnd: payload.lunchEnd,
-    adminToken: DEMO_ADMIN_TOKEN,
     confirmedSlotId: null,
     createdAt: `${payload.dateStart}T00:00:00+09:00`,
     expiresAt: `${addDaysToDateStr(payload.dateStart, 30)}T00:00:00+09:00`,

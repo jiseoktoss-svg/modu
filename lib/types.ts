@@ -23,7 +23,6 @@ export interface Meeting {
   workdayEnd: string; // HH:MM
   lunchStart: string; // HH:MM
   lunchEnd: string; // HH:MM
-  adminToken: string;
   confirmedSlotId: string | null;
   createdAt: string;
   expiresAt: string;
@@ -152,7 +151,6 @@ export function mapMeeting(row: MeetingRow): Meeting {
     workdayEnd: row.workday_end.slice(0, 5),
     lunchStart: row.lunch_start.slice(0, 5),
     lunchEnd: row.lunch_end.slice(0, 5),
-    adminToken: row.admin_token,
     confirmedSlotId: row.confirmed_slot_id,
     createdAt: row.created_at,
     expiresAt: row.expires_at,

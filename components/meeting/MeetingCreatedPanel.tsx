@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { TDSButton } from "@/components/ui/TDSButton";
 import { MobileStickyAction } from "@/components/layout/MobileStickyAction";
 import { describeDateStr } from "@/lib/time";
+import { clearMeetingCreateDraft } from "@/components/meeting/meetingCreateDraft";
+import { cn } from "@/lib/cn";
 import type { Meeting, Participant } from "@/lib/types";
 
 interface MeetingCreatedPanelProps {
@@ -23,6 +25,24 @@ function formatDuration(minutes: number): string {
   if (hours > 0 && mins > 0) return `${hours}시간 ${mins}분`;
   if (hours > 0) return `${hours}시간`;
   return `${mins}분`;
+}
+
+function participantPillClass(attendanceType: Participant["attendanceType"]) {
+  return cn(
+    "inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-1 sm:gap-1.5 sm:px-3 sm:py-2",
+    attendanceType === "required"
+      ? "border-brand-200 bg-brand-50/80"
+      : "border-slate-200 bg-white",
+  );
+}
+
+function participantTypeClass(attendanceType: Participant["attendanceType"]) {
+  return cn(
+    "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold sm:px-2 sm:text-[11px]",
+    attendanceType === "required"
+      ? "bg-brand-500 text-white shadow-sm shadow-brand-500/20"
+      : "bg-slate-100 text-slate-500 ring-1 ring-inset ring-slate-200",
+  );
 }
 
 // 성공 버스트 점이 중심에서 퍼져 나가는 6방향(시계 방향).
@@ -144,6 +164,7 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
 
   useEffect(() => {
     setOrigin(window.location.origin);
+    clearMeetingCreateDraft(window.sessionStorage);
   }, []);
 
   useEffect(() => {
@@ -235,21 +256,21 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
 
             <div className="mt-4 border-t border-slate-100 pt-4 text-left">
               <h3 className="text-sm font-bold text-slate-400">참석자 명단</h3>
-              <ul className="mt-2 grid max-h-36 grid-cols-3 gap-1.5 overflow-y-auto pr-1 sm:mt-2.5 sm:flex sm:max-h-80 sm:flex-wrap sm:justify-start sm:gap-2">
+              <ul className="mt-2 flex max-h-36 flex-wrap gap-1.5 overflow-y-auto pr-1 sm:mt-2.5 sm:max-h-80 sm:justify-start sm:gap-2">
                 {participants.map((participant) => (
                   <li
                     key={participant.id}
-                    className="flex min-w-0 items-center gap-0.5 rounded-full bg-slate-50 px-2 py-1 sm:gap-1.5 sm:px-3 sm:py-2"
+                    className={participantPillClass(participant.attendanceType)}
                   >
-                    <span className="min-w-0 truncate text-xs font-bold text-slate-800 sm:text-sm">
+                    <span className="max-w-[5.75rem] truncate text-xs font-bold text-slate-800 sm:max-w-[8rem] sm:text-sm">
                       {participant.name}
                     </span>
                     {participant.role && (
-                      <span className="hidden min-w-0 truncate text-xs font-medium text-slate-400 sm:inline">
+                      <span className="hidden max-w-[9rem] truncate text-xs font-medium text-slate-400 sm:inline">
                         {participant.role}
                       </span>
                     )}
-                    <span className="shrink-0 rounded-full bg-white px-1 py-0.5 text-[9px] font-bold text-slate-500 sm:px-2 sm:text-[11px]">
+                    <span className={participantTypeClass(participant.attendanceType)}>
                       {participant.attendanceType === "required" ? "필수" : "선택"}
                     </span>
                   </li>

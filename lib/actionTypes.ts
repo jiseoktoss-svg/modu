@@ -43,21 +43,7 @@ export type VerifyParticipantIdentityResult =
     }
   | { ok: false; error: string };
 
-export interface UpdateAttendanceArgs {
-  meetingId: string;
-  adminToken: string;
-  participantId: string;
-  attendanceType: AttendanceType;
-}
-
 export type SimpleResult = { ok: true } | { ok: false; error: string };
-
-export interface ConfirmSlotArgs {
-  meetingId: string;
-  adminToken: string;
-  startAt: string;
-  endAt: string;
-}
 
 export interface LoadResponseArgs {
   meetingId: string;

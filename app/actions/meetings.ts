@@ -22,7 +22,6 @@ import {
 import { buildShareText } from "@/lib/share";
 import {
   createDemoMeetingId,
-  DEMO_ADMIN_TOKEN,
   getDemoParticipants,
   getDemoVoteOptions,
   isDemoMeetingId,
@@ -30,7 +29,7 @@ import {
 import { getSupabaseAdmin, hasSupabaseConfig } from "@/lib/supabase/server";
 import { generateToken } from "@/lib/tokens";
 import { addDaysToDateStr, kstWallToIso, parseHm, todayDateStrKst } from "@/lib/time";
-import { mapMeeting, type MeetingRow, type ParticipantRow } from "@/lib/types";
+import type { ParticipantRow } from "@/lib/types";
 import {
   MAX_MEETING_AGENDA_LENGTH,
   MAX_MEETING_LOCATION_LENGTH,
@@ -39,7 +38,6 @@ import {
   MIN_MEETING_PARTICIPANTS,
 } from "@/lib/meetingLimits";
 import type {
-  ConfirmSlotArgs,
   FormState,
   LoadCalendarSnapshotArgs,
   LoadCalendarSnapshotResult,
@@ -51,7 +49,6 @@ import type {
   SubmitAvailabilityArgs,
   SubmitVoteArgs,
   SubmitResult,
-  UpdateAttendanceArgs,
   VerifyParticipantIdentityArgs,
   VerifyParticipantIdentityResult,
   VoteOption,
@@ -128,9 +125,6 @@ export async function createMeeting(
   ).trim();
   const responseDeadlineDate = String(formData.get("responseDeadlineDate") ?? "").trim();
   const responseDeadlineTime = String(formData.get("responseDeadlineTime") ?? "").trim();
-  const editMeetingId = String(formData.get("meetingId") ?? "").trim();
-  const editAdminToken = String(formData.get("adminToken") ?? "").trim();
-  const isEditing = editMeetingId.length > 0 || editAdminToken.length > 0;
   const dateStart = todayDateStrKst(new Date());
   const dateEnd = deadlineDate;
   const workdayStart = DEFAULT_WORKDAY_START;
@@ -151,9 +145,6 @@ export async function createMeeting(
   if (!location) return { error: "회의 장소를 입력해 주세요." };
   if (rawLocation.length > MAX_MEETING_LOCATION_LENGTH) {
     return { error: `회의 장소는 최대 ${MAX_MEETING_LOCATION_LENGTH}글자까지 입력할 수 있습니다.` };
-  }
-  if (isEditing && (!editMeetingId || !editAdminToken)) {
-    return { error: "수정 권한 정보가 올바르지 않습니다." };
   }
   if (participants.length < MIN_MEETING_PARTICIPANTS) {
     return { error: `참석자는 최소 ${MIN_MEETING_PARTICIPANTS}명 이상이어야 합니다.` };
@@ -206,10 +197,6 @@ export async function createMeeting(
   if (durationMinutes > we - ws) return { error: "회의 길이가 근무 시간보다 깁니다." };
 
   if (process.env.NODE_ENV === "production" && !hasSupabaseConfig()) {
-    if (isEditing && (!isDemoMeetingId(editMeetingId) || editAdminToken !== DEMO_ADMIN_TOKEN)) {
-      return { error: "데모 모드에서는 데모 회의만 수정할 수 있습니다." };
-    }
-
     const demoMeetingId = createDemoMeetingId({
       title,
       agenda,
@@ -231,85 +218,7 @@ export async function createMeeting(
   if (!storage.ok) return { error: storage.error };
   const { sb } = storage;
 
-  if (isEditing) {
-    let meeting;
-    try {
-      meeting = await fetchMeeting(editMeetingId);
-    } catch (error) {
-      logMeetingStorageError("failed to load meeting for edit", error);
-      return { error: MEETING_STORAGE_ERROR_MESSAGE };
-    }
-    if (!meeting || meeting.adminToken !== editAdminToken) {
-      return { error: "수정 권한이 없습니다." };
-    }
-    if (meeting.confirmedSlotId) {
-      return { error: "이미 확정된 회의는 수정할 수 없습니다." };
-    }
-
-    let existingParticipants;
-    try {
-      existingParticipants = await fetchParticipants(editMeetingId);
-    } catch (error) {
-      logMeetingStorageError("failed to load participants for edit", error);
-      return { error: MEETING_STORAGE_ERROR_MESSAGE };
-    }
-    if (existingParticipants.some((participant) => participant.responseStatus === "submitted")) {
-      return { error: "이미 응답이 있는 회의는 생성 화면에서 수정할 수 없어요." };
-    }
-
-    const { error: meetingError } = await sb
-      .from("meetings")
-      .update({
-        title,
-        agenda,
-        location,
-        duration_minutes: durationMinutes,
-        date_start: meeting.dateStart,
-        date_end: dateEnd,
-        workday_start: workdayStart,
-        workday_end: workdayEnd,
-        lunch_start: lunchStart,
-        lunch_end: lunchEnd,
-        response_deadline: responseDeadline,
-      })
-      .eq("id", editMeetingId)
-      .eq("admin_token", editAdminToken);
-
-    if (meetingError) {
-      logMeetingStorageError("failed to update meeting", meetingError);
-      return { error: "회의 수정에 실패했습니다. 잠시 후 다시 시도해 주세요." };
-    }
-
-    const { error: deleteParticipantError } = await sb
-      .from("participants")
-      .delete()
-      .eq("meeting_id", editMeetingId);
-    if (deleteParticipantError) {
-      logMeetingStorageError("failed to replace participants", deleteParticipantError);
-      return { error: "참석자 수정에 실패했습니다. 잠시 후 다시 시도해 주세요." };
-    }
-
-    const participantRows = participants.map((p) => ({
-      meeting_id: editMeetingId,
-      name: p.name,
-      role: p.role,
-      attendance_type: p.attendanceType,
-      participant_token: generateToken(),
-    }));
-
-    const { error: participantError } = await sb.from("participants").insert(participantRows);
-    if (participantError) {
-      logMeetingStorageError("failed to insert edited participants", participantError);
-      return { error: "참석자 수정에 실패했습니다. 잠시 후 다시 시도해 주세요." };
-    }
-
-    revalidatePath(`/meetings/${editMeetingId}/share`);
-    revalidatePath(`/meetings/${editMeetingId}/share/${editAdminToken}`);
-    revalidatePath(`/m/${editMeetingId}`);
-    redirect(`/meetings/${editMeetingId}/share/${editAdminToken}`);
-  }
-
-  const adminToken = generateToken();
+  const internalMeetingToken = generateToken();
 
   const { data: meetingData, error: meetingError } = await sb
     .from("meetings")
@@ -325,7 +234,7 @@ export async function createMeeting(
       lunch_start: lunchStart,
       lunch_end: lunchEnd,
       response_deadline: responseDeadline,
-      admin_token: adminToken,
+      admin_token: internalMeetingToken,
     })
     .select("id")
     .single();
@@ -623,12 +532,18 @@ async function getVoteOptions(
   const blocks = await fetchBlocks(meetingId);
   const votes = await fetchVotes(meetingId);
   const recommendations = recommendSlots(toSchedulerInput(meeting, participants, blocks));
+  const requiredParticipantIds = new Set(
+    participants.filter((p) => p.attendanceType === "required").map((p) => p.id),
+  );
   const counts = new Map<string, number>();
   for (const v of votes) {
+    if (!requiredParticipantIds.has(v.participantId)) continue;
     const key = voteKey(v.startAt, v.endAt);
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
-  const ownVote = votes.find((v) => v.participantId === participantId);
+  const ownVote = requiredParticipantIds.has(participantId)
+    ? votes.find((v) => v.participantId === participantId)
+    : undefined;
   const ownKey = ownVote ? voteKey(ownVote.startAt, ownVote.endAt) : null;
 
   return recommendations.map((c) => {
@@ -655,7 +570,102 @@ async function assertVotingOpen(meetingId: string) {
   return { ok: true as const, participants };
 }
 
-// 자동 확정은 제거했다 — 확정은 주최자(admin)만 수행한다. (권한 원칙 일관)
+async function finalizeMeetingIfReady(meetingId: string): Promise<SimpleResult> {
+  const [meeting, participants, blocks, votes] = await Promise.all([
+    fetchMeeting(meetingId),
+    fetchParticipants(meetingId),
+    fetchBlocks(meetingId),
+    fetchVotes(meetingId),
+  ]);
+  if (!meeting) return { ok: false, error: "회의를 찾을 수 없습니다." };
+  if (meeting.confirmedSlotId) return { ok: true };
+  if (participants.length === 0 || participants.some((p) => p.responseStatus !== "submitted")) {
+    return { ok: true };
+  }
+
+  const requiredParticipants = participants.filter((p) => p.attendanceType === "required");
+  if (requiredParticipants.length === 0) {
+    return { ok: false, error: "필수 참석자가 없어 회의 시간을 확정할 수 없습니다." };
+  }
+
+  const requiredParticipantIds = new Set(requiredParticipants.map((p) => p.id));
+  const requiredVotes = votes.filter((vote) => requiredParticipantIds.has(vote.participantId));
+  const requiredVoterIds = new Set(requiredVotes.map((vote) => vote.participantId));
+  if (!requiredParticipants.every((participant) => requiredVoterIds.has(participant.id))) {
+    return { ok: true };
+  }
+
+  const recommendations = recommendSlots(toSchedulerInput(meeting, participants, blocks));
+  if (recommendations.length === 0) {
+    return { ok: false, error: "확정할 수 있는 후보 시간이 없습니다." };
+  }
+
+  const voteCounts = new Map<string, number>();
+  for (const vote of requiredVotes) {
+    const key = voteKey(vote.startAt, vote.endAt);
+    voteCounts.set(key, (voteCounts.get(key) ?? 0) + 1);
+  }
+  const maxVoteCount = Math.max(...voteCounts.values());
+  const winner = recommendations.find(
+    (candidate) =>
+      (voteCounts.get(voteKey(candidate.startAt, candidate.endAt)) ?? 0) === maxVoteCount,
+  );
+  if (!winner) {
+    return { ok: false, error: "최다 득표 후보를 찾을 수 없습니다." };
+  }
+
+  const schedulerInput = toSchedulerInput(meeting, participants, blocks);
+  const confirmable = isSlotConfirmable(
+    schedulerInput.meeting,
+    schedulerInput.participants,
+    schedulerInput.blocks,
+    winner.startAt,
+    winner.endAt,
+  );
+  if (!confirmable.ok) return { ok: false, error: confirmable.reason };
+
+  const requiredAllAvailable = isRequiredAllAvailable(
+    participants,
+    blocks,
+    winner.startAt,
+    winner.endAt,
+  );
+  const summaryText = buildShareText({
+    title: meeting.title,
+    agenda: meeting.agenda,
+    location: meeting.location,
+    startAt: winner.startAt,
+    endAt: winner.endAt,
+    requiredAllAvailable,
+  });
+
+  const sb = getSupabaseAdmin();
+  const latestMeeting = await fetchMeeting(meetingId);
+  if (!latestMeeting) return { ok: false, error: "회의를 찾을 수 없습니다." };
+  if (latestMeeting.confirmedSlotId) return { ok: true };
+
+  const { data: slot, error } = await sb
+    .from("confirmed_slots")
+    .insert({
+      meeting_id: meetingId,
+      start_at: winner.startAt,
+      end_at: winner.endAt,
+      summary_text: summaryText,
+    })
+    .select("id")
+    .single();
+  if (error || !slot) return { ok: false, error: "회의 시간 확정에 실패했습니다." };
+
+  const { error: updateError } = await sb
+    .from("meetings")
+    .update({ confirmed_slot_id: slot.id })
+    .eq("id", meetingId);
+  if (updateError) return { ok: false, error: "회의 시간 확정에 실패했습니다." };
+
+  revalidatePath(`/m/${meetingId}`);
+  revalidatePath(`/meetings/${meetingId}/confirmed`);
+  return { ok: true };
+}
 
 export async function loadVotingOptions(
   args: LoadVotingOptionsArgs,
@@ -692,12 +702,17 @@ export async function submitVote(args: SubmitVoteArgs): Promise<SimpleResult> {
     args.token,
   );
   if (!participant) return { ok: false, error: "권한이 없습니다." };
+  if (participant.attendance_type !== "required") {
+    return { ok: false, error: "필수 참석자만 후보 시간대에 투표할 수 있어요." };
+  }
   if (isDemoMeetingId(args.meetingId)) {
     const options = getDemoVoteOptions(args.meetingId, args.participantId) ?? [];
     const selected = options.some(
       (option) => option.startAt === args.startAt && option.endAt === args.endAt,
     );
-    return selected ? { ok: true } : { ok: false, error: "현재 후보 시간대 중 하나만 투표할 수 있습니다." };
+    return selected
+      ? { ok: true }
+      : { ok: false, error: "현재 후보 시간대 중 하나만 투표할 수 있습니다." };
   }
   if (participant.response_status !== "submitted") {
     return { ok: false, error: "가능한 시간을 먼저 제출해 주세요." };
@@ -736,152 +751,9 @@ export async function submitVote(args: SubmitVoteArgs): Promise<SimpleResult> {
   });
   if (error) return { ok: false, error: "투표 저장에 실패했습니다." };
 
+  const finalizeResult = await finalizeMeetingIfReady(args.meetingId);
+  if (!finalizeResult.ok) return finalizeResult;
+
   revalidatePath(`/m/${args.meetingId}`);
   return { ok: true };
-}
-
-// ---- 참석 유형 변경(admin) ----
-
-export async function updateAttendanceType(args: UpdateAttendanceArgs): Promise<SimpleResult> {
-  const sb = getSupabaseAdmin();
-  const { data: meeting } = await sb
-    .from("meetings")
-    .select("id, admin_token, confirmed_slot_id")
-    .eq("id", args.meetingId)
-    .maybeSingle();
-  if (!meeting || meeting.admin_token !== args.adminToken) {
-    return { ok: false, error: "권한이 없습니다." };
-  }
-  if (meeting.confirmed_slot_id) {
-    return { ok: false, error: "이미 확정된 회의는 참석 유형을 변경할 수 없습니다." };
-  }
-
-  const { error } = await sb
-    .from("participants")
-    .update({ attendance_type: args.attendanceType, updated_at: new Date().toISOString() })
-    .eq("id", args.participantId)
-    .eq("meeting_id", args.meetingId);
-  if (error) return { ok: false, error: "변경에 실패했습니다." };
-
-  const { error: voteDeleteErr } = await sb
-    .from("meeting_votes")
-    .delete()
-    .eq("meeting_id", args.meetingId);
-  if (voteDeleteErr) return { ok: false, error: "후보 투표 초기화에 실패했습니다." };
-
-  // 변경 후 추천 결과가 다시 계산되도록 admin 화면을 무효화한다.
-  revalidatePath(`/admin/${args.meetingId}/${args.adminToken}`);
-  revalidatePath(`/m/${args.meetingId}`);
-  return { ok: true };
-}
-
-// ---- 회의 확정(admin) ----
-
-export async function confirmSlot(args: ConfirmSlotArgs): Promise<SimpleResult | void> {
-  const sb = getSupabaseAdmin();
-  const { data: mRow } = await sb
-    .from("meetings")
-    .select("*")
-    .eq("id", args.meetingId)
-    .maybeSingle();
-  if (!mRow || (mRow as MeetingRow).admin_token !== args.adminToken) {
-    return { ok: false, error: "권한이 없습니다." };
-  }
-
-  const meeting = mapMeeting(mRow as MeetingRow);
-  if (meeting.confirmedSlotId) {
-    return { ok: false, error: "이미 확정된 회의입니다." };
-  }
-  const participants = await fetchParticipants(args.meetingId);
-  const blocks = await fetchBlocks(args.meetingId);
-  const votes = await fetchVotes(args.meetingId);
-
-  if (participants.length === 0 || participants.some((p) => p.responseStatus !== "submitted")) {
-    return { ok: false, error: "모든 참석자가 응답한 뒤에 다수결 확정을 할 수 있습니다." };
-  }
-  const voterIds = new Set(votes.map((v) => v.participantId));
-  if (!participants.every((p) => voterIds.has(p.id))) {
-    return { ok: false, error: "모든 참석자의 후보 투표가 모인 뒤에 확정할 수 있습니다." };
-  }
-  if (votes.length === 0) {
-    return { ok: false, error: "아직 투표가 없습니다. 후보 시간대 투표 후 확정해 주세요." };
-  }
-  const voteCounts = new Map<string, number>();
-  for (const v of votes) {
-    const key = voteKey(v.startAt, v.endAt);
-    voteCounts.set(key, (voteCounts.get(key) ?? 0) + 1);
-  }
-  const selectedVoteCount = voteCounts.get(voteKey(args.startAt, args.endAt)) ?? 0;
-  const maxVoteCount = Math.max(...voteCounts.values());
-  if (selectedVoteCount === 0) {
-    return { ok: false, error: "투표가 없는 후보는 확정할 수 없습니다." };
-  }
-  if (selectedVoteCount < maxVoteCount) {
-    return { ok: false, error: "최다 득표 후보만 확정할 수 있습니다." };
-  }
-  // selectedVoteCount === maxVoteCount: 단독 1위거나 공동 1위 → 주최자가 고른 후보를 확정한다(타이브레이크).
-
-  // (#1) 확정하려는 슬롯이 실제로 유효한지 서버에서 검증한다.
-  // 근무 시간·점심·회의 길이·30분 정렬·날짜 범위·필수 참석자 busy 충돌을 모두 확인한다.
-  const schedulerInput = toSchedulerInput(meeting, participants, blocks);
-  const confirmable = isSlotConfirmable(
-    schedulerInput.meeting,
-    schedulerInput.participants,
-    schedulerInput.blocks,
-    args.startAt,
-    args.endAt,
-  );
-  if (!confirmable.ok) return { ok: false, error: confirmable.reason };
-
-  // 선택한 정확한 슬롯에 대해 필수 충족 여부를 계산한다(공유 문구용).
-  const requiredAllAvailable = isRequiredAllAvailable(
-    participants,
-    blocks,
-    args.startAt,
-    args.endAt,
-  );
-
-  const summaryText = buildShareText({
-    title: meeting.title,
-    agenda: meeting.agenda,
-    location: meeting.location,
-    startAt: args.startAt,
-    endAt: args.endAt,
-    requiredAllAvailable,
-  });
-
-  const existingSlotId = (mRow as MeetingRow).confirmed_slot_id;
-  if (existingSlotId) {
-    // 재확정: 기존 confirmed_slots 행을 갱신해 고아 레코드를 남기지 않는다.
-    const { error } = await sb
-      .from("confirmed_slots")
-      .update({
-        start_at: args.startAt,
-        end_at: args.endAt,
-        summary_text: summaryText,
-      })
-      .eq("id", existingSlotId);
-    if (error) return { ok: false, error: "확정에 실패했습니다." };
-  } else {
-    const { data: slot, error } = await sb
-      .from("confirmed_slots")
-      .insert({
-        meeting_id: args.meetingId,
-        start_at: args.startAt,
-        end_at: args.endAt,
-        summary_text: summaryText,
-      })
-      .select("id")
-      .single();
-    if (error || !slot) return { ok: false, error: "확정에 실패했습니다." };
-
-    const { error: updErr } = await sb
-      .from("meetings")
-      .update({ confirmed_slot_id: slot.id })
-      .eq("id", args.meetingId);
-    if (updErr) return { ok: false, error: "확정에 실패했습니다." };
-  }
-
-  revalidatePath(`/admin/${args.meetingId}/${args.adminToken}`);
-  redirect(`/meetings/${args.meetingId}/confirmed`);
 }

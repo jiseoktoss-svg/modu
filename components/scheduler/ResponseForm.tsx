@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -27,13 +26,22 @@ import { Select } from "@/components/ui/Select";
 import { TDSButton } from "@/components/ui/TDSButton";
 import { MeetingSummarySentence } from "@/components/meeting/MeetingSummarySentence";
 import { CalendarModal } from "@/components/scheduler/CalendarModal";
+import { CalendarGrid } from "@/components/ui/CalendarGrid";
+import {
+  formatKoreanDateLabel,
+  getCalendarMonthsWithDates,
+} from "@/components/ui/calendarUtils";
+import {
+  clearResponseDraft,
+  readResponseDraft,
+  writeResponseDraft,
+  type ResponseDraftStep,
+} from "@/components/scheduler/responseDraft";
 import { MobileStickyAction } from "@/components/layout/MobileStickyAction";
 import { cn } from "@/lib/cn";
 import { useScrollLock } from "@/lib/useScrollLock";
 import { cellKey, cellsToBlocks, GRID_STEP_MINUTES } from "@/lib/grid";
 import {
-  describeDateStr,
-  formatHm,
   formatKoreanDate,
   formatKoreanDateTimeRange,
   formatKoreanTime,
@@ -54,7 +62,7 @@ import {
   DEMO_PEOPLE,
   DEMO_CASES,
   buildCaseCandidates,
-  buildCaseSnapshot,
+  type CaseCandidate,
 } from "@/data/demoCases";
 
 interface Props {
@@ -73,17 +81,15 @@ interface Props {
   initialParticipants: PublicParticipant[];
 }
 
-type Step =
-  | "loading"
-  | "intro"
-  | "identity"
-  | "availability"
-  | "review"
-  | "waiting"
-  | "result"
-  | "done";
+type Step = "loading" | ResponseDraftStep;
 type DateSummaryStatus = "available" | "preferred" | "busy" | "mixed";
 type CalendarStatus = "available" | "preferred" | "avoid" | "busy" | "pending";
+
+const REVIEW_CLAUSE_STAGGER_MS = 650;
+const REVIEW_CLAUSE_DURATION_MS = 1000;
+const REVIEW_HELP_DELAY_MS = REVIEW_CLAUSE_STAGGER_MS * 3 + 700;
+const REVIEW_CTA_DELAY_MS = REVIEW_HELP_DELAY_MS + 600;
+const REVIEW_CTA_DURATION_MS = 1000;
 
 function storageKey(meetingId: string) {
   return `modu:p:${meetingId}`;
@@ -123,36 +129,6 @@ function summarizeDate(
   else if (available === rows.length) status = "available";
 
   return { status, available, preferred, busy, avoid };
-}
-
-function epoch(iso: string) {
-  return Date.parse(iso);
-}
-
-function overlaps(aStart: number, aEnd: number, bStart: number, bEnd: number) {
-  return aStart < bEnd && bStart < aEnd;
-}
-
-function participantStatusForSlot(
-  participant: CalendarSnapshotParticipant,
-  blocks: CalendarSnapshotBlock[],
-  slotStart: number,
-  slotEnd: number,
-): CalendarStatus {
-  if (participant.responseStatus !== "submitted") return "pending";
-
-  const statuses = blocks
-    .filter(
-      (block) =>
-        block.participantId === participant.id &&
-        overlaps(slotStart, slotEnd, epoch(block.startAt), epoch(block.endAt)),
-    )
-    .map((block) => block.status);
-
-  if (statuses.includes("busy")) return "busy";
-  if (statuses.includes("avoid")) return "avoid";
-  if (statuses.includes("preferred")) return "preferred";
-  return "available";
 }
 
 // 데모용 더미 응답: 6명이 선호/불가를 입력한 상태를 결정적으로 생성한다.
@@ -736,6 +712,10 @@ export function ResponseForm(props: Props) {
   const [toastIcon, setToastIcon] = useState("⚠️");
   const [toastOpen, setToastOpen] = useState(false);
   const toastTimer = useRef<number | null>(null);
+  const [reviewCtaReady, setReviewCtaReady] = useState(false);
+  const [responseDraftReady, setResponseDraftReady] = useState(false);
+  const [resultSelectedIndex, setResultSelectedIndex] = useState<number | null>(null);
+  const [resultVotedIndex, setResultVotedIndex] = useState<number | null>(null);
 
   const selected = participants.find((p) => p.id === selectedId) ?? null;
   const roleOptions = Array.from(
@@ -757,9 +737,36 @@ export function ResponseForm(props: Props) {
   ];
 
   useEffect(() => {
+    const draft = readResponseDraft(window.sessionStorage, meetingId);
+    if (draft) {
+      skipFormFocus.current = true;
+      skipNextAutoFocus.current = true;
+      setStep(draft.step);
+      setCaseId(draft.caseId);
+      setSelectedId(draft.selectedId);
+      setToken(draft.token);
+      setRole(draft.role);
+      setIdentityName(draft.identityName);
+      setIdentityRole(draft.identityRole);
+      setFormStep(draft.formStep);
+      setMaxFormStep(draft.maxFormStep);
+      setAvailStep(draft.availStep);
+      setMaxAvailStep(draft.maxAvailStep);
+      setBusyDates(new Set(draft.busyDates));
+      setDateTimeBusy(draft.dateTimeBusy);
+      setDtDate(draft.dtDate);
+      setDraftStart(draft.draftStart);
+      setDraftEnd(draft.draftEnd);
+      setResultSelectedIndex(draft.resultSelectedIndex);
+      setResultVotedIndex(draft.resultVotedIndex);
+      setResponseDraftReady(true);
+      return;
+    }
+
     const raw = window.localStorage.getItem(storageKey(meetingId));
     if (!raw) {
       setStep("intro");
+      setResponseDraftReady(true);
       return;
     }
     let parsed: { participantId?: string; token?: string } | null = null;
@@ -769,7 +776,9 @@ export function ResponseForm(props: Props) {
       parsed = null;
     }
     if (!parsed?.participantId || !parsed.token) {
+      window.localStorage.removeItem(storageKey(meetingId));
       setStep("intro");
+      setResponseDraftReady(true);
       return;
     }
     const identity = { participantId: parsed.participantId, token: parsed.token };
@@ -785,15 +794,68 @@ export function ResponseForm(props: Props) {
           setStep("waiting");
         } else {
           window.localStorage.removeItem(storageKey(meetingId));
+          clearResponseDraft(window.sessionStorage, meetingId);
           setSelectedId(null);
           setToken(null);
           setStep("intro");
         }
+        setResponseDraftReady(true);
       })
-      .catch(() => setStep("intro"));
+      .catch(() => {
+        setSelectedId(null);
+        setToken(null);
+        setStep("intro");
+        setResponseDraftReady(true);
+      });
     // 최초 1회만 실행.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!responseDraftReady || step === "loading") return;
+    writeResponseDraft(window.sessionStorage, {
+      meetingId,
+      step,
+      caseId,
+      selectedId,
+      token,
+      role,
+      identityName,
+      identityRole,
+      formStep,
+      maxFormStep,
+      availStep,
+      maxAvailStep,
+      busyDates: [...busyDates].sort(),
+      dateTimeBusy,
+      dtDate,
+      draftStart,
+      draftEnd,
+      resultSelectedIndex,
+      resultVotedIndex,
+    });
+  }, [
+    responseDraftReady,
+    meetingId,
+    step,
+    caseId,
+    selectedId,
+    token,
+    role,
+    identityName,
+    identityRole,
+    formStep,
+    maxFormStep,
+    availStep,
+    maxAvailStep,
+    busyDates,
+    dateTimeBusy,
+    dtDate,
+    draftStart,
+    draftEnd,
+    resultSelectedIndex,
+    resultVotedIndex,
+  ]);
 
   function persistIdentity(participantId: string, tok: string) {
     window.localStorage.setItem(
@@ -868,7 +930,6 @@ export function ResponseForm(props: Props) {
     }
     const r: TimeRange = { start: s, end: e };
     setDateTimeBusy((p) => ({ ...p, [dtDate]: [...(p[dtDate] ?? []), r] }));
-    showToast("안 되는 시간을 추가했어요", "✅");
   };
 
   const removeRange = (index: number, ds: string) => {
@@ -1085,6 +1146,11 @@ export function ResponseForm(props: Props) {
     if (res.participantId !== selectedId) {
       setBusyDates(new Set());
       setDateTimeBusy({});
+      setDtDate(null);
+      setDraftStart(DEFAULT_DRAFT_START);
+      setDraftEnd(DEFAULT_DRAFT_END);
+      setResultSelectedIndex(null);
+      setResultVotedIndex(null);
     }
 
     setSelectedId(res.participantId);
@@ -1117,8 +1183,16 @@ export function ResponseForm(props: Props) {
     }
     setToken(res.token);
     persistIdentity(res.participantId, res.token);
+    setResultSelectedIndex(null);
+    setResultVotedIndex(null);
     setStep("waiting");
   }
+
+  const handleSelectCase = (id: number) => {
+    setCaseId(id);
+    setResultSelectedIndex(null);
+    setResultVotedIndex(null);
+  };
 
   // 본인확인 단계가 바뀌면 입력에 포커스(최초 진입은 건너뜀, 스크롤 점프 방지).
   useEffect(() => {
@@ -1133,6 +1207,15 @@ export function ResponseForm(props: Props) {
     }
     document.getElementById(formStep === 0 ? "pName" : "pRole")?.focus({ preventScroll: true });
   }, [formStep, step]);
+
+  useEffect(() => {
+    if (step !== "review") {
+      setReviewCtaReady(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setReviewCtaReady(true), REVIEW_CTA_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [step]);
 
   if (step === "loading") {
     return (
@@ -1185,6 +1268,64 @@ export function ResponseForm(props: Props) {
             .map(([ds, rs]) => `${fmtMD(ds)} ${rs.map(fmtRange).join("·")}`)
             .join(", ")
         : null;
+    const reviewClauses: ReactNode[] = [
+      <>{personName}님은 </>,
+      busyDatesText ? (
+        <>
+          <EditValue
+            fieldLabel="불가능한 날짜"
+            tone="negative"
+            withShine
+            onEdit={() => {
+              setAvailStep(0);
+              setStep("availability");
+            }}
+          >
+            {busyDatesText}
+          </EditValue>
+          에는 회의가 불가능하고,
+        </>
+      ) : (
+        <EditValue
+          fieldLabel="불가능한 날짜"
+          tone="negative"
+          onEdit={() => {
+            setAvailStep(0);
+            setStep("availability");
+          }}
+        >
+          불가능한 날짜는 없고,
+        </EditValue>
+      ),
+      dtText ? (
+        <>
+          특별히{" "}
+          <EditValue
+            fieldLabel="특정 날짜 시간"
+            tone="negative"
+            withShine
+            onEdit={() => {
+              setAvailStep(1);
+              setStep("availability");
+            }}
+          >
+            {dtText}
+          </EditValue>
+          에는 안 돼요.
+        </>
+      ) : (
+        <EditValue
+          fieldLabel="특정 날짜 시간"
+          tone="negative"
+          onEdit={() => {
+            setAvailStep(1);
+            setStep("availability");
+          }}
+        >
+          특정 시간에 안 되는 날은 없어요.
+        </EditValue>
+      ),
+    ];
     return (
       <>
         <Toast open={toastOpen} message={toastMessage} icon={toastIcon} />
@@ -1192,77 +1333,46 @@ export function ResponseForm(props: Props) {
           <div className="flex-1">
             <p className="text-sm font-medium text-slate-400">입력 확인</p>
             <div className="mt-3 break-keep text-left text-2xl leading-relaxed text-slate-800 sm:text-3xl sm:leading-relaxed">
-              {personName}님은{" "}
-              {busyDatesText ? (
-                <>
-                  <EditValue
-                    fieldLabel="불가능한 날짜"
-                    tone="negative"
-                    withShine
-                    onEdit={() => {
-                      setAvailStep(0);
-                      setStep("availability");
-                    }}
-                  >
-                    {busyDatesText}
-                  </EditValue>
-                  에는 회의가 불가능하고,{" "}
-                </>
-              ) : (
-                <EditValue
-                  fieldLabel="불가능한 날짜"
-                  tone="negative"
-                  onEdit={() => {
-                    setAvailStep(0);
-                    setStep("availability");
+              {reviewClauses.map((clause, i) => (
+                <span
+                  key={i}
+                  className="relative animate-fade-up-blur motion-reduce:animate-none"
+                  style={{
+                    animationDelay: `${i * REVIEW_CLAUSE_STAGGER_MS}ms`,
+                    animationDuration: `${REVIEW_CLAUSE_DURATION_MS}ms`,
                   }}
                 >
-                  불가능한 날짜는 없고,
-                </EditValue>
-              )}{" "}
-              {dtText ? (
-                <>
-                  특별히{" "}
-                  <EditValue
-                    fieldLabel="특정 날짜 시간"
-                    tone="negative"
-                    withShine
-                    onEdit={() => {
-                      setAvailStep(1);
-                      setStep("availability");
-                    }}
-                  >
-                    {dtText}
-                  </EditValue>
-                  에는 안 돼요.
-                </>
-              ) : (
-                <EditValue
-                  fieldLabel="특정 날짜 시간"
-                  tone="negative"
-                  onEdit={() => {
-                    setAvailStep(1);
-                    setStep("availability");
-                  }}
-                >
-                  특정 시간에 안 되는 날은 없어요.
-                </EditValue>
-              )}
+                  {clause}{" "}
+                </span>
+              ))}
             </div>
-            <p className="mt-5 text-sm text-slate-500">
+            <p
+              className="mt-5 animate-fade-up-blur text-sm text-slate-500 motion-reduce:animate-none"
+              style={{
+                animationDelay: `${REVIEW_HELP_DELAY_MS}ms`,
+                animationDuration: `${REVIEW_CLAUSE_DURATION_MS}ms`,
+              }}
+            >
               응답 시간 마감 전까지 수정할 수 있어요. 수정하려면 키워드를 눌러 응답화면으로 이동하세요.
             </p>
           </div>
           <MobileStickyAction className="mt-auto">
-            <TDSButton
-              size="xl"
-              display="block"
-              onClick={() => void handleSubmit()}
-              disabled={submitting}
-              loading={submitting}
-            >
-              {submitting ? "제출 중..." : "다음"}
-            </TDSButton>
+            {reviewCtaReady && (
+              <div
+                className="animate-fade-up-blur motion-reduce:animate-none"
+                style={{ animationDuration: `${REVIEW_CTA_DURATION_MS}ms` }}
+              >
+                <TDSButton
+                  size="xl"
+                  display="block"
+                  onClick={() => void handleSubmit()}
+                  disabled={submitting}
+                  loading={submitting}
+                >
+                  {submitting ? "제출 중..." : "다음"}
+                </TDSButton>
+              </div>
+            )}
           </MobileStickyAction>
         </div>
       </>
@@ -1290,7 +1400,11 @@ export function ResponseForm(props: Props) {
     return (
       <ResultScreen
         caseId={caseId}
-        onSelectCase={setCaseId}
+        onSelectCase={handleSelectCase}
+        selectedIndex={resultSelectedIndex}
+        votedIndex={resultVotedIndex}
+        onSelectedIndexChange={setResultSelectedIndex}
+        onVotedIndexChange={setResultVotedIndex}
         dates={dates}
         onViewCalendar={() => setStep("done")}
       />
@@ -1301,16 +1415,9 @@ export function ResponseForm(props: Props) {
     return (
       <SubmittedCalendarScreen
         caseId={caseId}
-        onSelectCase={setCaseId}
+        onSelectCase={handleSelectCase}
         dates={dates}
-        rows={rows}
         onBack={() => setStep("result")}
-        onEdit={() => {
-          // 본인은 이미 확인됨 → 가능 시간 화면 처음부터 다시.
-          setAvailStep(0);
-          setMaxAvailStep(0);
-          setStep("availability");
-        }}
       />
     );
   }
@@ -1351,9 +1458,9 @@ export function ResponseForm(props: Props) {
               {formStep === 0 ? (
                 <>
                   <div className="mb-1.5 flex items-center gap-1.5">
-                    <label htmlFor="pName" className="text-lg font-semibold text-slate-700">
+                    <Label htmlFor="pName" className="mb-0 text-lg">
                       이름을 입력해주세요
-                    </label>
+                    </Label>
                     <HelpTooltip text="참석자 명단에 있는 분만 응답할 수 있도록 본인 확인을 해요. 입력한 이름·직무가 명단과 일치하면 다음 단계로 넘어가요." />
                   </div>
                   <Input
@@ -1473,7 +1580,7 @@ export function ResponseForm(props: Props) {
 
         {/* 질문 + 단계별 입력 — 페이지 하단으로 내려 배치(mt-auto) */}
         <div key={availStep} className="mt-auto pt-6">
-          <p className="text-lg font-bold text-slate-800">{AVAIL_QUESTIONS[availStep]}</p>
+          <p className="text-lg font-semibold text-slate-700">{AVAIL_QUESTIONS[availStep]}</p>
           <div className="mt-3">
             {availStep === 0 && (
               <CalendarModalField
@@ -1769,6 +1876,41 @@ function CheckIcon() {
   );
 }
 
+function CalendarLineIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
+      <path
+        d="M7 3v3M17 3v3M4 9h16M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+// 추천안(순위 리스트) 아이콘 — 캘린더 화면에서 추천안 화면으로 돌아가는 버튼용.
+function RankListIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
+      <path
+        d="M9.5 6h11M9.5 12h11M9.5 18h11"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M4 6h.01M4 12h.01M4 18h.01"
+        stroke="currentColor"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 // 제출 후 대기 화면(세로형 스텝퍼 + 응답 마감 카운트다운).
 // 제품 흐름 확인 단계라 타이머는 5초 고정이며, 0이 되면 후보/캘린더로 넘어갈 수 있다.
 function WaitingScreen({
@@ -1973,69 +2115,84 @@ function WaitingScreen({
 function ResultScreen({
   caseId,
   onSelectCase,
+  selectedIndex,
+  votedIndex,
+  onSelectedIndexChange,
+  onVotedIndexChange,
   dates,
   onViewCalendar,
 }: {
   caseId: number;
   onSelectCase: (id: number) => void;
+  selectedIndex: number | null;
+  votedIndex: number | null;
+  onSelectedIndexChange: (index: number | null) => void;
+  onVotedIndexChange: (index: number | null) => void;
   dates: string[];
   onViewCalendar: () => void;
 }) {
   const current = DEMO_CASES.find((c) => c.id === caseId) ?? DEMO_CASES[0];
   const candidates = useMemo(() => buildCaseCandidates(current, dates), [current, dates]);
   const total = DEMO_PEOPLE.length;
-  // 데모: 한 번에 한 후보에만 투표. 다른 후보에 투표하면 벳지가 이동한다.
-  const [votedIndex, setVotedIndex] = useState<number | null>(null);
-  // 선택된 추천안 — 선택 시 하단에서 '투표하기' 버튼이 올라와 '캘린더 보기'를 덮는다.
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  // 케이스를 바꾸면 후보가 달라지므로 선택/투표 상태를 초기화한다.
-  useEffect(() => {
-    setVotedIndex(null);
-    setSelectedIndex(null);
-  }, [caseId]);
 
   const handleVote = () => {
     if (selectedIndex === null) return;
-    setVotedIndex(selectedIndex);
-    setSelectedIndex(null);
+    onVotedIndexChange(selectedIndex);
+    onSelectedIndexChange(null);
   };
 
   return (
     <div
-      className="mx-auto flex w-full max-w-2xl flex-1 flex-col pt-2"
-      onClick={() => setSelectedIndex(null)}
+      // 뷰포트 높이 고정: 100dvh - (헤더 3.5rem + main 상단 패딩 1rem/2rem).
+      // min-h 체인은 페이지가 컨텐츠만큼 자라 캡이 안 걸리므로 확정 높이가 필요하다.
+      className="mx-auto flex h-[calc(100dvh-4.5rem)] w-full max-w-2xl flex-col pt-2 sm:h-[calc(100dvh-5.5rem)] sm:pb-4"
+      onClick={() => onSelectedIndexChange(null)}
     >
-      <div className="flex-1 space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <h1 className="text-xl font-extrabold tracking-tight text-slate-900">추천안</h1>
+      {/* 헤더·케이스 영역은 고정, 추천 리스트만 내부 스크롤 → 하단 CTA 항상 노출 */}
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
+        <div className="relative flex items-center justify-between gap-2">
+          <h1 className="text-sm font-medium text-slate-400">추천 시간</h1>
           <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
             {total}명 중 {current.submitted}명 응답
           </span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewCalendar();
+            }}
+            aria-label="회의 캘린더 보기"
+            className="absolute right-0 top-8 z-10 flex h-8 w-8 items-center justify-center text-slate-500 transition-colors hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+          >
+            <CalendarLineIcon />
+          </button>
         </div>
         <CaseSelector caseId={caseId} onSelect={onSelectCase} />
         <CaseDescription caseId={caseId} />
         {candidates.length === 0 ? (
           <p className="text-sm text-slate-500">표시할 추천안이 없어요.</p>
         ) : (
-          <ol className="space-y-2">
+          <ol className="modu-scrollbar-hide -mx-1 min-h-0 flex-1 space-y-2 overflow-y-auto px-1 py-1">
             {candidates.map((c, i) => (
               <li
-                key={`${c.startAt}-${c.endAt}-${i}`}
+                key={`${caseId}-${c.startAt}-${c.endAt}-${i}`}
                 role="button"
                 tabIndex={0}
                 aria-pressed={selectedIndex === i}
+                // 1순위부터 순서대로 하나씩 페이드인.
+                style={{ animationDelay: `${i * 120}ms` }}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setSelectedIndex((prev) => (prev === i ? null : i));
+                  onSelectedIndexChange(selectedIndex === i ? null : i);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    setSelectedIndex((prev) => (prev === i ? null : i));
+                    onSelectedIndexChange(selectedIndex === i ? null : i);
                   }
                 }}
                 className={cn(
-                  "group relative cursor-pointer rounded-2xl bg-white p-4 shadow-[0_1px_4px_rgba(15,23,42,0.12)] transition-colors hover:bg-slate-100 focus:outline-none",
+                  "group relative cursor-pointer animate-fade-in rounded-2xl bg-white p-4 shadow-[0_1px_4px_rgba(15,23,42,0.12)] transition-colors hover:bg-slate-100 focus:outline-none motion-reduce:animate-none",
                   selectedIndex === i
                     ? "ring-2 ring-brand-500"
                     : "focus-visible:ring-2 focus-visible:ring-brand-300",
@@ -2083,46 +2240,18 @@ function ResultScreen({
       </div>
 
       <MobileStickyAction className="mt-4">
-        {/* 캘린더 보기 ↔ 투표하기 세로 스왑: 캘린더 보기는 아래로 내려가고, 투표하기는 위로 올라온다.
-            두 버튼 모두 brand 블루라 교차 중 생기는 빈틈은 컨테이너 배경(brand-500)으로 가린다. */}
-        <div className="relative overflow-hidden rounded-[18px] bg-brand-500">
-          <div
-            className={cn(
-              "transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
-              selectedIndex !== null ? "pointer-events-none translate-y-full" : "translate-y-0",
-            )}
-          >
-            <TDSButton size="xl" display="block" onClick={onViewCalendar}>
-              캘린더 보기
-            </TDSButton>
-          </div>
-          <div
-            className={cn(
-              "absolute inset-0 transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
-              selectedIndex !== null ? "translate-y-0" : "pointer-events-none translate-y-full",
-            )}
-          >
-            <TDSButton size="xl" display="block" onClick={handleVote}>
-              투표하기
-            </TDSButton>
-          </div>
-        </div>
+        <TDSButton
+          size="xl"
+          display="block"
+          onClick={handleVote}
+          disabled={selectedIndex === null}
+        >
+          {selectedIndex === null ? "시간을 선택해주세요" : "투표하기"}
+        </TDSButton>
       </MobileStickyAction>
     </div>
   );
 }
-
-// 참석자별 이름 칩 색상 (사람마다 다르게).
-const PERSON_COLORS = [
-  "bg-rose-100 text-rose-700",
-  "bg-amber-100 text-amber-700",
-  "bg-sky-100 text-sky-700",
-  "bg-violet-100 text-violet-700",
-  "bg-teal-100 text-teal-700",
-  "bg-orange-100 text-orange-700",
-  "bg-fuchsia-100 text-fuchsia-700",
-  "bg-cyan-100 text-cyan-700",
-];
 
 function LegendDot({ className, label }: { className: string; label: string }) {
   return (
@@ -2133,33 +2262,80 @@ function LegendDot({ className, label }: { className: string; label: string }) {
   );
 }
 
-// 가능/불가능 상태로 참석자 이름 pill 들을 한 번 더 감싸는 그룹.
-function StatusGroup({
+// 등급별 날짜 강조 톤 — 정상 후보(브랜드 블루), 차선(앰버), 성립 어려움(레드).
+type DayEmphasisTone = "brand" | "amber" | "red";
+
+const DAY_EMPHASIS: Record<
+  DayEmphasisTone,
+  { rank1: string; rank2: string; rank3: string; badge: string; pill: string }
+> = {
+  brand: {
+    rank1: "bg-brand-500 font-bold text-white shadow-sm shadow-brand-500/20",
+    rank2: "bg-brand-100 font-bold text-brand-800",
+    rank3: "bg-brand-50 font-semibold text-brand-700",
+    badge: "bg-brand-600",
+    pill: "bg-brand-50 text-brand-700",
+  },
+  amber: {
+    rank1: "bg-amber-500 font-bold text-white shadow-sm shadow-amber-500/20",
+    rank2: "bg-amber-100 font-bold text-amber-800",
+    rank3: "bg-amber-50 font-semibold text-amber-700",
+    badge: "bg-amber-600",
+    pill: "bg-amber-50 text-amber-700",
+  },
+  red: {
+    rank1: "bg-red-500 font-bold text-white shadow-sm shadow-red-500/20",
+    rank2: "bg-red-100 font-bold text-red-800",
+    rank3: "bg-red-50 font-semibold text-red-700",
+    badge: "bg-red-600",
+    pill: "bg-red-50 text-red-700",
+  },
+};
+
+// 후보의 강조 톤: 필수인원이 빠지면 차선(앰버), 성립 어려움 케이스(danger 배너)면 레드.
+function caseEmphasisTone(candidate: CaseCandidate, dangerCase: boolean): DayEmphasisTone {
+  if (candidate.grade !== "caution") return "brand";
+  return dangerCase ? "red" : "amber";
+}
+
+const REQUIRED_NAMES = new Set(
+  DEMO_PEOPLE.filter((p) => p.attendanceType === "required").map((p) => p.name),
+);
+
+// 가능/불가능/미응답 참석자 명단 그룹 — 이름 앞 점(•)이 필수인원.
+function AttendeeGroup({
   tone,
   label,
-  people,
+  names,
 }: {
-  tone: "green" | "red";
+  tone: "green" | "red" | "slate";
   label: string;
-  people: { name: string; colorClass: string }[];
+  names: string[];
 }) {
-  const box = tone === "green" ? "border-green-300 bg-green-50" : "border-red-300 bg-red-50";
-  const head = tone === "green" ? "text-green-700" : "text-red-700";
+  if (names.length === 0) return null;
+  const styles = {
+    green: { box: "border-green-200 bg-green-50", head: "text-green-700", chip: "text-green-800" },
+    red: { box: "border-red-200 bg-red-50", head: "text-red-700", chip: "text-red-800" },
+    slate: { box: "border-slate-200 bg-slate-50", head: "text-slate-500", chip: "text-slate-600" },
+  }[tone];
   return (
-    <div className={cn("rounded-lg border p-1", box)}>
-      <p className={cn("mb-1 px-0.5 text-[10px] font-bold", head)}>
-        {label} {people.length}
+    <div className={cn("rounded-xl border p-2", styles.box)}>
+      <p className={cn("mb-1.5 px-0.5 text-[11px] font-bold", styles.head)}>
+        {label} {names.length}명
       </p>
       <div className="flex flex-wrap gap-1">
-        {people.map((p) => (
+        {names.map((name) => (
           <span
-            key={p.name}
+            key={name}
             className={cn(
-              "max-w-full truncate rounded-full px-2 py-0.5 text-[10px] font-semibold",
-              p.colorClass,
+              "inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold shadow-sm",
+              styles.chip,
             )}
           >
-            {p.name}
+            {REQUIRED_NAMES.has(name) && (
+              <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" aria-hidden="true" />
+            )}
+            {name}
           </span>
         ))}
       </div>
@@ -2171,62 +2347,62 @@ function SubmittedCalendarScreen({
   caseId,
   onSelectCase,
   dates,
-  rows,
   onBack,
-  onEdit,
 }: {
   caseId: number;
   onSelectCase: (id: number) => void;
   dates: string[];
-  rows: number[];
   onBack: () => void;
-  onEdit: () => void;
 }) {
-  // 데모 단계: 선택한 케이스의 더미 응답으로 캘린더를 채운다.
+  // 데모 단계: 선택한 케이스의 더미 응답으로 월 달력을 채운다.
   const current = DEMO_CASES.find((c) => c.id === caseId) ?? DEMO_CASES[0];
-  const { participants, blocks } = useMemo(
-    () => buildCaseSnapshot(current, dates),
-    [current, dates],
+  const candidates = useMemo(() => buildCaseCandidates(current, dates), [current, dates]);
+  const respondedCount = DEMO_PEOPLE.length - current.pendingNames.length;
+  const dangerCase = current.banner?.tone === "danger";
+
+  // 날짜 → 그 날의 후보들(순위 오름차순). 보통 하루에 후보 하나.
+  const candidatesByDate = useMemo(() => {
+    const map = new Map<string, { rank: number; candidate: CaseCandidate }[]>();
+    candidates.forEach((candidate, i) => {
+      const list = map.get(candidate.date) ?? [];
+      list.push({ rank: i + 1, candidate });
+      map.set(candidate.date, list);
+    });
+    return map;
+  }, [candidates]);
+
+  const months = useMemo(
+    () => getCalendarMonthsWithDates([...dates, ...candidates.map((c) => c.date)]),
+    [dates, candidates],
   );
-  const respondedCount = participants.filter((p) => p.responseStatus === "submitted").length;
+  const monthIndexOf = (dateStr: string) => {
+    const [y, m] = dateStr.split("-").map(Number);
+    return months.findIndex((mm) => mm.y === y && mm.m === m);
+  };
 
-  // 마우스로 잡고 끌어 가로 스크롤.
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const drag = useRef({ active: false, startX: 0, startScroll: 0 });
-
-  function onDragStart(e: ReactMouseEvent) {
-    if (!scrollRef.current) return;
-    drag.current = {
-      active: true,
-      startX: e.pageX,
-      startScroll: scrollRef.current.scrollLeft,
-    };
-  }
-  function onDragMove(e: ReactMouseEvent) {
-    if (!drag.current.active || !scrollRef.current) return;
-    e.preventDefault();
-    scrollRef.current.scrollLeft = drag.current.startScroll - (e.pageX - drag.current.startX);
-  }
-  function onDragEnd() {
-    drag.current.active = false;
-  }
-
-  // 마우스 휠(세로)을 가로 스크롤로 변환한다.
+  const [selectedDate, setSelectedDate] = useState<string | null>(candidates[0]?.date ?? null);
+  const [monthIdx, setMonthIdx] = useState(() =>
+    Math.max(0, candidates[0] ? monthIndexOf(candidates[0].date) : 0),
+  );
+  // 케이스가 바뀌면 1순위 날짜를 다시 선택하고 그 달로 이동한다.
   useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      if (e.deltaY === 0 || el.scrollWidth <= el.clientWidth) return;
-      e.preventDefault();
-      el.scrollLeft += e.deltaY;
-    };
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, []);
+    const top = candidates[0]?.date ?? null;
+    setSelectedDate(top);
+    if (top) setMonthIdx(Math.max(0, monthIndexOf(top)));
+  }, [caseId]);
+
+  const safeMonthIdx = Math.min(Math.max(monthIdx, 0), Math.max(0, months.length - 1));
+  const month = months[safeMonthIdx];
+  const selectedCandidates = selectedDate ? (candidatesByDate.get(selectedDate) ?? []) : [];
+  const tonesInCase = useMemo(() => {
+    const set = new Set<DayEmphasisTone>();
+    candidates.forEach((c) => set.add(caseEmphasisTone(c, dangerCase)));
+    return set;
+  }, [candidates, dangerCase]);
 
   return (
-    <div className="space-y-4 pt-2">
-      <div className="flex items-center justify-between gap-2">
+    <div className="space-y-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-2 sm:pb-8">
+      <div className="relative flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Emoji symbol="📅" size={22} />
           <h2 className="text-xl font-extrabold text-slate-900">회의 캘린더</h2>
@@ -2234,103 +2410,156 @@ function SubmittedCalendarScreen({
         <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
           {DEMO_PEOPLE.length}명 중 {respondedCount}명 응답
         </span>
+        {/* 추천안 화면의 캘린더 아이콘과 같은 자리 — 추천안으로 돌아가기 */}
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label="추천안 보기"
+          className="absolute right-0 top-8 z-10 flex h-8 w-8 items-center justify-center text-slate-500 transition-colors hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+        >
+          <RankListIcon />
+        </button>
       </div>
 
       <CaseSelector caseId={caseId} onSelect={onSelectCase} />
       <CaseDescription caseId={caseId} />
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-slate-500">
-        <LegendDot className="bg-red-400" label="불가능" />
-        <span className="text-slate-400">칸 안의 이름 색은 참석자별로 달라요. (불가능 시간만 표시)</span>
+        {tonesInCase.has("brand") && <LegendDot className="bg-brand-500" label="추천 후보" />}
+        {tonesInCase.has("amber") && <LegendDot className="bg-amber-500" label="차선 후보" />}
+        {tonesInCase.has("red") && <LegendDot className="bg-red-500" label="성립 어려움" />}
+        <span className="text-slate-400">색이 진할수록 상위 순위 · 날짜를 누르면 참석 명단이 보여요.</span>
       </div>
 
-      {/* 일주일 그리드 — 마우스로 잡고 끌어 가로 스크롤 */}
-      <Card className="overflow-hidden p-0">
-        <div
-          ref={scrollRef}
-          onMouseDown={onDragStart}
-          onMouseMove={onDragMove}
-          onMouseUp={onDragEnd}
-          onMouseLeave={onDragEnd}
-          className="cursor-grab select-none overflow-x-auto active:cursor-grabbing"
-        >
-          <div className="w-max">
-            {/* 날짜 헤더 행 */}
-            <div className="flex border-b border-slate-200 bg-slate-50">
-              <div className="sticky left-0 z-10 w-16 shrink-0 border-r border-slate-200 bg-slate-50 px-2 py-2 text-[11px] font-semibold text-slate-400">
-                KST
-              </div>
-              {dates.map((date) => {
-                const { weekdayKo, monthDay } = describeDateStr(date);
-                return (
-                  <div
-                    key={date}
-                    className="w-52 shrink-0 border-r border-slate-200 px-3 py-2 last:border-r-0"
-                  >
-                    <p className="text-sm font-bold text-slate-900">{monthDay}</p>
-                    <p className="text-xs text-slate-500">{weekdayKo}요일</p>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* 시간 행 — 모든 칸 동일한 최소 높이 */}
-            {rows.map((minute) => (
-              <div
-                key={minute}
-                className="flex min-h-[3.5rem] border-b border-slate-100 last:border-b-0"
-              >
-                <div className="sticky left-0 z-10 w-16 shrink-0 border-r border-slate-200 bg-white px-2 py-1.5 text-right text-[11px] font-medium tabular-nums text-slate-400">
-                  {minute % 60 === 0 ? formatHm(minute) : ""}
-                </div>
-                {dates.map((date) => {
-                  const slotStart = epoch(kstWallToIso(date, minute));
-                  const slotEnd = epoch(kstWallToIso(date, minute + GRID_STEP_MINUTES));
-                  const evaluated = participants.map((p, idx) => ({
-                    name: p.name,
-                    colorClass: PERSON_COLORS[idx % PERSON_COLORS.length],
-                    status: participantStatusForSlot(p, blocks, slotStart, slotEnd),
-                  }));
-                  const busy = evaluated.filter((e) => e.status === "busy");
-                  return (
-                    <div
-                      key={date}
-                      className="w-52 shrink-0 space-y-1 border-r border-slate-100 p-1.5 last:border-r-0"
+      {/* 한 달 달력 — 추천 날짜는 순위/등급에 따라 강조 */}
+      {month && (
+        <Card>
+          <CalendarGrid
+            month={month}
+            canPrev={safeMonthIdx > 0}
+            canNext={safeMonthIdx < months.length - 1}
+            onPrev={() => setMonthIdx(safeMonthIdx - 1)}
+            onNext={() => setMonthIdx(safeMonthIdx + 1)}
+            emptyCellPrefix="done-cal"
+            renderDate={(cell) => {
+              const dayCandidates = candidatesByDate.get(cell.date);
+              const best = dayCandidates?.[0];
+              const tone = best ? caseEmphasisTone(best.candidate, dangerCase) : null;
+              // 주말·지난 날짜는 비활성. 미래 평일은 전부 순위가 매겨진 후보.
+              const clickable = Boolean(best);
+              const isSelected = selectedDate === cell.date;
+              const emphasis =
+                best && tone
+                  ? best.rank === 1
+                    ? DAY_EMPHASIS[tone].rank1
+                    : best.rank === 2
+                      ? DAY_EMPHASIS[tone].rank2
+                      : DAY_EMPHASIS[tone].rank3
+                  : null;
+              return (
+                <button
+                  key={cell.key}
+                  type="button"
+                  disabled={!clickable}
+                  onClick={() => setSelectedDate(cell.date)}
+                  aria-pressed={isSelected}
+                  aria-label={`${month.m}월 ${cell.day}일${best ? ` — 추천 ${best.rank}순위` : ""}`}
+                  className={cn(
+                    "relative flex aspect-square flex-col items-center justify-center rounded-lg text-sm leading-none transition-colors",
+                    !clickable
+                      ? "cursor-default text-slate-300"
+                      : emphasis ?? "text-slate-700 hover:bg-slate-100",
+                    isSelected && "ring-2 ring-slate-800 ring-offset-1",
+                  )}
+                >
+                  {cell.day}
+                  {best && tone && (
+                    <span
+                      className={cn(
+                        "absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-0.5 text-[9px] font-bold text-white",
+                        DAY_EMPHASIS[tone].badge,
+                      )}
                     >
-                      {busy.length > 0 && (
-                        <StatusGroup tone="red" label="불가능" people={busy} />
+                      {best.rank}
+                    </span>
+                  )}
+                </button>
+              );
+            }}
+          />
+        </Card>
+      )}
+
+      {/* 선택한 날짜의 참석 명단 패널 */}
+      <Card className="space-y-3">
+        {selectedDate === null ? (
+          <p className="text-sm text-slate-500">날짜를 누르면 참석자별 가능 여부를 볼 수 있어요.</p>
+        ) : (
+          <>
+            <p className="text-base font-bold text-slate-900">
+              {formatKoreanDateLabel(selectedDate)}
+            </p>
+            {selectedCandidates.length === 0 ? (
+              <>
+                <p className="break-keep text-sm text-slate-600">
+                  이 날을 불가능으로 입력한 사람이 없어요.{" "}
+                  {current.pendingNames.length > 0
+                    ? "응답한 사람은 모두 참석할 수 있어요."
+                    : "모두 참석할 수 있는 날이에요."}
+                </p>
+                <AttendeeGroup
+                  tone="green"
+                  label="가능"
+                  names={DEMO_PEOPLE.filter((p) => !current.pendingNames.includes(p.name)).map(
+                    (p) => p.name,
+                  )}
+                />
+                <AttendeeGroup tone="slate" label="미응답" names={current.pendingNames} />
+              </>
+            ) : (
+              selectedCandidates.map(({ rank, candidate }) => {
+                const tone = caseEmphasisTone(candidate, dangerCase);
+                return (
+                  <div key={candidate.startAt} className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-[11px] font-bold text-white",
+                          DAY_EMPHASIS[tone].badge,
+                        )}
+                      >
+                        {rank}순위
+                      </span>
+                      <p className="font-bold text-slate-900">
+                        {formatKoreanTimeRange(candidate.startAt, candidate.endAt)}
+                      </p>
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-[11px] font-bold",
+                          DAY_EMPHASIS[tone].pill,
+                        )}
+                      >
+                        {GRADE_LABELS[candidate.grade]}
+                      </span>
+                      {candidate.votes != null && (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
+                          {candidate.votes}표
+                        </span>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        </div>
+                    <p className="break-keep text-sm text-slate-500">{candidate.reason}</p>
+                    <AttendeeGroup tone="green" label="가능" names={candidate.availableNames} />
+                    <AttendeeGroup tone="red" label="불가능" names={candidate.busyNames} />
+                    <AttendeeGroup tone="slate" label="미응답" names={candidate.pendingNames} />
+                  </div>
+                );
+              })
+            )}
+            <p className="px-0.5 text-[11px] text-slate-400">이름 앞 점(•)은 필수인원이에요.</p>
+          </>
+        )}
       </Card>
 
-      <div className="flex gap-2 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-2">
-        <TDSButton
-          type="button"
-          size="xl"
-          tone="secondary"
-          display="block"
-          className="flex-1"
-          onClick={onBack}
-        >
-          추천안 보기
-        </TDSButton>
-        <TDSButton
-          type="button"
-          size="xl"
-          tone="secondary"
-          display="block"
-          className="flex-1"
-          onClick={onEdit}
-        >
-          응답 수정
-        </TDSButton>
-      </div>
     </div>
   );
 }

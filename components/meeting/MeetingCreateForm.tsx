@@ -20,6 +20,11 @@ import { cn } from "@/lib/cn";
 import { useScrollLock } from "@/lib/useScrollLock";
 import { addDaysToDateStr } from "@/lib/time";
 import {
+  MEETING_CREATE_DRAFT_LAST_STEP,
+  readMeetingCreateDraft,
+  writeMeetingCreateDraft,
+} from "@/components/meeting/meetingCreateDraft";
+import {
   ParticipantListEditor,
   type ParticipantDraft,
 } from "@/components/meeting/ParticipantListEditor";
@@ -34,23 +39,17 @@ import {
 
 interface Props {
   minDeadlineDate: string;
-  initialMeeting?: {
-    id: string;
-    adminToken: string;
-    title: string;
-    agenda: string;
-    location: string;
-    deadlineDate: string;
-    responseDeadlineDate?: string;
-    responseDeadlineTime?: string;
-    durationMinutes: number;
-    participants: ParticipantDraft[];
-  };
 }
 
 const INITIAL_PARTICIPANTS: ParticipantDraft[] = [];
-const LAST_STEP = 6;
+const LAST_STEP = MEETING_CREATE_DRAFT_LAST_STEP;
 const WORKDAY_MINUTES = 9 * 60; // 09:00~18:00 (서버 기본 근무시간과 일치)
+const CONFIRM_CLAUSE_STAGGER_MS = 650;
+const CONFIRM_CLAUSE_DURATION_MS = 1000;
+const CONFIRM_LAST_CLAUSE_DELAY_MS = CONFIRM_CLAUSE_STAGGER_MS * 6;
+const CONFIRM_HELP_DELAY_MS = CONFIRM_LAST_CLAUSE_DELAY_MS + 700;
+const CONFIRM_CTA_DELAY_MS = CONFIRM_HELP_DELAY_MS + 600;
+const CONFIRM_CTA_DURATION_MS = 1000;
 
 // 단계별 하단 입력의 포커스 대상 element id.
 const FOCUS_IDS = [
@@ -142,7 +141,7 @@ function LimitedFieldLabel({
   );
 }
 
-function SubmitButton({ disabled, isEditing }: { disabled?: boolean; isEditing?: boolean }) {
+function SubmitButton({ disabled }: { disabled?: boolean }) {
   const { pending } = useFormStatus();
   return (
     <TDSButton
@@ -152,13 +151,7 @@ function SubmitButton({ disabled, isEditing }: { disabled?: boolean; isEditing?:
       disabled={pending || disabled}
       loading={pending}
     >
-      {pending
-        ? isEditing
-          ? "수정 저장 중…"
-          : "회의 만드는 중…"
-        : isEditing
-          ? "수정 저장하기"
-          : "회의 만들기"}
+      {pending ? "회의 만드는 중…" : "회의 만들기"}
     </TDSButton>
   );
 }
@@ -231,43 +224,34 @@ function NumberStepper({
 
 export function MeetingCreateForm({
   minDeadlineDate,
-  initialMeeting,
 }: Props) {
   const [state, formAction] = useFormState<FormState, FormData>(createMeeting, {
     error: null,
   });
-  const isEditing = Boolean(initialMeeting);
-  const initialDurationMinutes = initialMeeting?.durationMinutes ?? 60;
+  const initialDurationMinutes = 60;
   const initialDurationHours = Math.floor(initialDurationMinutes / 60);
   const initialDurationMinute = initialDurationMinutes % 60;
 
-  const [title, setTitle] = useState(initialMeeting?.title ?? "");
-  const [agenda, setAgenda] = useState(initialMeeting?.agenda ?? "");
-  const [location, setLocation] = useState(initialMeeting?.location ?? "");
+  const [title, setTitle] = useState("");
+  const [agenda, setAgenda] = useState("");
+  const [location, setLocation] = useState("");
   // 신규 생성 시에는 날짜를 비워 두어 사용자가 직접 선택하게 한다(자동 선택 방지).
-  const [deadlineDate, setDeadlineDate] = useState(
-    initialMeeting?.deadlineDate ?? "",
-  );
-  const [responseDeadlineDate, setResponseDeadlineDate] = useState(
-    initialMeeting?.responseDeadlineDate ?? "",
-  );
-  const [responseDeadlineTime, setResponseDeadlineTime] = useState(
-    initialMeeting?.responseDeadlineTime ?? "18:00",
-  );
+  const [deadlineDate, setDeadlineDate] = useState("");
+  const [responseDeadlineDate, setResponseDeadlineDate] = useState("");
+  const [responseDeadlineTime, setResponseDeadlineTime] = useState("18:00");
   // 시간/분은 문자열로 보관해 타이핑 중 빈 칸을 허용한다(즉시 0으로 튀지 않게).
   const [durationHours, setDurationHours] = useState(String(initialDurationHours));
   const [durationMinute, setDurationMinute] = useState(String(initialDurationMinute));
-  const [participants, setParticipants] = useState<ParticipantDraft[]>(
-    initialMeeting?.participants ?? INITIAL_PARTICIPANTS,
-  );
+  const [participants, setParticipants] = useState<ParticipantDraft[]>(INITIAL_PARTICIPANTS);
   const [showParticipantModal, setShowParticipantModal] = useState(false);
   const [participantError, setParticipantError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
 
   // step: 하단에 표시 중인 입력 단계. maxStep: 지금까지 도달한 가장 먼 단계.
-  const [step, setStep] = useState(isEditing ? LAST_STEP : 0);
-  const [maxStep, setMaxStep] = useState(isEditing ? LAST_STEP : 0);
+  const [step, setStep] = useState(0);
+  const [maxStep, setMaxStep] = useState(0);
   const [confirming, setConfirming] = useState(false); // 회의 확인 화면 표시 여부
   const [confirmCtaReady, setConfirmCtaReady] = useState(false); // 7번 문구 등장 후 회의 만들기 노출
 
@@ -454,6 +438,60 @@ export function MeetingCreateForm({
   };
 
   const participantNames = filledParticipants.map((p) => p.name).join(", ");
+
+  // 회의 생성 전 임시 저장: 새로고침해도 작성 중인 확인 화면과 입력값을 복원한다.
+  useEffect(() => {
+    const draft = readMeetingCreateDraft(window.sessionStorage);
+    if (draft) {
+      skipNextAutoFocus.current = true;
+      setTitle(draft.title);
+      setAgenda(draft.agenda);
+      setLocation(draft.location);
+      setDeadlineDate(draft.deadlineDate);
+      setResponseDeadlineDate(draft.responseDeadlineDate);
+      setResponseDeadlineTime(draft.responseDeadlineTime);
+      setDurationHours(draft.durationHours);
+      setDurationMinute(draft.durationMinute);
+      setParticipants(draft.participants);
+      setStep(draft.step);
+      setMaxStep(draft.maxStep);
+      setConfirming(draft.confirming);
+    }
+    setDraftReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    writeMeetingCreateDraft(window.sessionStorage, {
+      title,
+      agenda,
+      location,
+      deadlineDate,
+      responseDeadlineDate,
+      responseDeadlineTime,
+      durationHours,
+      durationMinute,
+      participants,
+      step,
+      maxStep,
+      confirming,
+    });
+  }, [
+    agenda,
+    confirming,
+    deadlineDate,
+    draftReady,
+    durationHours,
+    durationMinute,
+    location,
+    maxStep,
+    participants,
+    responseDeadlineDate,
+    responseDeadlineTime,
+    step,
+    title,
+  ]);
+
   // 회의 확인 화면: 키워드(값)를 누르면 확인 화면을 닫고 해당 입력 단계로 돌아간다.
   const editFromConfirm = (target: number) => {
     setConfirming(false);
@@ -545,7 +583,7 @@ export function MeetingCreateForm({
       setConfirmCtaReady(false);
       return;
     }
-    const timer = window.setTimeout(() => setConfirmCtaReady(true), 3200);
+    const timer = window.setTimeout(() => setConfirmCtaReady(true), CONFIRM_CTA_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [confirming]);
 
@@ -709,12 +747,6 @@ export function MeetingCreateForm({
       <input type="hidden" name="responseDeadlineTime" value={responseDeadlineTime} />
       <input type="hidden" name="durationHours" value={hoursOk ? hoursNum : 0} />
       <input type="hidden" name="durationMinutePart" value={minOk ? minNum : 0} />
-      {initialMeeting && (
-        <>
-          <input type="hidden" name="meetingId" value={initialMeeting.id} />
-          <input type="hidden" name="adminToken" value={initialMeeting.adminToken} />
-        </>
-      )}
       <input
         type="hidden"
         name="participants"
@@ -965,7 +997,10 @@ export function MeetingCreateForm({
                   <span
                     key={i}
                     className="relative animate-fade-up-blur motion-reduce:animate-none"
-                    style={{ animationDelay: `${i * 400}ms`, animationDuration: "1s" }}
+                    style={{
+                      animationDelay: `${i * CONFIRM_CLAUSE_STAGGER_MS}ms`,
+                      animationDuration: `${CONFIRM_CLAUSE_DURATION_MS}ms`,
+                    }}
                   >
                     {clause}{" "}
                   </span>
@@ -973,14 +1008,20 @@ export function MeetingCreateForm({
               </p>
               <p
                 className="relative mt-4 animate-fade-up-blur text-left motion-reduce:animate-none"
-                style={{ animationDelay: "2400ms", animationDuration: "1s" }}
+                style={{
+                  animationDelay: `${CONFIRM_LAST_CLAUSE_DELAY_MS}ms`,
+                  animationDuration: `${CONFIRM_CLAUSE_DURATION_MS}ms`,
+                }}
               >
                 {confirmClauses[6]}
               </p>
             </div>
             <p
               className="relative mt-4 animate-fade-up-blur text-sm text-slate-400 motion-reduce:animate-none"
-              style={{ animationDelay: "2900ms", animationDuration: "0.8s" }}
+              style={{
+                animationDelay: `${CONFIRM_HELP_DELAY_MS}ms`,
+                animationDuration: "1s",
+              }}
             >
               수정하려면 키워드를 눌러 해당화면으로 이동하세요.
             </p>
@@ -997,8 +1038,11 @@ export function MeetingCreateForm({
               </div>
             )}
             {confirmCtaReady && (
-              <div className="animate-fade-up-blur motion-reduce:animate-none">
-                <SubmitButton isEditing={isEditing} />
+              <div
+                className="animate-fade-up-blur motion-reduce:animate-none"
+                style={{ animationDuration: `${CONFIRM_CTA_DURATION_MS}ms` }}
+              >
+                <SubmitButton />
               </div>
             )}
           </MobileStickyAction>
