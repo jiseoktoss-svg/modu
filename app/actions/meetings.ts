@@ -29,7 +29,7 @@ import {
 } from "@/lib/demoMeeting";
 import { getSupabaseAdmin, hasSupabaseConfig } from "@/lib/supabase/server";
 import { generateToken } from "@/lib/tokens";
-import { kstWallToIso, parseHm, todayDateStrKst } from "@/lib/time";
+import { addDaysToDateStr, kstWallToIso, parseHm, todayDateStrKst } from "@/lib/time";
 import { mapMeeting, type MeetingRow, type ParticipantRow } from "@/lib/types";
 import {
   MAX_MEETING_AGENDA_LENGTH,
@@ -164,8 +164,9 @@ export async function createMeeting(
   if (!deadlineDate) {
     return { error: "회의 마감 날짜를 선택해 주세요." };
   }
-  if (deadlineDate < dateStart) {
-    return { error: "회의 마감 날짜는 오늘 이후로 선택해 주세요." };
+  const minDeadlineDate = addDaysToDateStr(dateStart, 2);
+  if (deadlineDate < minDeadlineDate) {
+    return { error: "회의 마감 날짜는 오늘부터 이틀 뒤 이후로 선택해 주세요." };
   }
 
   // 응답 마감일(날짜 + 시간). 폼에서 항상 전송되지만, 없으면 null 로 둔다(구버전 데모 링크 호환).
@@ -180,8 +181,8 @@ export async function createMeeting(
     if (responseDeadlineDate < dateStart) {
       return { error: "응답 마감 날짜는 오늘 이후로 선택해 주세요." };
     }
-    if (responseDeadlineDate > dateEnd) {
-      return { error: "응답 마감 날짜는 회의 마감 날짜보다 빠르거나 같아야 해요." };
+    if (responseDeadlineDate > addDaysToDateStr(dateEnd, -2)) {
+      return { error: "응답 마감 날짜는 회의 마감 날짜보다 이틀 이상 빨라야 해요." };
     }
     responseDeadline = kstWallToIso(responseDeadlineDate, parseHm(responseDeadlineTime || "18:00"));
   }

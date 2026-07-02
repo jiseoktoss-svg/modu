@@ -18,6 +18,7 @@ import { Select } from "@/components/ui/Select";
 import { TDSButton } from "@/components/ui/TDSButton";
 import { cn } from "@/lib/cn";
 import { useScrollLock } from "@/lib/useScrollLock";
+import { addDaysToDateStr } from "@/lib/time";
 import {
   ParticipantListEditor,
   type ParticipantDraft,
@@ -267,6 +268,8 @@ export function MeetingCreateForm({
   // step: 하단에 표시 중인 입력 단계. maxStep: 지금까지 도달한 가장 먼 단계.
   const [step, setStep] = useState(isEditing ? LAST_STEP : 0);
   const [maxStep, setMaxStep] = useState(isEditing ? LAST_STEP : 0);
+  const [confirming, setConfirming] = useState(false); // 회의 확인 화면 표시 여부
+  const [confirmCtaReady, setConfirmCtaReady] = useState(false); // 7번 문구 등장 후 회의 만들기 노출
 
   // 포커스 제어용 ref.
   const skipInitialFocus = useRef(true); // 최초 마운트 자동 포커스(스크롤 점프) 방지
@@ -294,8 +297,11 @@ export function MeetingCreateForm({
   const showDurationMin = !minOk || minNum > 0;
   const showDurationHours = !hoursOk || hoursNum > 0 || !showDurationMin;
 
+  // 회의 마감일은 최소 오늘+2일, 응답 마감일은 회의 마감일보다 최소 2일 앞서야 한다.
+  const minMeetingDeadlineDate = addDaysToDateStr(minDeadlineDate, 2);
+  const responseDeadlineMax = deadlineDate ? addDaysToDateStr(deadlineDate, -2) : "";
   // 단계별 유효성(모두 필수). 서버 검증과 일치시킨다.
-  const dateOk = deadlineDate.trim().length > 0 && deadlineDate >= minDeadlineDate;
+  const dateOk = deadlineDate.trim().length > 0 && deadlineDate >= minMeetingDeadlineDate;
   // 응답 마감일: 오늘 이후 + 회의 마감일 이전(같은 날 허용) + 시간 형식. (분 단위는 쓰지 않음 → 항상 :00)
   const rdHour = responseDeadlineTime.split(":")[0] || "18";
   const rdHourOptions = Array.from({ length: 24 }, (_, h) => {
@@ -305,7 +311,8 @@ export function MeetingCreateForm({
   const responseDateOk =
     responseDeadlineDate.trim().length > 0 &&
     responseDeadlineDate >= minDeadlineDate &&
-    responseDeadlineDate <= deadlineDate;
+    responseDeadlineMax !== "" &&
+    responseDeadlineDate <= responseDeadlineMax;
   const responseTimeOk = /^\d{2}:\d{2}$/.test(responseDeadlineTime);
   const responseDeadlineOk = responseDateOk && responseTimeOk;
   const titleTooLong = title.length > MAX_MEETING_TITLE_LENGTH;
@@ -350,19 +357,21 @@ export function MeetingCreateForm({
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(null), 2800);
   };
-  // 회의 마감일을 응답 마감일보다 앞당기면 응답 마감일을 회의 마감일에 맞춰 자동 조정한다.
+  // 회의 마감일을 앞당겨 응답 마감일(회의 마감일 2일 전)을 넘기면 자동으로 맞춰 조정한다.
   const handleDeadlineChange = (next: string) => {
     setDeadlineDate(next);
-    if (responseDeadlineDate && responseDeadlineDate > next) {
-      setResponseDeadlineDate(next);
+    const cap = next ? addDaysToDateStr(next, -2) : "";
+    if (responseDeadlineDate && cap && responseDeadlineDate > cap) {
+      setResponseDeadlineDate(cap);
       showToast("회의 마감일에 맞춰 응답 마감일을 조정했어요.");
     }
   };
-  // 응답 마감일은 회의 마감일을 넘길 수 없다 → 가까운 회의 마감일로 자동 지정 + 경고 토스트.
+  // 응답 마감일은 회의 마감일 2일 전까지만 → 넘기면 자동 지정 + 경고 토스트.
   const handleResponseDeadlineDateChange = (next: string) => {
-    if (deadlineDate && next > deadlineDate) {
-      setResponseDeadlineDate(deadlineDate);
-      showToast("응답 마감일은 회의 마감일까지만 정할 수 있어 회의 마감일로 맞췄어요.");
+    const cap = deadlineDate ? addDaysToDateStr(deadlineDate, -2) : "";
+    if (cap && next > cap) {
+      setResponseDeadlineDate(cap);
+      showToast("응답 마감일은 회의 마감일 2일 전까지만 정할 수 있어 맞췄어요.");
       return;
     }
     setResponseDeadlineDate(next);
@@ -445,6 +454,72 @@ export function MeetingCreateForm({
   };
 
   const participantNames = filledParticipants.map((p) => p.name).join(", ");
+  // 회의 확인 화면: 키워드(값)를 누르면 확인 화면을 닫고 해당 입력 단계로 돌아간다.
+  const editFromConfirm = (target: number) => {
+    setConfirming(false);
+    editStep(target);
+  };
+  const editParticipantsFromConfirm = () => {
+    setConfirming(false);
+    openParticipantModal();
+  };
+  // 회의 확인 화면 문장. 값은 폼 상단 빌더와 동일하게 구성하고, 클릭하면 수정할 수 있다.
+  const durationText = [
+    showDurationHours ? `${hoursNum}시간` : "",
+    showDurationMin ? `${minNum}분` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const confirmClauses: ReactNode[] = [
+    <>
+      이번 회의명은{" "}
+      <EditValue fieldLabel="회의명" onEdit={() => editFromConfirm(0)}>
+        {title.trim()}
+      </EditValue>{" "}
+      에요.
+    </>,
+    <>
+      회의 안건은{" "}
+      <EditValue fieldLabel="안건" onEdit={() => editFromConfirm(1)}>
+        {agenda.trim()}
+      </EditValue>{" "}
+      입니다.
+    </>,
+    <>
+      회의 장소는{" "}
+      <EditValue fieldLabel="장소" onEdit={() => editFromConfirm(2)}>
+        {location.trim()}
+      </EditValue>{" "}
+      이며,
+    </>,
+    <>
+      예상 회의 진행 시간은{" "}
+      <EditValue fieldLabel="회의 길이" onEdit={() => editFromConfirm(3)}>
+        {durationText}
+      </EditValue>{" "}
+      입니다.
+    </>,
+    <>
+      <EditValue fieldLabel="회의 마감 날짜" onEdit={() => editFromConfirm(4)}>
+        {deadlineText}
+      </EditValue>{" "}
+      까지는 회의가 완료되어야 해요.
+    </>,
+    <>
+      참여자는{" "}
+      <EditValue fieldLabel="응답 마감" onEdit={() => editFromConfirm(5)}>
+        {responseDeadlineText}
+      </EditValue>{" "}
+      까지 응답해주세요.
+    </>,
+    <>
+      회의 참석자 명단은{" "}
+      <EditValue fieldLabel="참석자" onEdit={editParticipantsFromConfirm}>
+        {participantNames}
+      </EditValue>{" "}
+      총 {filledParticipants.length}명 입니다.
+    </>,
+  ];
 
   // 단계가 바뀌면 해당 입력에 포커스(최초 마운트·모바일 '다음' 이동은 건너뜀).
   useEffect(() => {
@@ -463,6 +538,16 @@ export function MeetingCreateForm({
 
   // 참석자 모달: 배경 스크롤 잠금.
   useScrollLock(showParticipantModal);
+
+  // 회의 확인 화면: 마지막(7번) 문구가 등장한 뒤에 '회의 만들기' 버튼을 노출한다.
+  useEffect(() => {
+    if (!confirming) {
+      setConfirmCtaReady(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setConfirmCtaReady(true), 3200);
+    return () => window.clearTimeout(timer);
+  }, [confirming]);
 
   // 참석자 모달 접근성: Esc 닫기 + 열림 시 포커스 이동 + 닫힘 시 트리거로 복원.
   useEffect(() => {
@@ -516,6 +601,7 @@ export function MeetingCreateForm({
       </div>
 
       {/* 상단: 입력에 따라 완성되는 안내 문장 */}
+      {!confirming && (
       <div className="flex-1 pt-4 sm:pt-8">
         <p className="text-sm font-medium text-slate-400">회의 만들기</p>
         <div
@@ -612,6 +698,7 @@ export function MeetingCreateForm({
           )}
         </div>
       </div>
+      )}
 
       {/* 폼 제출용 hidden 필드(현재 단계와 무관하게 항상 전체 값 전송) */}
       <input type="hidden" name="title" value={title} />
@@ -641,6 +728,7 @@ export function MeetingCreateForm({
       />
 
       {/* 하단: 현재 단계 입력 + 액션 버튼 */}
+      {!confirming && (
       <MobileStickyAction className="mt-6 sm:mt-8">
         <div key={step}>
           {step === 0 && (
@@ -728,7 +816,8 @@ export function MeetingCreateForm({
                 id="deadlineDate"
                 value={deadlineDate}
                 onChange={handleDeadlineChange}
-                min={minDeadlineDate}
+                min={minMeetingDeadlineDate}
+                minReason="회의는 오늘부터 이틀 뒤부터 정할 수 있어요"
                 placeholder="날짜를 선택해주세요"
               />
             </>
@@ -743,6 +832,9 @@ export function MeetingCreateForm({
                 value={responseDeadlineDate}
                 onChange={handleResponseDeadlineDateChange}
                 min={minDeadlineDate}
+                max={responseDeadlineMax || undefined}
+                minReason="오늘 이후부터 정할 수 있어요"
+                maxReason="회의 마감일 2일 전까지만 정할 수 있어요"
                 placeholder="날짜를 선택해주세요"
               />
               <div className="mt-2">
@@ -828,7 +920,14 @@ export function MeetingCreateForm({
 
         <div className="mt-4">
           {step === LAST_STEP && allValid && !showParticipantModal ? (
-            <SubmitButton isEditing={isEditing} />
+            <TDSButton
+              type="button"
+              size="xl"
+              display="block"
+              onClick={() => setConfirming(true)}
+            >
+              다음
+            </TDSButton>
           ) : step === LAST_STEP &&
             (filledParticipants.length < MIN_MEETING_PARTICIPANTS ||
               filledParticipants.length > MAX_MEETING_PARTICIPANTS) ? (
@@ -854,6 +953,57 @@ export function MeetingCreateForm({
           ) : null}
         </div>
       </MobileStickyAction>
+      )}
+
+      {confirming && (
+        <>
+          <div className="flex-1 pt-4 sm:pt-8">
+            <p className="text-sm font-medium text-slate-400">회의 확인</p>
+            <div className="mt-3 break-keep text-left text-2xl leading-relaxed text-slate-800 sm:text-3xl sm:leading-relaxed">
+              <p>
+                {confirmClauses.slice(0, 6).map((clause, i) => (
+                  <span
+                    key={i}
+                    className="relative animate-fade-up-blur motion-reduce:animate-none"
+                    style={{ animationDelay: `${i * 400}ms`, animationDuration: "1s" }}
+                  >
+                    {clause}{" "}
+                  </span>
+                ))}
+              </p>
+              <p
+                className="relative mt-4 animate-fade-up-blur text-left motion-reduce:animate-none"
+                style={{ animationDelay: "2400ms", animationDuration: "1s" }}
+              >
+                {confirmClauses[6]}
+              </p>
+            </div>
+            <p
+              className="relative mt-4 animate-fade-up-blur text-sm text-slate-400 motion-reduce:animate-none"
+              style={{ animationDelay: "2900ms", animationDuration: "0.8s" }}
+            >
+              수정하려면 키워드를 눌러 해당화면으로 이동하세요.
+            </p>
+          </div>
+
+          <MobileStickyAction className="mt-6 sm:mt-8">
+            {state.error && (
+              <div
+                role="alert"
+                className="mb-3 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700"
+              >
+                <Emoji symbol="⚠️" size={16} />
+                {state.error}
+              </div>
+            )}
+            {confirmCtaReady && (
+              <div className="animate-fade-up-blur motion-reduce:animate-none">
+                <SubmitButton isEditing={isEditing} />
+              </div>
+            )}
+          </MobileStickyAction>
+        </>
+      )}
 
       {showParticipantModal && (
         <div

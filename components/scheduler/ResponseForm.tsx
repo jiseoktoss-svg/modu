@@ -1507,7 +1507,18 @@ export function ResponseForm(props: Props) {
                   <Emoji symbol="📅" size={16} />
                 </button>
 
-                {/* 입력한 '이 날 이 시간' 요약 — 탭하면 시트에서 수정, ✕ 로 그 날 전체 삭제 */}
+                {/* 데스크톱: 날짜 모달을 닫은 뒤 페이지에서 그 날의 안 되는 시간을 입력(이전 방식).
+                    카드 내부 시간 벳지(showChips)는 끄고, 아래 요약 벳지로만 노출한다. */}
+                {!isMobile && dtDate && (
+                  <div className="rounded-2xl bg-slate-50 p-3">
+                    <p className="text-sm font-bold text-slate-700">{fmtMD(dtDate)} 안 되는 시간</p>
+                    <div className="mt-2">
+                      {renderTimeAdder(dateTimeBusy[dtDate] ?? [], (i) => removeRange(i, dtDate), false)}
+                    </div>
+                  </div>
+                )}
+
+                {/* 입력한 '이 날 이 시간' 요약 — 탭하면 (모바일)시트/(PC)카드에서 수정, ✕ 로 그 날 전체 삭제 */}
                 {Object.keys(dateTimeBusy).length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {Object.entries(dateTimeBusy)
@@ -1537,16 +1548,6 @@ export function ResponseForm(props: Props) {
                           </button>
                         </span>
                       ))}
-                  </div>
-                )}
-
-                {/* 데스크톱: 날짜 모달을 닫은 뒤 페이지에서 그 날의 안 되는 시간을 입력(이전 방식) */}
-                {!isMobile && dtDate && (
-                  <div className="rounded-2xl bg-slate-50 p-3">
-                    <p className="text-sm font-bold text-slate-700">{fmtMD(dtDate)} 안 되는 시간</p>
-                    <div className="mt-2">
-                      {renderTimeAdder(dateTimeBusy[dtDate] ?? [], (i) => removeRange(i, dtDate))}
-                    </div>
                   </div>
                 )}
 

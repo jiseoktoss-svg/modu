@@ -31,6 +31,9 @@ interface DatePickerProps {
   value: string; // YYYY-MM-DD
   onChange: (v: string) => void;
   min?: string; // YYYY-MM-DD
+  max?: string; // YYYY-MM-DD
+  minReason?: string; // min 이전(선택 불가) 날짜 호버 시 안내 툴팁
+  maxReason?: string; // max 이후(선택 불가) 날짜 호버 시 안내 툴팁
   placeholder?: string; // 값이 없을 때 버튼에 표시할 안내 문구
 }
 
@@ -48,8 +51,18 @@ function Chevron({ dir }: { dir: "left" | "right" }) {
   );
 }
 
-export function DatePicker({ id, value, onChange, min, placeholder = "날짜 선택" }: DatePickerProps) {
+export function DatePicker({
+  id,
+  value,
+  onChange,
+  min,
+  max,
+  minReason,
+  maxReason,
+  placeholder = "날짜 선택",
+}: DatePickerProps) {
   const [open, setOpen] = useState(false);
+  const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const sel = value ? parse(value) : null;
   const [view, setView] = useState(() => {
@@ -64,7 +77,10 @@ export function DatePicker({ id, value, onChange, min, placeholder = "날짜 선
   useScrollLock(open);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setTip(null);
+      return;
+    }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
@@ -75,6 +91,7 @@ export function DatePicker({ id, value, onChange, min, placeholder = "날짜 선
   }, [open]);
 
   const minStr = min ?? "";
+  const maxStr = max ?? "";
   const dim = daysInMonth(view.y, view.m);
   const lead = firstWeekday(view.y, view.m);
   const cells: Array<number | null> = [];
@@ -84,6 +101,9 @@ export function DatePicker({ id, value, onChange, min, placeholder = "날짜 선
   const prev = view.m === 1 ? { y: view.y - 1, m: 12 } : { y: view.y, m: view.m - 1 };
   const prevLastDay = ymd(prev.y, prev.m, daysInMonth(prev.y, prev.m));
   const canPrev = !minStr || prevLastDay >= minStr;
+  const nextMonth = view.m === 12 ? { y: view.y + 1, m: 1 } : { y: view.y, m: view.m + 1 };
+  const nextFirstDay = ymd(nextMonth.y, nextMonth.m, 1);
+  const canNext = !maxStr || nextFirstDay <= maxStr;
 
   const label = sel
     ? `${sel.y}년 ${sel.m}월 ${sel.d}일 ${WEEKDAYS[new Date(Date.UTC(sel.y, sel.m - 1, sel.d)).getUTCDay()]}요일`
@@ -106,6 +126,7 @@ export function DatePicker({ id, value, onChange, min, placeholder = "날짜 선
   function pick(d: number) {
     const s = ymd(view.y, view.m, d);
     if (minStr && s < minStr) return;
+    if (maxStr && s > maxStr) return;
     onChange(s);
     setOpen(false);
   }
@@ -154,8 +175,9 @@ export function DatePicker({ id, value, onChange, min, placeholder = "날짜 선
           <button
             type="button"
             onClick={() => go(1)}
+            disabled={!canNext}
             aria-label="다음 달"
-            className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100"
+            className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30"
           >
             <Chevron dir="right" />
           </button>
@@ -176,15 +198,29 @@ export function DatePicker({ id, value, onChange, min, placeholder = "날짜 선
           {cells.map((d, i) => {
             if (d === null) return <div key={`e${i}`} />;
             const s = ymd(view.y, view.m, d);
-            const disabled = Boolean(minStr) && s < minStr;
+            const tooEarly = Boolean(minStr) && s < minStr;
+            const tooLate = Boolean(maxStr) && s > maxStr;
+            const disabled = tooEarly || tooLate;
+            const reason = tooEarly ? minReason : tooLate ? maxReason : undefined;
             const selected = value === s;
             const dow = (lead + (d - 1)) % 7;
             return (
               <button
                 key={s}
                 type="button"
-                disabled={disabled}
+                aria-disabled={disabled || undefined}
+                tabIndex={disabled ? -1 : undefined}
                 onClick={() => pick(d)}
+                onMouseEnter={
+                  disabled
+                    ? (e) => {
+                        if (!reason) return;
+                        const r = e.currentTarget.getBoundingClientRect();
+                        setTip({ text: reason, x: r.left + r.width / 2, y: r.top });
+                      }
+                    : undefined
+                }
+                onMouseLeave={disabled ? () => setTip(null) : undefined}
                 aria-label={`${view.y}년 ${view.m}월 ${d}일${selected ? " 선택됨" : ""}`}
                 aria-current={selected ? "date" : undefined}
                 className={cn(
@@ -192,7 +228,7 @@ export function DatePicker({ id, value, onChange, min, placeholder = "날짜 선
                   selected
                     ? "bg-brand-500 font-bold text-white shadow-sm shadow-brand-500/20"
                     : disabled
-                      ? "text-slate-300"
+                      ? "cursor-not-allowed text-slate-300"
                       : cn(
                           "hover:bg-brand-50",
                           dow === 0
@@ -231,6 +267,20 @@ export function DatePicker({ id, value, onChange, min, placeholder = "날짜 선
       </button>
 
       {calendarDialog ? createPortal(calendarDialog, document.body) : null}
+      {tip
+        ? createPortal(
+            <div
+              role="tooltip"
+              style={{ left: tip.x, top: tip.y }}
+              className="pointer-events-none fixed z-[60] -translate-x-1/2 -translate-y-full"
+            >
+              <div className="mb-2 max-w-[12rem] rounded-lg bg-slate-800 px-2.5 py-1.5 text-center text-xs font-medium leading-snug text-white shadow-lg">
+                {tip.text}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
