@@ -129,6 +129,7 @@ export function CalendarModal({
   blockedDates,
   showSelectedChips = false,
   extra,
+  ctaGlows,
   onClose,
   onConfirm,
 }: {
@@ -146,6 +147,9 @@ export function CalendarModal({
   showSelectedChips?: boolean;
   // 달력 아래에 붙일 부가 영역(특정 날짜+시간 단계의 시간 입력기 등).
   extra?: ReactNode;
+  // 모바일 하단 CTA 경계 불빛: 스크롤 밖(아래)에 있어 아직 확인하지 못한 칩들을
+  // 각 칩의 가로 위치·폭만큼 tone 색으로 깜빡여 알린다. 비어 있으면 표시하지 않음.
+  ctaGlows?: Array<{ key: string; left: number; width: number }>;
   onClose: () => void;
   onConfirm: () => void;
 }) {
@@ -253,7 +257,25 @@ export function CalendarModal({
             {selectedChips}
             {extra}
           </div>
-          <div className="shrink-0 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+          <div className="relative shrink-0 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+            {/* 스크롤 본문과 CTA 사이 그라데이션 — .modu-mobile-sticky-action::before 와 동일 톤 */}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 bottom-full h-6 bg-gradient-to-b from-white/0 to-white"
+            />
+            {/* 경계 불빛: 아직 확인하지 않은 칩 전부를 각 위치·폭만큼 tone 색으로 깜빡임.
+                blur 를 넉넉히 주고 칩보다 살짝 넓혀 부드럽게 퍼지는 느낌을 낸다. */}
+            {ctaGlows?.map((glow) => (
+              <div
+                key={glow.key}
+                aria-hidden="true"
+                className={cn(
+                  "modu-cta-glow pointer-events-none absolute -top-3.5 h-4 rounded-full blur-[12px]",
+                  tone === "busy" ? "bg-red-400" : "bg-brand-400",
+                )}
+                style={{ left: glow.left - 6, width: glow.width + 12 }}
+              />
+            ))}
             <button
               type="button"
               onClick={requestConfirm}
@@ -280,7 +302,7 @@ export function CalendarModal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="max-h-[calc(100dvh-2rem)] w-full max-w-[22rem] overflow-y-auto rounded-[24px] border border-slate-200 bg-white p-5 shadow-2xl sm:max-w-[24rem] sm:p-6"
+        className="max-h-[calc(100dvh-2rem)] w-full max-w-[22rem] overflow-y-auto rounded-[24px] bg-white p-5 shadow-2xl sm:max-w-[24rem] sm:p-6"
       >
         <div className="mb-3 flex items-start justify-between gap-3 sm:mb-4">
           <div>

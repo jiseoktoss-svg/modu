@@ -344,7 +344,59 @@ body {
   animation: modu-line-fill 0.45s ease-out both;
 }
 
+/* 모달 하단 CTA 경계 불빛 — 화면 밖(아래)에 칩이 추가됐음을 알리는 깜빡임.
+   색은 요소의 배경색(bg-*)으로 정하고, 여기서는 깜빡임만 담당한다. */
+@keyframes modu-cta-glow-blink {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+
+  50% {
+    opacity: 0.75;
+  }
+}
+
+.modu-cta-glow {
+  animation: modu-cta-glow-blink 1.6s ease-in-out infinite;
+}
+
+/* 달력 날짜 선택: 셀이 위로 살짝 움직이며 튀어나오는(pop) 효과.
+   미세한 overshoot(1.07) 후 1.04 로 안착 — 아주 은은한 들림. */
+@keyframes modu-cell-pop {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+
+  60% {
+    transform: translateY(-1.5px) scale(1.07);
+  }
+
+  100% {
+    transform: translateY(-1px) scale(1.04);
+  }
+}
+
+.modu-cell-pop {
+  animation: modu-cell-pop 0.25s ease-out both;
+  /* 셀 자체 shadow-* 유틸리티(예: 1순위 shadow-sm)와의 충돌을 피해 여기서 직접 지정.
+     blur+spread 로 좌우까지 번지는 떠 있는 그림자. */
+  box-shadow: 0 3px 12px 2px rgba(15, 23, 42, 0.25);
+}
+
 @media (prefers-reduced-motion: reduce) {
+  /* 저감 모션: 깜빡임 대신 은은하게 켜진 상태로 고정(알림 기능은 유지) */
+  .modu-cta-glow {
+    animation: none;
+    opacity: 0.7;
+  }
+
+  /* 저감 모션: 움직임 없이 떠 있는 최종 상태로 고정 */
+  .modu-cell-pop {
+    animation: none;
+    transform: translateY(-1px) scale(1.04);
+  }
+
   .modu-tds-button {
     transition: none;
   }

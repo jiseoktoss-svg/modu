@@ -100,7 +100,7 @@ export function DatePicker({
         role="dialog"
         aria-modal="true"
         aria-label="날짜 선택 달력"
-        className="max-h-[calc(100dvh-2rem)] w-full max-w-[22rem] overflow-y-auto rounded-[24px] border border-slate-200 bg-white p-5 shadow-2xl sm:max-w-[24rem] sm:p-6"
+        className="max-h-[calc(100dvh-2rem)] w-full max-w-[22rem] overflow-y-auto rounded-[24px] bg-white p-5 shadow-2xl sm:max-w-[24rem] sm:p-6"
       >
         <div className="mb-3 flex items-center justify-between gap-3 sm:mb-4">
           <div>

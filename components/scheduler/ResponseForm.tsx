@@ -892,6 +892,70 @@ export function ResponseForm(props: Props) {
     return () => document.removeEventListener("keydown", onKey);
   }, [dtModalOpen]);
 
+  // 모바일 시트 하단 CTA 경계 불빛: 추가/변경 후 아직 확인하지 않은(스크롤 밖 아래에 있는)
+  // 칩 전부를, 각 칩의 가로 위치·폭만큼 깜빡여 알린다. 스크롤해서 칩이 보이면 그 칩 불빛만 꺼진다.
+  const glowChipRefs = useRef(new Map<string, HTMLSpanElement>());
+  const [glowPendingDates, setGlowPendingDates] = useState<Set<string>>(() => new Set());
+  const [ctaGlows, setCtaGlows] = useState<Record<string, { left: number; width: number }>>({});
+
+  const clearGlowFor = (ds: string) => {
+    setGlowPendingDates((prev) => {
+      if (!prev.has(ds)) return prev;
+      const next = new Set(prev);
+      next.delete(ds);
+      return next;
+    });
+    setCtaGlows((prev) => {
+      if (!(ds in prev)) return prev;
+      const next = { ...prev };
+      delete next[ds];
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!dtModalOpen) {
+      setGlowPendingDates(new Set());
+      setCtaGlows({});
+    }
+  }, [dtModalOpen]);
+
+  useEffect(() => {
+    if (!dtModalOpen || glowPendingDates.size === 0) return;
+    const els = new Map<Element, string>();
+    for (const ds of glowPendingDates) {
+      const el = glowChipRefs.current.get(ds);
+      if (el) els.set(el, ds);
+      else clearGlowFor(ds); // 칩이 사라짐(그 날짜 전체 삭제 등) → 불빛도 정리.
+    }
+    if (els.size === 0) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const ds = els.get(entry.target);
+          if (!ds) continue;
+          if (entry.isIntersecting) {
+            // 사용자가 스크롤해서 칩을 확인함 → 그 칩의 깜빡임 종료.
+            clearGlowFor(ds);
+            continue;
+          }
+          const viewportH = entry.rootBounds?.height ?? window.innerHeight;
+          if (entry.boundingClientRect.top > viewportH / 2) {
+            // 화면 아래쪽에 가려진 경우에만 경계 불빛을 켠다(위로 스크롤된 경우는 제외).
+            const rect = entry.target.getBoundingClientRect();
+            setCtaGlows((prev) => ({ ...prev, [ds]: { left: rect.left, width: rect.width } }));
+          } else {
+            clearGlowFor(ds);
+          }
+        }
+      },
+      { threshold: 0.5 },
+    );
+    els.forEach((_ds, el) => observer.observe(el));
+    return () => observer.disconnect();
+    // dateTimeBusy 변경 시 재측정(같은 날짜 칩에 시간대가 추가되면 폭·위치가 변함).
+  }, [glowPendingDates, dtModalOpen, dateTimeBusy]);
+
   // 불가 입력(불가 날짜 + 특정 날짜+시간)을 cells → blocks(busy) 환원. busy 만 저장한다.
   function buildBlocks() {
     const cells: Record<string, CellStatus> = {};
@@ -930,6 +994,10 @@ export function ResponseForm(props: Props) {
     }
     const r: TimeRange = { start: s, end: e };
     setDateTimeBusy((p) => ({ ...p, [dtDate]: [...(p[dtDate] ?? []), r] }));
+    // 모바일 시트에서 추가한 칩이 화면 밖에 있으면 CTA 경계 불빛으로 알린다.
+    if (isMobile && dtModalOpen) {
+      setGlowPendingDates((prev) => (prev.has(dtDate) ? prev : new Set(prev).add(dtDate)));
+    }
   };
 
   const removeRange = (index: number, ds: string) => {
@@ -1524,7 +1592,7 @@ export function ResponseForm(props: Props) {
       <Toast open={toastOpen} message={toastMessage} icon={toastIcon} />
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
         {/* 상단: 답변이 쌓이는 문장 */}
-        <p className="pt-2 text-sm font-medium text-slate-400">가능 시간</p>
+        <p className="text-sm font-medium text-slate-400">가능 시간</p>
         <div
           aria-live="polite"
           className="mt-3 break-keep text-left text-2xl leading-relaxed text-slate-800 sm:text-3xl sm:leading-relaxed"
@@ -1680,6 +1748,7 @@ export function ResponseForm(props: Props) {
                     }}
                     tone="busy"
                     blockedDates={busyDates}
+                    ctaGlows={Object.entries(ctaGlows).map(([key, g]) => ({ key, ...g }))}
                     extra={
                       isMobile ? (
                         <div className="space-y-3">
@@ -1706,6 +1775,10 @@ export function ResponseForm(props: Props) {
                                 .map(([ds, ranges]) => (
                                   <span
                                     key={ds}
+                                    ref={(el) => {
+                                      if (el) glowChipRefs.current.set(ds, el);
+                                      else glowChipRefs.current.delete(ds);
+                                    }}
                                     className={cn(
                                       "inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-bold motion-reduce:animate-none",
                                       removingDates.has(ds)
@@ -1856,6 +1929,111 @@ function CaseDescription({ caseId }: { caseId: number }) {
         >
           {current.banner.text}
         </p>
+      )}
+    </div>
+  );
+}
+
+// 모바일 전용: 케이스 선택을 우하단 플로팅 버튼으로 접어둔다(데모 컨트롤이 화면을 차지하지 않게).
+// 현재 케이스 번호 버튼을 탭하면 케이스 칩 8개 + 설명 패널이 열리고, 바깥 탭/✕/Esc 로 닫힌다.
+function FloatingCaseSelector({
+  caseId,
+  onSelect,
+  aboveCta = false,
+}: {
+  caseId: number;
+  onSelect: (id: number) => void;
+  // 하단 고정 CTA(MobileStickyAction)가 있는 화면에서는 그 위로 띄운다.
+  aboveCta?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  const bottomClass = aboveCta
+    ? "bottom-[calc(7rem+env(safe-area-inset-bottom))]"
+    : "bottom-[calc(1.25rem+env(safe-area-inset-bottom))]";
+
+  return (
+    <div className="sm:hidden" onClick={(e) => e.stopPropagation()}>
+      {open ? (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-slate-900/30 animate-fade-in motion-reduce:animate-none"
+            onClick={() => setOpen(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="케이스 선택"
+            className={cn(
+              "fixed right-4 z-40 w-[calc(100vw-2rem)] max-w-[22rem] rounded-2xl bg-white p-4 shadow-2xl animate-fade-up motion-reduce:animate-none",
+              bottomClass,
+            )}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-sm font-bold text-slate-900">케이스 선택</p>
+                <p className="mt-0.5 break-keep text-xs text-slate-400">
+                  사용 흐름 파악용 데모 영역이에요. 실제 사용 시에는 보이지 않아요.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                aria-label="케이스 선택 닫기"
+                className="-mr-1 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              >
+                <Emoji symbol="✕" size={16} />
+              </button>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {DEMO_CASES.map((c) => {
+                const isSelected = c.id === caseId;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => onSelect(c.id)}
+                    aria-pressed={isSelected}
+                    aria-label={`케이스 ${c.id} ${c.title}`}
+                    className={cn(
+                      "flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold transition-colors",
+                      isSelected
+                        ? "bg-brand-500 text-white shadow-md"
+                        : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                    )}
+                  >
+                    {c.id}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-3">
+              <CaseDescription caseId={caseId} />
+            </div>
+          </div>
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-haspopup="dialog"
+          aria-label={`케이스 선택 열기 (현재 케이스 ${caseId})`}
+          className={cn(
+            "fixed right-4 z-40 flex h-11 w-11 items-center justify-center rounded-full bg-brand-500 text-base font-bold text-white shadow-lg shadow-brand-500/30 transition-transform active:scale-95",
+            bottomClass,
+          )}
+        >
+          {caseId}
+        </button>
       )}
     </div>
   );
@@ -2143,36 +2321,44 @@ function ResultScreen({
 
   return (
     <div
-      // 뷰포트 높이 고정: 100dvh - (헤더 3.5rem + main 상단 패딩 1rem/2rem).
-      // min-h 체인은 페이지가 컨텐츠만큼 자라 캡이 안 걸리므로 확정 높이가 필요하다.
-      className="mx-auto flex h-[calc(100dvh-4.5rem)] w-full max-w-2xl flex-col pt-2 sm:h-[calc(100dvh-5.5rem)] sm:pb-4"
+      // 레이아웃 기준은 회의 만들기 페이지: 페이지 전체 스크롤 구조.
+      // 본문이 흐르고 콘텐츠가 fixed 헤더/CTA 의 그라데이션 아래로 지나간다.
+      // 본문은 헤더에 붙고 상단 여백(pt-4/sm:pt-8)을 본문 안쪽 패딩으로 갖는다
+      // (공유 main 의 pt 는 음수 마진으로 상쇄).
+      className="-mt-4 mx-auto flex w-full max-w-2xl flex-1 flex-col sm:-mt-8"
       onClick={() => onSelectedIndexChange(null)}
     >
-      {/* 헤더·케이스 영역은 고정, 추천 리스트만 내부 스크롤 → 하단 CTA 항상 노출 */}
-      <div className="flex min-h-0 flex-1 flex-col gap-3">
-        <div className="relative flex items-center justify-between gap-2">
+      <div className="flex flex-1 flex-col gap-3 pt-4 sm:pt-8">
+        <div className="flex items-start justify-between gap-2">
           <h1 className="text-sm font-medium text-slate-400">추천 시간</h1>
-          <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
-            {total}명 중 {current.submitted}명 응답
-          </span>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onViewCalendar();
-            }}
-            aria-label="회의 캘린더 보기"
-            className="absolute right-0 top-8 z-10 flex h-8 w-8 items-center justify-center text-slate-500 transition-colors hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
-          >
-            <CalendarLineIcon />
-          </button>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
+              {total}명 중 {current.submitted}명 응답
+            </span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewCalendar();
+              }}
+              aria-label="회의 캘린더 보기"
+              className="-my-1 flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+            >
+              <CalendarLineIcon />
+            </button>
+          </div>
         </div>
-        <CaseSelector caseId={caseId} onSelect={onSelectCase} />
-        <CaseDescription caseId={caseId} />
+        {/* 데스크톱: 인라인 케이스 선택. 모바일은 우하단 플로팅 버튼으로 대체(화면 절약). */}
+        <div className="hidden sm:block">
+          <CaseSelector caseId={caseId} onSelect={onSelectCase} />
+        </div>
+        <div className="hidden sm:block">
+          <CaseDescription caseId={caseId} />
+        </div>
         {candidates.length === 0 ? (
           <p className="text-sm text-slate-500">표시할 추천안이 없어요.</p>
         ) : (
-          <ol className="modu-scrollbar-hide -mx-1 min-h-0 flex-1 space-y-2 overflow-y-auto px-1 py-1">
+          <ol className="space-y-2 py-1">
             {candidates.map((c, i) => (
               <li
                 key={`${caseId}-${c.startAt}-${c.endAt}-${i}`}
@@ -2239,7 +2425,9 @@ function ResultScreen({
         )}
       </div>
 
-      <MobileStickyAction className="mt-4">
+      <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} aboveCta />
+
+      <MobileStickyAction className="mt-6 sm:mt-8">
         <TDSButton
           size="xl"
           display="block"
@@ -2265,28 +2453,32 @@ function LegendDot({ className, label }: { className: string; label: string }) {
 // 등급별 날짜 강조 톤 — 정상 후보(브랜드 블루), 차선(앰버), 성립 어려움(레드).
 type DayEmphasisTone = "brand" | "amber" | "red";
 
+// 순위 색상은 4단계: 1·2·3순위는 각자 한 단계씩, 4순위부터는 전부 'rest' 한 그룹.
 const DAY_EMPHASIS: Record<
   DayEmphasisTone,
-  { rank1: string; rank2: string; rank3: string; badge: string; pill: string }
+  { rank1: string; rank2: string; rank3: string; rest: string; badge: string; pill: string }
 > = {
   brand: {
     rank1: "bg-brand-500 font-bold text-white shadow-sm shadow-brand-500/20",
-    rank2: "bg-brand-100 font-bold text-brand-800",
-    rank3: "bg-brand-50 font-semibold text-brand-700",
+    rank2: "bg-brand-200 font-bold text-brand-900",
+    rank3: "bg-brand-100 font-semibold text-brand-800",
+    rest: "bg-brand-50 font-medium text-brand-700",
     badge: "bg-brand-600",
     pill: "bg-brand-50 text-brand-700",
   },
   amber: {
     rank1: "bg-amber-500 font-bold text-white shadow-sm shadow-amber-500/20",
-    rank2: "bg-amber-100 font-bold text-amber-800",
-    rank3: "bg-amber-50 font-semibold text-amber-700",
+    rank2: "bg-amber-200 font-bold text-amber-900",
+    rank3: "bg-amber-100 font-semibold text-amber-800",
+    rest: "bg-amber-50 font-medium text-amber-700",
     badge: "bg-amber-600",
     pill: "bg-amber-50 text-amber-700",
   },
   red: {
     rank1: "bg-red-500 font-bold text-white shadow-sm shadow-red-500/20",
-    rank2: "bg-red-100 font-bold text-red-800",
-    rank3: "bg-red-50 font-semibold text-red-700",
+    rank2: "bg-red-200 font-bold text-red-900",
+    rank3: "bg-red-100 font-semibold text-red-800",
+    rest: "bg-red-50 font-medium text-red-700",
     badge: "bg-red-600",
     pill: "bg-red-50 text-red-700",
   },
@@ -2402,27 +2594,34 @@ function SubmittedCalendarScreen({
 
   return (
     <div className="space-y-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-2 sm:pb-8">
-      <div className="relative flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Emoji symbol="📅" size={22} />
           <h2 className="text-xl font-extrabold text-slate-900">회의 캘린더</h2>
         </div>
-        <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
-          {DEMO_PEOPLE.length}명 중 {respondedCount}명 응답
-        </span>
-        {/* 추천안 화면의 캘린더 아이콘과 같은 자리 — 추천안으로 돌아가기 */}
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label="추천안 보기"
-          className="absolute right-0 top-8 z-10 flex h-8 w-8 items-center justify-center text-slate-500 transition-colors hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
-        >
-          <RankListIcon />
-        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
+            {DEMO_PEOPLE.length}명 중 {respondedCount}명 응답
+          </span>
+          {/* 추천안으로 돌아가기 — 추천안 화면의 캘린더 버튼과 짝(같은 자리) */}
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="추천안 보기"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+          >
+            <RankListIcon />
+          </button>
+        </div>
       </div>
 
-      <CaseSelector caseId={caseId} onSelect={onSelectCase} />
-      <CaseDescription caseId={caseId} />
+      {/* 데스크톱: 인라인 케이스 선택. 모바일은 우하단 플로팅 버튼으로 대체(화면 절약). */}
+      <div className="hidden sm:block">
+        <CaseSelector caseId={caseId} onSelect={onSelectCase} />
+      </div>
+      <div className="hidden sm:block">
+        <CaseDescription caseId={caseId} />
+      </div>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-slate-500">
         {tonesInCase.has("brand") && <LegendDot className="bg-brand-500" label="추천 후보" />}
@@ -2431,9 +2630,10 @@ function SubmittedCalendarScreen({
         <span className="text-slate-400">색이 진할수록 상위 순위 · 날짜를 누르면 참석 명단이 보여요.</span>
       </div>
 
-      {/* 한 달 달력 — 추천 날짜는 순위/등급에 따라 강조 */}
+      {/* 한 달 달력 — 추천 날짜는 순위/등급에 따라 강조.
+          좌우 패딩을 줄여 달력을 가로로 최대한 넓게 쓴다(px 가 p 를 덮음). */}
       {month && (
-        <Card>
+        <Card className="border-none px-2 sm:px-3">
           <CalendarGrid
             month={month}
             canPrev={safeMonthIdx > 0}
@@ -2454,7 +2654,9 @@ function SubmittedCalendarScreen({
                     ? DAY_EMPHASIS[tone].rank1
                     : best.rank === 2
                       ? DAY_EMPHASIS[tone].rank2
-                      : DAY_EMPHASIS[tone].rank3
+                      : best.rank === 3
+                        ? DAY_EMPHASIS[tone].rank3
+                        : DAY_EMPHASIS[tone].rest
                   : null;
               return (
                 <button
@@ -2465,24 +2667,16 @@ function SubmittedCalendarScreen({
                   aria-pressed={isSelected}
                   aria-label={`${month.m}월 ${cell.day}일${best ? ` — 추천 ${best.rank}순위` : ""}`}
                   className={cn(
-                    "relative flex aspect-square flex-col items-center justify-center rounded-lg text-sm leading-none transition-colors",
+                    "relative flex aspect-square flex-col items-center justify-center rounded-lg text-sm leading-none transition motion-reduce:transition-none",
                     !clickable
                       ? "cursor-default text-slate-300"
                       : emphasis ?? "text-slate-700 hover:bg-slate-100",
-                    isSelected && "ring-2 ring-slate-800 ring-offset-1",
+                    // 선택: 테두리 대신 셀이 위로 움직이며 튀어나오는(pop) 애니메이션.
+                    // 그림자는 shadow-* 유틸리티와의 충돌을 피해 modu-cell-pop 클래스가 직접 가진다.
+                    isSelected && "modu-cell-pop z-10",
                   )}
                 >
                   {cell.day}
-                  {best && tone && (
-                    <span
-                      className={cn(
-                        "absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-0.5 text-[9px] font-bold text-white",
-                        DAY_EMPHASIS[tone].badge,
-                      )}
-                    >
-                      {best.rank}
-                    </span>
-                  )}
                 </button>
               );
             }}
@@ -2560,6 +2754,7 @@ function SubmittedCalendarScreen({
         )}
       </Card>
 
+      <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} />
     </div>
   );
 }

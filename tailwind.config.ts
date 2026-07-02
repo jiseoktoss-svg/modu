@@ -84,7 +84,9 @@ const config: Config = {
         "fade-up": "fade-up 0.35s ease-out both",
         "fade-in": "fade-in 0.3s ease-out both",
         "fade-out": "fade-out 0.25s ease-in both",
-        "fade-up-blur": "fade-up-blur 0.5s ease-out both",
+        // backwards: stagger 딜레이 동안만 0% 상태 유지. forwards 로 filter:blur(0) 가
+        // 남으면 요소가 계속 래스터화되어 줄바꿈에 걸친 인라인 문장이 흐릿해진다.
+        "fade-up-blur": "fade-up-blur 0.5s ease-out backwards",
         "sheet-up": "sheet-up 0.32s cubic-bezier(0.32, 0.72, 0, 1) both",
         "dot-wave": "dot-wave 1.1s ease-in-out infinite",
       },

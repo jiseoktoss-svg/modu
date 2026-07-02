@@ -29,10 +29,8 @@ function formatDuration(minutes: number): string {
 
 function participantPillClass(attendanceType: Participant["attendanceType"]) {
   return cn(
-    "inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-1 sm:gap-1.5 sm:px-3 sm:py-2",
-    attendanceType === "required"
-      ? "border-brand-200 bg-brand-50/80"
-      : "border-slate-200 bg-white",
+    "inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 sm:gap-1.5 sm:px-3 sm:py-2",
+    attendanceType === "required" ? "bg-brand-50/80" : "bg-slate-50",
   );
 }
 
@@ -41,7 +39,7 @@ function participantTypeClass(attendanceType: Participant["attendanceType"]) {
     "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold sm:px-2 sm:text-[11px]",
     attendanceType === "required"
       ? "bg-brand-500 text-white shadow-sm shadow-brand-500/20"
-      : "bg-slate-100 text-slate-500 ring-1 ring-inset ring-slate-200",
+      : "bg-slate-100 text-slate-500",
   );
 }
 
