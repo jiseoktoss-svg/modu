@@ -5,9 +5,10 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
   _req: Request,
-  { params }: { params: { meetingId: string } },
+  { params }: { params: Promise<{ meetingId: string }> },
 ) {
-  const meeting = await fetchMeeting(params.meetingId);
+  const { meetingId } = await params;
+  const meeting = await fetchMeeting(meetingId);
   if (!meeting || !meeting.confirmedSlotId) {
     return new Response("아직 확정된 회의가 없습니다.", { status: 404 });
   }

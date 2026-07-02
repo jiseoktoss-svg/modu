@@ -32,7 +32,7 @@ interface DemoMeetingPayload {
   participants: DemoParticipantInput[];
 }
 
-export interface CreateDemoMeetingInput extends Omit<DemoMeetingPayload, "v"> {}
+export type CreateDemoMeetingInput = Omit<DemoMeetingPayload, "v">;
 
 function encodeBase64Url(value: string) {
   return Buffer.from(value, "utf8")

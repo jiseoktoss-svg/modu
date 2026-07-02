@@ -16,9 +16,10 @@ export const dynamic = "force-dynamic";
 export default async function ConfirmedPage({
   params,
 }: {
-  params: { meetingId: string };
+  params: Promise<{ meetingId: string }>;
 }) {
-  const meeting = await fetchMeeting(params.meetingId);
+  const { meetingId } = await params;
+  const meeting = await fetchMeeting(meetingId);
   if (!meeting) notFound();
 
   const slot = meeting.confirmedSlotId

@@ -9,11 +9,12 @@ export const dynamic = "force-dynamic";
 export default async function SharePage({
   params,
 }: {
-  params: { meetingId: string };
+  params: Promise<{ meetingId: string }>;
 }) {
+  const { meetingId } = await params;
   let meeting;
   try {
-    meeting = await fetchMeeting(params.meetingId);
+    meeting = await fetchMeeting(meetingId);
   } catch (error) {
     console.error("[share] failed to load meeting", error);
     return (
