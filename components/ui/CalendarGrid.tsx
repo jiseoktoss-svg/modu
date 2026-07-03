@@ -9,7 +9,7 @@ import {
   type CalendarMonth,
 } from "@/components/ui/calendarUtils";
 
-function Chevron({ dir }: { dir: "left" | "right" }) {
+export function CalendarChevron({ dir }: { dir: "left" | "right" }) {
   return (
     <svg viewBox="0 0 12 12" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
       <path
@@ -52,7 +52,7 @@ export function CalendarGrid({
           aria-label="이전 달"
           className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30"
         >
-          <Chevron dir="left" />
+          <CalendarChevron dir="left" />
         </button>
         <span className="text-sm font-bold text-slate-800">
           {month.y}년 {month.m}월
@@ -64,7 +64,7 @@ export function CalendarGrid({
           aria-label="다음 달"
           className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30"
         >
-          <Chevron dir="right" />
+          <CalendarChevron dir="right" />
         </button>
       </div>
 

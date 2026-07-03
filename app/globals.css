@@ -384,16 +384,45 @@ body {
    속도가 일정해야 이음새가 매끄러워 linear. mask 스윕과 함께 blur→선명 전환을 넣어
    칠해질 때 초점이 맞듯 또렷해진다. */
 @keyframes modu-fill-char-reveal {
+  /* 대기 중(delay 전, fill-mode 유지)에는 opacity 로도 완전히 숨긴다 — 좁은 글자에서
+     mask 위치가 기기 픽셀로 반올림되며 가장자리가 새어 보이는(자글거림) 문제 방지.
+     시작 직후(1%) 바로 1로 올려도 mask 가 가리고 있어 눈에 띄지 않는다. */
   from {
     -webkit-mask-position: 100% 0;
     mask-position: 100% 0;
+    opacity: 0;
     filter: blur(2px);
+  }
+
+  1% {
+    opacity: 1;
   }
 
   to {
     -webkit-mask-position: 0 0;
     mask-position: 0 0;
+    opacity: 1;
     filter: blur(0);
+  }
+}
+
+/* 모바일용: blur 없는 변형. filter 는 blur(0)이어도 글자를 별도 레이어로 래스터화해
+   모바일에서 볼드 키워드가 뿌옇게 보이는 문제가 있어, 모바일은 mask 스윕만 쓴다. */
+@keyframes modu-fill-char-reveal-flat {
+  from {
+    -webkit-mask-position: 100% 0;
+    mask-position: 100% 0;
+    opacity: 0;
+  }
+
+  1% {
+    opacity: 1;
+  }
+
+  to {
+    -webkit-mask-position: 0 0;
+    mask-position: 0 0;
+    opacity: 1;
   }
 }
 
@@ -405,6 +434,13 @@ body {
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
   animation: modu-fill-char-reveal 0.3s linear both;
+}
+
+/* 모바일(sm 미만): blur 변형 대신 mask 만 — 키워드 흐림·자글거림 방지 */
+@media (max-width: 639px) {
+  .modu-fill-char {
+    animation-name: modu-fill-char-reveal-flat;
+  }
 }
 
 .modu-cell-pop {

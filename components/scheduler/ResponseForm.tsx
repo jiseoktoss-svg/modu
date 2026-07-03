@@ -28,10 +28,12 @@ import { MeetingSummarySentence } from "@/components/meeting/MeetingSummarySente
 import { CharFillSentence } from "@/components/ui/CharFillSentence";
 import { charFillTiming, type CharFillSegment } from "@/lib/charFill";
 import { CalendarModal } from "@/components/scheduler/CalendarModal";
-import { CalendarGrid } from "@/components/ui/CalendarGrid";
+import { CalendarChevron, CalendarGrid } from "@/components/ui/CalendarGrid";
 import {
+  CALENDAR_WEEKDAYS,
   formatKoreanDateLabel,
   getCalendarMonthsWithDates,
+  parseDateStr,
 } from "@/components/ui/calendarUtils";
 import {
   clearResponseDraft,
@@ -46,6 +48,7 @@ import { hasBatchim } from "@/lib/korean";
 import { useScrollLock } from "@/lib/useScrollLock";
 import { cellKey, cellsToBlocks, GRID_STEP_MINUTES } from "@/lib/grid";
 import {
+  addDaysToDateStr,
   formatKoreanDate,
   formatKoreanDateTimeRange,
   formatKoreanTime,
@@ -1465,7 +1468,7 @@ export function ResponseForm(props: Props) {
 
   if (step === "done") {
     return (
-      <SubmittedCalendarScreen
+      <SubmittedCalendarScreenWide
         caseId={caseId}
         onSelectCase={handleSelectCase}
         dates={dates}
@@ -2550,6 +2553,24 @@ function AttendeeGroup({
   );
 }
 
+// 주간 보기용: 날짜 범위 전체를 일요일 시작 7일 단위 주(week)로 자른다.
+function buildWeeksFromDates(dates: string[]): string[][] {
+  if (dates.length === 0) return [];
+  const sorted = [...dates].sort();
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  const { y, m, d } = parseDateStr(first);
+  let cursor = addDaysToDateStr(first, -new Date(Date.UTC(y, m - 1, d)).getUTCDay());
+  const weeks: string[][] = [];
+  while (cursor <= last) {
+    weeks.push(Array.from({ length: 7 }, (_, i) => addDaysToDateStr(cursor, i)));
+    cursor = addDaysToDateStr(cursor, 7);
+  }
+  return weeks;
+}
+
+// ⚠️ 보존용 원본(현재 미사용) — 회의 캘린더 화면의 와이드 버전(SubmittedCalendarScreenWide)을
+// 도입하면서 원래 화면을 나중에 다시 쓸 수 있게 그대로 남겨 두었다. done 스텝은 와이드 버전을 쓴다.
 function SubmittedCalendarScreen({
   caseId,
   onSelectCase,
@@ -2770,6 +2791,409 @@ function SubmittedCalendarScreen({
           </>
         )}
       </Card>
+
+      <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} />
+    </div>
+  );
+}
+
+// SubmittedCalendarScreen 의 사본(와이드 작업용) — 원본은 위에 보존. done 스텝이 쓰는 현재 화면.
+// PC 전용 추가: ① 주간/월간 전환 토글 ② 이 화면만 페이지 폭을 넓게 씀(뷰포트 기준 브레이크아웃)
+// ③ 달력 + 명단 패널 2열 배치, 월간 셀에 순위·시간 요약 표시. 모바일 UI 는 원본과 동일하다.
+function SubmittedCalendarScreenWide({
+  caseId,
+  onSelectCase,
+  dates,
+  onBack,
+}: {
+  caseId: number;
+  onSelectCase: (id: number) => void;
+  dates: string[];
+  onBack: () => void;
+}) {
+  // 데모 단계: 선택한 케이스의 더미 응답으로 달력을 채운다.
+  const current = DEMO_CASES.find((c) => c.id === caseId) ?? DEMO_CASES[0];
+  const candidates = useMemo(() => buildCaseCandidates(current, dates), [current, dates]);
+  const respondedCount = DEMO_PEOPLE.length - current.pendingNames.length;
+  const dangerCase = current.banner?.tone === "danger";
+
+  // 날짜 → 그 날의 후보들(순위 오름차순). 보통 하루에 후보 하나.
+  const candidatesByDate = useMemo(() => {
+    const map = new Map<string, { rank: number; candidate: CaseCandidate }[]>();
+    candidates.forEach((candidate, i) => {
+      const list = map.get(candidate.date) ?? [];
+      list.push({ rank: i + 1, candidate });
+      map.set(candidate.date, list);
+    });
+    return map;
+  }, [candidates]);
+
+  const months = useMemo(
+    () => getCalendarMonthsWithDates([...dates, ...candidates.map((c) => c.date)]),
+    [dates, candidates],
+  );
+  const monthIndexOf = (dateStr: string) => {
+    const [y, m] = dateStr.split("-").map(Number);
+    return months.findIndex((mm) => mm.y === y && mm.m === m);
+  };
+  // 주간 보기: 전체 날짜 범위를 일요일 시작 7일 단위로 자른다.
+  const weeks = useMemo(
+    () => buildWeeksFromDates([...dates, ...candidates.map((c) => c.date)]),
+    [dates, candidates],
+  );
+  const weekIndexOf = (dateStr: string) => weeks.findIndex((week) => week.includes(dateStr));
+
+  const [viewMode, setViewMode] = useState<"month" | "week">("month");
+  const [selectedDate, setSelectedDate] = useState<string | null>(candidates[0]?.date ?? null);
+  const [monthIdx, setMonthIdx] = useState(() =>
+    Math.max(0, candidates[0] ? monthIndexOf(candidates[0].date) : 0),
+  );
+  const [weekIdx, setWeekIdx] = useState(() =>
+    Math.max(0, candidates[0] ? weekIndexOf(candidates[0].date) : 0),
+  );
+  // 케이스가 바뀌면 1순위 날짜를 다시 선택하고 그 달/주로 이동한다.
+  useEffect(() => {
+    const top = candidates[0]?.date ?? null;
+    setSelectedDate(top);
+    if (top) {
+      setMonthIdx(Math.max(0, monthIndexOf(top)));
+      setWeekIdx(Math.max(0, weekIndexOf(top)));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [caseId]);
+
+  const safeMonthIdx = Math.min(Math.max(monthIdx, 0), Math.max(0, months.length - 1));
+  const month = months[safeMonthIdx];
+  const safeWeekIdx = Math.min(Math.max(weekIdx, 0), Math.max(0, weeks.length - 1));
+  const week = weeks[safeWeekIdx];
+  const selectedCandidates = selectedDate ? (candidatesByDate.get(selectedDate) ?? []) : [];
+  const tonesInCase = useMemo(() => {
+    const set = new Set<DayEmphasisTone>();
+    candidates.forEach((c) => set.add(caseEmphasisTone(c, dangerCase)));
+    return set;
+  }, [candidates, dangerCase]);
+
+  // 주간 전환: 선택된 날짜(없으면 1순위)가 속한 주로 이동한다.
+  const switchToWeek = () => {
+    setViewMode("week");
+    const anchor = selectedDate ?? candidates[0]?.date ?? null;
+    if (anchor) {
+      const idx = weekIndexOf(anchor);
+      if (idx >= 0) setWeekIdx(idx);
+    }
+  };
+
+  // 날짜 셀 공통 계산: 그 날의 1순위 후보와 강조 톤/클래스.
+  const cellInfo = (dateStr: string) => {
+    const best = candidatesByDate.get(dateStr)?.[0];
+    const tone = best ? caseEmphasisTone(best.candidate, dangerCase) : null;
+    const emphasis =
+      best && tone
+        ? best.rank === 1
+          ? DAY_EMPHASIS[tone].rank1
+          : best.rank === 2
+            ? DAY_EMPHASIS[tone].rank2
+            : best.rank === 3
+              ? DAY_EMPHASIS[tone].rank3
+              : DAY_EMPHASIS[tone].rest
+        : null;
+    return { best, tone, emphasis };
+  };
+
+  const fmtKoMonthDay = (dateStr: string) => {
+    const { m, d } = parseDateStr(dateStr);
+    return `${m}월 ${d}일`;
+  };
+
+  // 월간 달력 카드. 모바일 셀은 원본과 동일한 정사각 숫자, PC 셀은 높이를 키워 순위·시간 요약을 함께 보여준다.
+  const monthCard = (extraClassName?: string) =>
+    month && (
+      <Card className={cn("border-none px-2 sm:px-3", extraClassName)}>
+        <CalendarGrid
+          month={month}
+          canPrev={safeMonthIdx > 0}
+          canNext={safeMonthIdx < months.length - 1}
+          onPrev={() => setMonthIdx(safeMonthIdx - 1)}
+          onNext={() => setMonthIdx(safeMonthIdx + 1)}
+          emptyCellPrefix="done-cal-wide"
+          renderDate={(cell) => {
+            const { best, tone, emphasis } = cellInfo(cell.date);
+            const clickable = Boolean(best);
+            const isSelected = selectedDate === cell.date;
+            return (
+              <button
+                key={cell.key}
+                type="button"
+                disabled={!clickable}
+                onClick={() => setSelectedDate(cell.date)}
+                aria-pressed={isSelected}
+                aria-label={`${month.m}월 ${cell.day}일${best ? ` — 추천 ${best.rank}순위` : ""}`}
+                className={cn(
+                  "relative flex aspect-square flex-col items-center justify-center rounded-lg text-sm leading-none transition motion-reduce:transition-none",
+                  "sm:aspect-auto sm:h-24 sm:items-start sm:justify-start sm:gap-1 sm:p-2 sm:text-left sm:leading-tight",
+                  !clickable
+                    ? "cursor-default text-slate-300"
+                    : emphasis ?? "text-slate-700 hover:bg-slate-100",
+                  isSelected && "modu-cell-pop z-10",
+                )}
+              >
+                {cell.day}
+                {best && tone && (
+                  <span className="hidden text-[11px] font-semibold leading-tight sm:block">
+                    {best.rank}순위 ·{" "}
+                    {formatKoreanTimeRange(best.candidate.startAt, best.candidate.endAt)}
+                  </span>
+                )}
+              </button>
+            );
+          }}
+        />
+      </Card>
+    );
+
+  // 주간 달력 카드(PC 전용) — 하루가 한 칸을 넓게 써서 순위·시간·등급을 함께 보여준다.
+  const weekCard = week && (
+    <Card className="hidden border-none px-2 sm:block sm:px-3">
+      <div className="mb-3 flex items-center justify-between sm:mb-4">
+        <button
+          type="button"
+          onClick={() => setWeekIdx(safeWeekIdx - 1)}
+          disabled={safeWeekIdx <= 0}
+          aria-label="이전 주"
+          className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30"
+        >
+          <CalendarChevron dir="left" />
+        </button>
+        <span className="text-sm font-bold text-slate-800">
+          {fmtKoMonthDay(week[0])} ~ {fmtKoMonthDay(week[6])}
+        </span>
+        <button
+          type="button"
+          onClick={() => setWeekIdx(safeWeekIdx + 1)}
+          disabled={safeWeekIdx >= weeks.length - 1}
+          aria-label="다음 주"
+          className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30"
+        >
+          <CalendarChevron dir="right" />
+        </button>
+      </div>
+      <div className="grid grid-cols-7 gap-1.5 text-center">
+        {CALENDAR_WEEKDAYS.map((weekday, i) => (
+          <div
+            key={weekday}
+            className={cn(
+              "py-1 text-xs font-semibold",
+              i === 0 ? "text-red-400" : i === 6 ? "text-blue-400" : "text-slate-400",
+            )}
+          >
+            {weekday}
+          </div>
+        ))}
+        {week.map((dateStr) => {
+          const { best, tone, emphasis } = cellInfo(dateStr);
+          const clickable = Boolean(best);
+          const isSelected = selectedDate === dateStr;
+          const { m, d } = parseDateStr(dateStr);
+          return (
+            <button
+              key={dateStr}
+              type="button"
+              disabled={!clickable}
+              onClick={() => setSelectedDate(dateStr)}
+              aria-pressed={isSelected}
+              aria-label={`${m}월 ${d}일${best ? ` — 추천 ${best.rank}순위` : ""}`}
+              className={cn(
+                "relative flex h-32 flex-col items-start gap-1.5 rounded-lg p-2.5 text-left text-sm leading-tight transition motion-reduce:transition-none",
+                !clickable
+                  ? "cursor-default text-slate-300"
+                  : emphasis ?? "text-slate-700 hover:bg-slate-100",
+                isSelected && "modu-cell-pop z-10",
+              )}
+            >
+              <span className="text-sm font-bold leading-none">{d}</span>
+              {best && tone && (
+                <>
+                  <span
+                    className={cn(
+                      "rounded-full px-2 py-0.5 text-[11px] font-bold text-white",
+                      DAY_EMPHASIS[tone].badge,
+                    )}
+                  >
+                    {best.rank}순위
+                  </span>
+                  <span className="text-xs font-semibold">
+                    {formatKoreanTimeRange(best.candidate.startAt, best.candidate.endAt)}
+                  </span>
+                  <span className="text-[11px] opacity-80">
+                    {GRADE_LABELS[best.candidate.grade]}
+                  </span>
+                </>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </Card>
+  );
+
+  return (
+    // 이 화면만 특별히 넓게: 부모(max-w-2xl)를 뷰포트 기준으로 벗어나 가운데 정렬(PC 전용).
+    <div className="space-y-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-2 sm:relative sm:left-1/2 sm:w-[min(80rem,calc(100vw-4rem))] sm:-translate-x-1/2 sm:pb-8">
+      {/* 뒤로가기: 추천 시간(result) 화면으로 — 우상단 추천안 보기 아이콘과 동일 동작 */}
+      <MobileHeaderTitle title="회의 캘린더" onBack={onBack} />
+      <div className="flex items-center justify-between gap-2">
+        <div className="hidden items-center gap-2 sm:flex">
+          <Emoji symbol="📅" size={22} />
+          <h2 className="text-xl font-extrabold text-slate-900">회의 캘린더</h2>
+        </div>
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {/* 주간/월간 전환 — PC 전용(모바일은 월간 고정) */}
+          <div
+            role="group"
+            aria-label="달력 보기 방식"
+            className="hidden items-center rounded-full bg-slate-100 p-0.5 sm:flex"
+          >
+            <button
+              type="button"
+              onClick={() => setViewMode("month")}
+              aria-pressed={viewMode === "month"}
+              className={cn(
+                "rounded-full px-3 py-1 text-xs font-bold transition-colors",
+                viewMode === "month"
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700",
+              )}
+            >
+              월간
+            </button>
+            <button
+              type="button"
+              onClick={switchToWeek}
+              aria-pressed={viewMode === "week"}
+              className={cn(
+                "rounded-full px-3 py-1 text-xs font-bold transition-colors",
+                viewMode === "week"
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700",
+              )}
+            >
+              주간
+            </button>
+          </div>
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
+            {DEMO_PEOPLE.length}명 중 {respondedCount}명 응답
+          </span>
+          {/* 추천안으로 돌아가기 — 추천안 화면의 캘린더 버튼과 짝(같은 자리) */}
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="추천안 보기"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+          >
+            <RankListIcon />
+          </button>
+        </div>
+      </div>
+
+      {/* 데스크톱: 인라인 케이스 선택. 모바일은 우하단 플로팅 버튼으로 대체(화면 절약). */}
+      <div className="hidden sm:block">
+        <CaseSelector caseId={caseId} onSelect={onSelectCase} />
+      </div>
+      <div className="hidden sm:block">
+        <CaseDescription caseId={caseId} />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-slate-500">
+        {tonesInCase.has("brand") && <LegendDot className="bg-brand-500" label="추천 후보" />}
+        {tonesInCase.has("amber") && <LegendDot className="bg-amber-500" label="차선 후보" />}
+        {tonesInCase.has("red") && <LegendDot className="bg-red-500" label="성립 어려움" />}
+        <span className="text-slate-400">색이 진할수록 상위 순위 · 날짜를 누르면 참석 명단이 보여요.</span>
+      </div>
+
+      {/* PC: 달력(좌) + 참석 명단(우) 2열. 모바일: 원본과 동일한 세로 스택. */}
+      <div className="space-y-4 sm:grid sm:grid-cols-[minmax(0,1fr)_24rem] sm:items-start sm:gap-5 sm:space-y-0">
+        <div className="space-y-4">
+          {viewMode === "week" ? (
+            <>
+              {weekCard}
+              {/* 주간 모드에서도 모바일은 월간 고정 */}
+              {monthCard("sm:hidden")}
+            </>
+          ) : (
+            monthCard()
+          )}
+        </div>
+
+        {/* 선택한 날짜의 참석 명단 패널 */}
+        <Card className="space-y-3">
+          {selectedDate === null ? (
+            <p className="text-sm text-slate-500">날짜를 누르면 참석자별 가능 여부를 볼 수 있어요.</p>
+          ) : (
+            <>
+              <p className="text-base font-bold text-slate-900">
+                {formatKoreanDateLabel(selectedDate)}
+              </p>
+              {selectedCandidates.length === 0 ? (
+                <>
+                  <p className="break-keep text-sm text-slate-600">
+                    이 날을 불가능으로 입력한 사람이 없어요.{" "}
+                    {current.pendingNames.length > 0
+                      ? "응답한 사람은 모두 참석할 수 있어요."
+                      : "모두 참석할 수 있는 날이에요."}
+                  </p>
+                  <AttendeeGroup
+                    tone="green"
+                    label="가능"
+                    names={DEMO_PEOPLE.filter((p) => !current.pendingNames.includes(p.name)).map(
+                      (p) => p.name,
+                    )}
+                  />
+                  <AttendeeGroup tone="slate" label="미응답" names={current.pendingNames} />
+                </>
+              ) : (
+                selectedCandidates.map(({ rank, candidate }) => {
+                  const tone = caseEmphasisTone(candidate, dangerCase);
+                  return (
+                    <div key={candidate.startAt} className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span
+                          className={cn(
+                            "rounded-full px-2 py-0.5 text-[11px] font-bold text-white",
+                            DAY_EMPHASIS[tone].badge,
+                          )}
+                        >
+                          {rank}순위
+                        </span>
+                        <p className="font-bold text-slate-900">
+                          {formatKoreanTimeRange(candidate.startAt, candidate.endAt)}
+                        </p>
+                        <span
+                          className={cn(
+                            "rounded-full px-2 py-0.5 text-[11px] font-bold",
+                            DAY_EMPHASIS[tone].pill,
+                          )}
+                        >
+                          {GRADE_LABELS[candidate.grade]}
+                        </span>
+                        {candidate.votes != null && (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
+                            {candidate.votes}표
+                          </span>
+                        )}
+                      </div>
+                      <p className="break-keep text-sm text-slate-500">{candidate.reason}</p>
+                      <AttendeeGroup tone="green" label="가능" names={candidate.availableNames} />
+                      <AttendeeGroup tone="red" label="불가능" names={candidate.busyNames} />
+                      <AttendeeGroup tone="slate" label="미응답" names={candidate.pendingNames} />
+                    </div>
+                  );
+                })
+              )}
+              <p className="px-0.5 text-[11px] text-slate-400">이름 앞 점(•)은 필수인원이에요.</p>
+            </>
+          )}
+        </Card>
+      </div>
 
       <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} />
     </div>
