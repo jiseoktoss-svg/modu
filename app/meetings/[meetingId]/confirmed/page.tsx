@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { MobileHeaderTitle } from "@/components/layout/MobileHeaderTitle";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { ConfirmedMeetingSummary } from "@/components/meeting/ConfirmedMeetingSummary";
@@ -44,6 +45,7 @@ export default async function ConfirmedPage({
     <div className="min-h-dvh bg-white/95">
       <SiteHeader />
       <main className="mx-auto w-full max-w-2xl px-4 pb-10 pt-4 sm:px-6 sm:pt-10">
+        <MobileHeaderTitle title="확정된 회의" />
         {slot ? (
           <ConfirmedMeetingSummary
             meeting={meeting}

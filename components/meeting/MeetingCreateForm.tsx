@@ -11,6 +11,7 @@ import {
 } from "react";
 import { useFormStatus } from "react-dom";
 import { createMeeting } from "@/app/actions/meetings";
+import { MobileHeaderTitle } from "@/components/layout/MobileHeaderTitle";
 import { MobileStickyAction } from "@/components/layout/MobileStickyAction";
 import { Emoji } from "@/components/ui/Emoji";
 import { Input, Label } from "@/components/ui/Input";
@@ -18,6 +19,7 @@ import { DatePicker } from "@/components/ui/DatePicker";
 import { Select } from "@/components/ui/Select";
 import { TDSButton } from "@/components/ui/TDSButton";
 import { cn } from "@/lib/cn";
+import { hasBatchim } from "@/lib/korean";
 import { useScrollLock } from "@/lib/useScrollLock";
 import { addDaysToDateStr } from "@/lib/time";
 import {
@@ -45,10 +47,12 @@ interface Props {
 const INITIAL_PARTICIPANTS: ParticipantDraft[] = [];
 const LAST_STEP = MEETING_CREATE_DRAFT_LAST_STEP;
 const WORKDAY_MINUTES = 9 * 60; // 09:00~18:00 (서버 기본 근무시간과 일치)
-const CONFIRM_CLAUSE_STAGGER_MS = 650;
-const CONFIRM_CLAUSE_DURATION_MS = 1000;
+// 절 채움(fill): 앞 절이 다 채워진 뒤 다음 절이 시작되도록 시차 = 지속 시간(순차 채움).
+const CONFIRM_CLAUSE_DURATION_MS = 1200;
+const CONFIRM_CLAUSE_STAGGER_MS = CONFIRM_CLAUSE_DURATION_MS;
 const CONFIRM_LAST_CLAUSE_DELAY_MS = CONFIRM_CLAUSE_STAGGER_MS * 6;
-const CONFIRM_HELP_DELAY_MS = CONFIRM_LAST_CLAUSE_DELAY_MS + 700;
+const CONFIRM_HELP_DELAY_MS =
+  CONFIRM_LAST_CLAUSE_DELAY_MS + CONFIRM_CLAUSE_DURATION_MS - 200; // 마지막 절이 거의 채워진 뒤
 const CONFIRM_CTA_DELAY_MS = CONFIRM_HELP_DELAY_MS + 600;
 const CONFIRM_CTA_DURATION_MS = 1000;
 
@@ -255,6 +259,9 @@ export function MeetingCreateForm({
   const [maxStep, setMaxStep] = useState(0);
   const [confirming, setConfirming] = useState(false); // 회의 확인 화면 표시 여부
   const [confirmCtaReady, setConfirmCtaReady] = useState(false); // 7번 문구 등장 후 회의 만들기 노출
+  // 채움(fill) 애니메이션 완료 여부 — 끝나면 mask 를 걷어 일반 렌더링으로 되돌린다
+  // (inline 요소에 mask 가 남으면 텍스트가 흐릿해질 수 있어서).
+  const [confirmFillDone, setConfirmFillDone] = useState(false);
 
   // 포커스 제어용 ref.
   const skipInitialFocus = useRef(true); // 최초 마운트 자동 포커스(스크롤 점프) 방지
@@ -336,6 +343,11 @@ export function MeetingCreateForm({
   const editStep = (i: number, focusId?: string) => {
     focusOverride.current = focusId ?? null;
     setStep(i);
+  };
+  // 모바일 헤더 뒤로가기: 이전 입력 단계로 한 단계씩 되돌아간다(자동 포커스 없이).
+  const handleStepBack = () => {
+    skipNextAutoFocus.current = window.matchMedia("(max-width: 639px)").matches;
+    setStep((s) => Math.max(0, s - 1));
   };
   const showToast = (message: string) => {
     setToast(message);
@@ -515,34 +527,34 @@ export function MeetingCreateForm({
       <EditValue fieldLabel="회의명" onEdit={() => editFromConfirm(0)}>
         {title.trim()}
       </EditValue>{" "}
-      에요.
+      {hasBatchim(title) ? "이에요." : "예요."}
     </>,
     <>
       회의 안건은{" "}
       <EditValue fieldLabel="안건" onEdit={() => editFromConfirm(1)}>
         {agenda.trim()}
       </EditValue>{" "}
-      입니다.
+      {hasBatchim(agenda) ? "이에요." : "예요."}
     </>,
     <>
       회의 장소는{" "}
       <EditValue fieldLabel="장소" onEdit={() => editFromConfirm(2)}>
         {location.trim()}
       </EditValue>{" "}
-      이며,
+      이고,
     </>,
     <>
       예상 회의 진행 시간은{" "}
       <EditValue fieldLabel="회의 길이" onEdit={() => editFromConfirm(3)}>
         {durationText}
       </EditValue>{" "}
-      입니다.
+      이에요.
     </>,
     <>
       <EditValue fieldLabel="회의 마감 날짜" onEdit={() => editFromConfirm(4)}>
         {deadlineText}
       </EditValue>{" "}
-      까지는 회의가 완료되어야 해요.
+      까지는 회의를 마쳐야 해요.
     </>,
     <>
       참여자는{" "}
@@ -556,7 +568,7 @@ export function MeetingCreateForm({
       <EditValue fieldLabel="참석자" onEdit={editParticipantsFromConfirm}>
         {participantNames}
       </EditValue>{" "}
-      총 {filledParticipants.length}명 입니다.
+      총 {filledParticipants.length}명이에요.
     </>,
   ];
 
@@ -585,6 +597,19 @@ export function MeetingCreateForm({
       return;
     }
     const timer = window.setTimeout(() => setConfirmCtaReady(true), CONFIRM_CTA_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [confirming]);
+
+  // 회의 확인 화면: 채움 애니메이션이 모두 끝나면 mask 를 제거한다.
+  useEffect(() => {
+    if (!confirming) {
+      setConfirmFillDone(false);
+      return;
+    }
+    const timer = window.setTimeout(
+      () => setConfirmFillDone(true),
+      CONFIRM_LAST_CLAUSE_DELAY_MS + CONFIRM_CLAUSE_DURATION_MS,
+    );
     return () => window.clearTimeout(timer);
   }, [confirming]);
 
@@ -642,31 +667,35 @@ export function MeetingCreateForm({
       {/* 상단: 입력에 따라 완성되는 안내 문장 */}
       {!confirming && (
       <div className="flex-1 pt-4 sm:pt-8">
-        <p className="text-sm font-medium text-slate-400">회의 만들기</p>
+        <MobileHeaderTitle
+          title="회의 만들기"
+          onBack={step > 0 ? handleStepBack : undefined}
+        />
+        <p className="hidden text-sm font-medium text-slate-400 sm:block">회의 만들기</p>
         <div
           aria-live="polite"
-          className="mt-3 break-keep text-left text-2xl leading-relaxed text-slate-800 sm:text-3xl sm:leading-relaxed"
+          className="break-keep text-left text-2xl leading-relaxed text-slate-800 sm:mt-3 sm:text-3xl sm:leading-relaxed"
         >
           <p>
             {clauseVisible(0) && (
               <span className="relative animate-fade-up-blur motion-reduce:animate-none">
                 이번 회의명은{" "}
                 {valueSlot(title.trim() === "", "회의명", () => editStep(0), title)}{" "}
-                에요.{" "}
+                {hasBatchim(title) ? "이에요." : "예요."}{" "}
               </span>
             )}
             {clauseVisible(1) && (
               <span className="relative animate-fade-up-blur motion-reduce:animate-none">
                 회의 안건은{" "}
                 {valueSlot(agenda.trim() === "", "안건", () => editStep(1), agenda)}{" "}
-                입니다.{" "}
+                {hasBatchim(agenda) ? "이에요." : "예요."}{" "}
               </span>
             )}
             {clauseVisible(2) && (
               <span className="relative animate-fade-up-blur motion-reduce:animate-none">
                 회의 장소는{" "}
                 {valueSlot(location.trim() === "", "장소", () => editStep(2), location)}{" "}
-                이며,{" "}
+                이고,{" "}
               </span>
             )}
             {clauseVisible(3) && (
@@ -689,7 +718,7 @@ export function MeetingCreateForm({
                     분
                   </>
                 )}
-                입니다.{" "}
+                이에요.{" "}
               </span>
             )}
             {clauseVisible(4) && (
@@ -732,7 +761,7 @@ export function MeetingCreateForm({
                   </EditValue>{" "}
                 </>
               )}
-              입니다.
+              이에요.
             </p>
           )}
         </div>
@@ -769,7 +798,7 @@ export function MeetingCreateForm({
               <LimitedFieldLabel htmlFor="title" invalid={titleTooLong}>
                 {titleTooLong ? (
                   <>
-                    회의명은 최대 {MAX_MEETING_TITLE_LENGTH}글자까지 입력할 수 있습니다.
+                    회의명은 최대 {MAX_MEETING_TITLE_LENGTH}글자까지 입력할 수 있어요.
                   </>
                 ) : (
                   "회의명을 입력해주세요"
@@ -795,7 +824,7 @@ export function MeetingCreateForm({
               <LimitedFieldLabel htmlFor="agenda" invalid={agendaTooLong}>
                 {agendaTooLong ? (
                   <>
-                    회의 안건은 최대 {MAX_MEETING_AGENDA_LENGTH}글자까지 입력할 수 있습니다.
+                    회의 안건은 최대 {MAX_MEETING_AGENDA_LENGTH}글자까지 입력할 수 있어요.
                   </>
                 ) : (
                   "회의 안건을 입력해주세요"
@@ -821,7 +850,7 @@ export function MeetingCreateForm({
               <LimitedFieldLabel htmlFor="location" invalid={locationTooLong}>
                 {locationTooLong ? (
                   <>
-                    회의 장소는 최대 {MAX_MEETING_LOCATION_LENGTH}글자까지 입력할 수 있습니다.
+                    회의 장소는 최대 {MAX_MEETING_LOCATION_LENGTH}글자까지 입력할 수 있어요.
                   </>
                 ) : (
                   "회의 장소를 입력해주세요"
@@ -844,7 +873,7 @@ export function MeetingCreateForm({
           )}
           {step === 4 && (
             <>
-              <Label htmlFor="deadlineDate" className="text-lg">이 날 까지는 회의가 진행되어야 해요.</Label>
+              <Label htmlFor="deadlineDate" className="text-lg">이 날까지는 회의를 마쳐야 해요.</Label>
               <DatePicker
                 id="deadlineDate"
                 value={deadlineDate}
@@ -924,7 +953,7 @@ export function MeetingCreateForm({
               {!durationOk && (
                 <p className="mt-2 text-xs text-slate-500">
                   {durationTotal === 0
-                    ? "적절한 시간값을 입력해주세요."
+                    ? "시간을 올바르게 입력해 주세요."
                     : durationTotal > WORKDAY_MINUTES
                       ? "회의 길이는 9시간(근무시간) 이내로 입력해 주세요."
                       : "시간은 0 이상, 분은 0~59 사이로 입력해 주세요."}
@@ -991,31 +1020,59 @@ export function MeetingCreateForm({
       {confirming && (
         <>
           <div className="flex-1 pt-4 sm:pt-8">
-            <p className="text-sm font-medium text-slate-400">회의 확인</p>
-            <div className="mt-3 break-keep text-left text-2xl leading-relaxed text-slate-800 sm:text-3xl sm:leading-relaxed">
-              <p>
-                {confirmClauses.slice(0, 6).map((clause, i) => (
-                  <span
-                    key={i}
-                    className="relative animate-fade-up-blur motion-reduce:animate-none"
-                    style={{
-                      animationDelay: `${i * CONFIRM_CLAUSE_STAGGER_MS}ms`,
-                      animationDuration: `${CONFIRM_CLAUSE_DURATION_MS}ms`,
-                    }}
-                  >
-                    {clause}{" "}
-                  </span>
-                ))}
-              </p>
-              <p
-                className="relative mt-4 animate-fade-up-blur text-left motion-reduce:animate-none"
-                style={{
-                  animationDelay: `${CONFIRM_LAST_CLAUSE_DELAY_MS}ms`,
-                  animationDuration: `${CONFIRM_CLAUSE_DURATION_MS}ms`,
-                }}
+            {/* 확인 화면 뒤로가기: 마지막 입력 단계(참석자)로 복귀 */}
+            <MobileHeaderTitle title="회의 확인" onBack={() => setConfirming(false)} />
+            <p className="hidden text-sm font-medium text-slate-400 sm:block">회의 확인</p>
+            {/* 절이 좌→우로 채워지는 등장: 회색 밑글(레이아웃 담당) 위에 실제 문장을 겹치고
+                절마다 시차를 두고 mask 스윕으로 드러낸다. 색상은 기존 값 그대로 유지된다. */}
+            <div className="relative break-keep text-left text-2xl leading-relaxed text-slate-800 sm:mt-3 sm:text-3xl sm:leading-relaxed">
+              {/* 투명 밑글 — 레이아웃(높이)만 담당. 채워지기 전 텍스트는 보이지 않는다. */}
+              <div
+                aria-hidden="true"
+                inert
+                className="pointer-events-none select-none opacity-0"
               >
-                {confirmClauses[6]}
-              </p>
+                <p>
+                  {confirmClauses.slice(0, 6).map((clause, i) => (
+                    <span key={i}>{clause} </span>
+                  ))}
+                </p>
+                <p className="mt-4">{confirmClauses[6]}</p>
+              </div>
+              {/* 실제 문장 — 절 단위 잉크 채움. 완료 후엔 mask 를 걷어 일반 렌더링. */}
+              <div className="absolute inset-0">
+                <p>
+                  {confirmClauses.slice(0, 6).map((clause, i) => (
+                    <span
+                      key={i}
+                      className={cn(!confirmFillDone && "modu-fill-clause")}
+                      style={
+                        confirmFillDone
+                          ? undefined
+                          : {
+                              animationDelay: `${i * CONFIRM_CLAUSE_STAGGER_MS}ms`,
+                              animationDuration: `${CONFIRM_CLAUSE_DURATION_MS}ms`,
+                            }
+                      }
+                    >
+                      {clause}{" "}
+                    </span>
+                  ))}
+                </p>
+                <p
+                  className={cn("mt-4 text-left", !confirmFillDone && "modu-fill-clause")}
+                  style={
+                    confirmFillDone
+                      ? undefined
+                      : {
+                          animationDelay: `${CONFIRM_LAST_CLAUSE_DELAY_MS}ms`,
+                          animationDuration: `${CONFIRM_CLAUSE_DURATION_MS}ms`,
+                        }
+                  }
+                >
+                  {confirmClauses[6]}
+                </p>
+              </div>
             </div>
             <p
               className="relative mt-4 animate-fade-up-blur text-sm text-slate-400 motion-reduce:animate-none"
@@ -1104,13 +1161,13 @@ export function MeetingCreateForm({
                 onClick={() => {
                   if (participants.length < MIN_MEETING_PARTICIPANTS) {
                     setParticipantError(
-                      `참석자는 최소 ${MIN_MEETING_PARTICIPANTS}명 이상 선택해 주세요.`,
+                      `참석자를 ${MIN_MEETING_PARTICIPANTS}명 이상 선택해 주세요.`,
                     );
                     return;
                   }
                   if (participants.length > MAX_MEETING_PARTICIPANTS) {
                     setParticipantError(
-                      `참석자는 최대 ${MAX_MEETING_PARTICIPANTS}명까지 선택할 수 있습니다.`,
+                      `참석자는 최대 ${MAX_MEETING_PARTICIPANTS}명까지 선택할 수 있어요.`,
                     );
                     return;
                   }

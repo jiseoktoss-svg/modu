@@ -37,8 +37,10 @@ import {
   writeResponseDraft,
   type ResponseDraftStep,
 } from "@/components/scheduler/responseDraft";
+import { MobileHeaderTitle } from "@/components/layout/MobileHeaderTitle";
 import { MobileStickyAction } from "@/components/layout/MobileStickyAction";
 import { cn } from "@/lib/cn";
+import { hasBatchim } from "@/lib/korean";
 import { useScrollLock } from "@/lib/useScrollLock";
 import { cellKey, cellsToBlocks, GRID_STEP_MINUTES } from "@/lib/grid";
 import {
@@ -85,9 +87,12 @@ type Step = "loading" | ResponseDraftStep;
 type DateSummaryStatus = "available" | "preferred" | "busy" | "mixed";
 type CalendarStatus = "available" | "preferred" | "avoid" | "busy" | "pending";
 
-const REVIEW_CLAUSE_STAGGER_MS = 650;
-const REVIEW_CLAUSE_DURATION_MS = 1000;
-const REVIEW_HELP_DELAY_MS = REVIEW_CLAUSE_STAGGER_MS * 3 + 700;
+// 절 채움(fill): 앞 절이 다 채워진 뒤 다음 절이 시작되도록 시차 = 지속 시간(순차 채움).
+const REVIEW_CLAUSE_DURATION_MS = 1200;
+const REVIEW_CLAUSE_STAGGER_MS = REVIEW_CLAUSE_DURATION_MS;
+// 채움(fill) 애니메이션 종료 시점 — 절 3개 기준(마지막 절 시작 + 지속 시간).
+const REVIEW_FILL_DONE_MS = REVIEW_CLAUSE_STAGGER_MS * 2 + REVIEW_CLAUSE_DURATION_MS;
+const REVIEW_HELP_DELAY_MS = REVIEW_FILL_DONE_MS - 200; // 마지막 절이 거의 채워진 뒤
 const REVIEW_CTA_DELAY_MS = REVIEW_HELP_DELAY_MS + 600;
 const REVIEW_CTA_DURATION_MS = 1000;
 
@@ -248,15 +253,6 @@ function ChipRemoveIcon() {
   );
 }
 
-// 한글 받침 유무(서술격조사 이에요/예요 선택용).
-function hasBatchim(s: string): boolean {
-  const t = s.trim();
-  if (!t) return false;
-  const c = t.charCodeAt(t.length - 1);
-  if (c < 0xac00 || c > 0xd7a3) return false; // 한글 음절이 아니면 받침 없음으로 처리
-  return (c - 0xac00) % 28 !== 0;
-}
-
 // 시간대: 모든 입력은 30분 단위 분(minute) 범위로 환원한다.
 type TimeRange = { start: number; end: number };
 
@@ -388,8 +384,8 @@ function TimeSelect({
             <div className="flex flex-1 flex-col justify-center px-4 py-5">
               <p className="text-base font-bold text-slate-900">{formatClock(pending)}</p>
               <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                선택한 시간은 근무시간({formatClock(workStart)}~{formatClock(workEnd)})을 벗어났습니다.
-                그래도 선택하시겠습니까?
+                선택한 시간이 근무시간({formatClock(workStart)}~{formatClock(workEnd)})을 벗어났어요.
+                그래도 선택할까요?
               </p>
             </div>
             <div className="shrink-0 border-t border-slate-100 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:border-t-0 sm:pb-4 sm:pt-2">
@@ -713,6 +709,9 @@ export function ResponseForm(props: Props) {
   const [toastOpen, setToastOpen] = useState(false);
   const toastTimer = useRef<number | null>(null);
   const [reviewCtaReady, setReviewCtaReady] = useState(false);
+  // 채움 애니메이션 완료 여부 — 끝나면 mask 를 걷어 일반 렌더링으로 되돌린다
+  // (inline 요소에 mask 가 남으면 텍스트가 흐릿해질 수 있어서).
+  const [reviewFillDone, setReviewFillDone] = useState(false);
   const [responseDraftReady, setResponseDraftReady] = useState(false);
   const [resultSelectedIndex, setResultSelectedIndex] = useState<number | null>(null);
   const [resultVotedIndex, setResultVotedIndex] = useState<number | null>(null);
@@ -892,31 +891,29 @@ export function ResponseForm(props: Props) {
     return () => document.removeEventListener("keydown", onKey);
   }, [dtModalOpen]);
 
-  // 모바일 시트 하단 CTA 경계 불빛: 추가/변경 후 아직 확인하지 않은(스크롤 밖 아래에 있는)
-  // 칩 전부를, 각 칩의 가로 위치·폭만큼 깜빡여 알린다. 스크롤해서 칩이 보이면 그 칩 불빛만 꺼진다.
+  // 모바일 시트 하단 CTA 경계 불빛: 추가/변경 후 아직 확인하지 않은 칩이
+  // 스크롤 밖(아래)에 하나라도 있으면 하단 경계 전체가 깜빡인다.
+  // 스크롤해서 칩이 보이면 그 칩은 확인된 것으로 빼고, 전부 확인되면 불빛이 꺼진다.
   const glowChipRefs = useRef(new Map<string, HTMLSpanElement>());
   const [glowPendingDates, setGlowPendingDates] = useState<Set<string>>(() => new Set());
-  const [ctaGlows, setCtaGlows] = useState<Record<string, { left: number; width: number }>>({});
+  // pending 중 실제로 화면 아래에 가려져 있는 칩 날짜들 — 비어 있지 않으면 불빛 on.
+  const [glowHiddenDates, setGlowHiddenDates] = useState<Set<string>>(() => new Set());
 
+  const removeFromDateSet = (prev: Set<string>, ds: string) => {
+    if (!prev.has(ds)) return prev;
+    const next = new Set(prev);
+    next.delete(ds);
+    return next;
+  };
   const clearGlowFor = (ds: string) => {
-    setGlowPendingDates((prev) => {
-      if (!prev.has(ds)) return prev;
-      const next = new Set(prev);
-      next.delete(ds);
-      return next;
-    });
-    setCtaGlows((prev) => {
-      if (!(ds in prev)) return prev;
-      const next = { ...prev };
-      delete next[ds];
-      return next;
-    });
+    setGlowPendingDates((prev) => removeFromDateSet(prev, ds));
+    setGlowHiddenDates((prev) => removeFromDateSet(prev, ds));
   };
 
   useEffect(() => {
     if (!dtModalOpen) {
       setGlowPendingDates(new Set());
-      setCtaGlows({});
+      setGlowHiddenDates(new Set());
     }
   }, [dtModalOpen]);
 
@@ -935,15 +932,14 @@ export function ResponseForm(props: Props) {
           const ds = els.get(entry.target);
           if (!ds) continue;
           if (entry.isIntersecting) {
-            // 사용자가 스크롤해서 칩을 확인함 → 그 칩의 깜빡임 종료.
+            // 사용자가 스크롤해서 칩을 확인함 → 확인 목록에서 제외.
             clearGlowFor(ds);
             continue;
           }
           const viewportH = entry.rootBounds?.height ?? window.innerHeight;
           if (entry.boundingClientRect.top > viewportH / 2) {
-            // 화면 아래쪽에 가려진 경우에만 경계 불빛을 켠다(위로 스크롤된 경우는 제외).
-            const rect = entry.target.getBoundingClientRect();
-            setCtaGlows((prev) => ({ ...prev, [ds]: { left: rect.left, width: rect.width } }));
+            // 화면 아래쪽에 가려진 경우에만 불빛 대상에 포함(위로 스크롤된 경우는 제외).
+            setGlowHiddenDates((prev) => (prev.has(ds) ? prev : new Set(prev).add(ds)));
           } else {
             clearGlowFor(ds);
           }
@@ -953,7 +949,7 @@ export function ResponseForm(props: Props) {
     );
     els.forEach((_ds, el) => observer.observe(el));
     return () => observer.disconnect();
-    // dateTimeBusy 변경 시 재측정(같은 날짜 칩에 시간대가 추가되면 폭·위치가 변함).
+    // dateTimeBusy 변경 시 재관찰(칩이 늘거나 줄면 가려짐 여부가 변함).
   }, [glowPendingDates, dtModalOpen, dateTimeBusy]);
 
   // 불가 입력(불가 날짜 + 특정 날짜+시간)을 cells → blocks(busy) 환원. busy 만 저장한다.
@@ -1285,6 +1281,16 @@ export function ResponseForm(props: Props) {
     return () => window.clearTimeout(timer);
   }, [step]);
 
+  // 입력 확인 화면: 채움 애니메이션이 모두 끝나면 mask 를 제거한다.
+  useEffect(() => {
+    if (step !== "review") {
+      setReviewFillDone(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setReviewFillDone(true), REVIEW_FILL_DONE_MS);
+    return () => window.clearTimeout(timer);
+  }, [step]);
+
   if (step === "loading") {
     return (
       <Card className="mx-auto max-w-2xl">
@@ -1297,9 +1303,10 @@ export function ResponseForm(props: Props) {
     return (
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
         <div className="flex-1">
-          <p className="text-sm font-medium text-slate-400">회의 안내</p>
+          <MobileHeaderTitle title="회의 안내" />
+          <p className="hidden text-sm font-medium text-slate-400 sm:block">회의 안내</p>
           <MeetingSummarySentence
-            className="relative mt-3 animate-fade-up-blur motion-reduce:animate-none"
+            className="relative animate-fade-up-blur motion-reduce:animate-none sm:mt-3"
             title={meetingTitle}
             agenda={agenda}
             location={location}
@@ -1399,20 +1406,41 @@ export function ResponseForm(props: Props) {
         <Toast open={toastOpen} message={toastMessage} icon={toastIcon} />
         <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
           <div className="flex-1">
-            <p className="text-sm font-medium text-slate-400">입력 확인</p>
-            <div className="mt-3 break-keep text-left text-2xl leading-relaxed text-slate-800 sm:text-3xl sm:leading-relaxed">
-              {reviewClauses.map((clause, i) => (
-                <span
-                  key={i}
-                  className="relative animate-fade-up-blur motion-reduce:animate-none"
-                  style={{
-                    animationDelay: `${i * REVIEW_CLAUSE_STAGGER_MS}ms`,
-                    animationDuration: `${REVIEW_CLAUSE_DURATION_MS}ms`,
-                  }}
-                >
-                  {clause}{" "}
-                </span>
-              ))}
+            {/* 뒤로가기: 가능 시간 입력(마지막 단계)으로 복귀 */}
+            <MobileHeaderTitle title="입력 확인" onBack={() => setStep("availability")} />
+            <p className="hidden text-sm font-medium text-slate-400 sm:block">입력 확인</p>
+            {/* 절이 좌→우로 채워지는 등장: 회색 밑글(레이아웃 담당) 위에 실제 문장을 겹치고
+                절마다 시차를 두고 mask 스윕으로 드러낸다. 색상은 기존 값 그대로 유지된다. */}
+            <div className="relative break-keep text-left text-2xl leading-relaxed text-slate-800 sm:mt-3 sm:text-3xl sm:leading-relaxed">
+              {/* 투명 밑글 — 레이아웃(높이)만 담당. 채워지기 전 텍스트는 보이지 않는다. */}
+              <div
+                aria-hidden="true"
+                inert
+                className="pointer-events-none select-none opacity-0"
+              >
+                {reviewClauses.map((clause, i) => (
+                  <span key={i}>{clause} </span>
+                ))}
+              </div>
+              {/* 실제 문장 — 절 단위 잉크 채움. 완료 후엔 mask 를 걷어 일반 렌더링. */}
+              <div className="absolute inset-0">
+                {reviewClauses.map((clause, i) => (
+                  <span
+                    key={i}
+                    className={cn(!reviewFillDone && "modu-fill-clause")}
+                    style={
+                      reviewFillDone
+                        ? undefined
+                        : {
+                            animationDelay: `${i * REVIEW_CLAUSE_STAGGER_MS}ms`,
+                            animationDuration: `${REVIEW_CLAUSE_DURATION_MS}ms`,
+                          }
+                    }
+                  >
+                    {clause}{" "}
+                  </span>
+                ))}
+              </div>
             </div>
             <p
               className="mt-5 animate-fade-up-blur text-sm text-slate-500 motion-reduce:animate-none"
@@ -1421,7 +1449,7 @@ export function ResponseForm(props: Props) {
                 animationDuration: `${REVIEW_CLAUSE_DURATION_MS}ms`,
               }}
             >
-              응답 시간 마감 전까지 수정할 수 있어요. 수정하려면 키워드를 눌러 응답화면으로 이동하세요.
+              응답 시간 마감 전까지 수정할 수 있어요. 수정하려면 키워드를 눌러 응답 화면으로 이동하세요.
             </p>
           </div>
           <MobileStickyAction className="mt-auto">
@@ -1475,6 +1503,7 @@ export function ResponseForm(props: Props) {
         onVotedIndexChange={setResultVotedIndex}
         dates={dates}
         onViewCalendar={() => setStep("done")}
+        onBack={() => setStep("waiting")}
       />
     );
   }
@@ -1497,10 +1526,22 @@ export function ResponseForm(props: Props) {
         <Toast open={toastOpen} message={toastMessage} icon={toastIcon} />
         <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
           <div className="flex-1">
-            <p className="text-sm font-medium text-slate-400">본인 확인</p>
+            {/* 뒤로가기: 직무 단계면 이름 단계로, 이름 단계면 회의 안내로 */}
+            <MobileHeaderTitle
+              title="본인 확인"
+              onBack={() => {
+                if (formStep > 0) {
+                  skipNextAutoFocus.current = true;
+                  setFormStep(formStep - 1);
+                } else {
+                  setStep("intro");
+                }
+              }}
+            />
+            <p className="hidden text-sm font-medium text-slate-400 sm:block">본인 확인</p>
             <div
               aria-live="polite"
-              className="mt-3 break-keep text-left text-2xl leading-relaxed text-slate-800 sm:text-3xl sm:leading-relaxed"
+              className="break-keep text-left text-2xl leading-relaxed text-slate-800 sm:mt-3 sm:text-3xl sm:leading-relaxed"
             >
               <p>
                 {clauseVisible(0) && (
@@ -1592,10 +1633,18 @@ export function ResponseForm(props: Props) {
       <Toast open={toastOpen} message={toastMessage} icon={toastIcon} />
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
         {/* 상단: 답변이 쌓이는 문장 */}
-        <p className="text-sm font-medium text-slate-400">가능 시간</p>
+        {/* 뒤로가기: 특정 날짜+시간 단계면 불가 날짜 단계로, 그 전이면 본인 확인으로 */}
+        <MobileHeaderTitle
+          title="가능 시간"
+          onBack={() => {
+            if (availStep > 0) editAvailStep(availStep - 1);
+            else setStep("identity");
+          }}
+        />
+        <p className="hidden text-sm font-medium text-slate-400 sm:block">가능 시간</p>
         <div
           aria-live="polite"
-          className="mt-3 break-keep text-left text-2xl leading-relaxed text-slate-800 sm:text-3xl sm:leading-relaxed"
+          className="break-keep text-left text-2xl leading-relaxed text-slate-800 sm:mt-3 sm:text-3xl sm:leading-relaxed"
         >
           {availClauseVisible(0) && (
             <span className="relative animate-fade-up-blur motion-reduce:animate-none">
@@ -1748,7 +1797,7 @@ export function ResponseForm(props: Props) {
                     }}
                     tone="busy"
                     blockedDates={busyDates}
-                    ctaGlows={Object.entries(ctaGlows).map(([key, g]) => ({ key, ...g }))}
+                    ctaGlow={glowHiddenDates.size > 0}
                     extra={
                       isMobile ? (
                         <div className="space-y-3">
@@ -1982,7 +2031,7 @@ function FloatingCaseSelector({
               <div>
                 <p className="text-sm font-bold text-slate-900">케이스 선택</p>
                 <p className="mt-0.5 break-keep text-xs text-slate-400">
-                  사용 흐름 파악용 데모 영역이에요. 실제 사용 시에는 보이지 않아요.
+                  사용 흐름을 보여주기 위한 데모 영역이에요. 실제 사용 화면에는 보이지 않아요.
                 </p>
               </div>
               <button
@@ -2137,20 +2186,21 @@ function WaitingScreen({
     ? [
         { state: "done", label: "내 가능한 시간을 보냈어요" },
         { state: "done", label: "다른 참여자들의 응답을 받았어요" },
-        { state: "current", label: "추천시간을 확인해보세요" },
+        { state: "current", label: "추천 시간을 확인해보세요" },
       ]
     : [
         { state: "done", label: "내 가능한 시간을 보냈어요" },
         { state: "current", label: "다른 참여자들의 응답을 기다리고 있어요" },
-        { state: "todo", label: "추천시간을 확인해보세요" },
+        { state: "todo", label: "추천 시간을 확인해보세요" },
       ];
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col pt-2">
       <div className="flex-1">
         <div className="relative animate-fade-up-blur" style={{ animationDuration: "0.6s" }}>
-          <p className="text-sm font-medium text-slate-400">응답 완료</p>
-          <h1 className="mt-3 break-keep text-2xl font-extrabold leading-snug tracking-tight text-slate-900 sm:text-3xl sm:leading-snug">
+          <MobileHeaderTitle title="응답 완료" />
+          <p className="hidden text-sm font-medium text-slate-400 sm:block">응답 완료</p>
+          <h1 className="break-keep text-2xl font-extrabold leading-snug tracking-tight text-slate-900 sm:mt-3 sm:text-3xl sm:leading-snug">
             이제 모두가 응답하면
             <br />
             가장 좋은 시간을 찾아드려요
@@ -2299,6 +2349,7 @@ function ResultScreen({
   onVotedIndexChange,
   dates,
   onViewCalendar,
+  onBack,
 }: {
   caseId: number;
   onSelectCase: (id: number) => void;
@@ -2308,6 +2359,8 @@ function ResultScreen({
   onVotedIndexChange: (index: number | null) => void;
   dates: string[];
   onViewCalendar: () => void;
+  // 모바일 헤더 뒤로가기 — 응답 완료(대기) 화면으로 복귀.
+  onBack: () => void;
 }) {
   const current = DEMO_CASES.find((c) => c.id === caseId) ?? DEMO_CASES[0];
   const candidates = useMemo(() => buildCaseCandidates(current, dates), [current, dates]);
@@ -2329,9 +2382,11 @@ function ResultScreen({
       onClick={() => onSelectedIndexChange(null)}
     >
       <div className="flex flex-1 flex-col gap-3 pt-4 sm:pt-8">
+        {/* 뒤로가기: 응답 완료(대기) 화면으로 */}
+        <MobileHeaderTitle title="추천 시간" onBack={onBack} />
         <div className="flex items-start justify-between gap-2">
-          <h1 className="text-sm font-medium text-slate-400">추천 시간</h1>
-          <div className="flex shrink-0 items-center gap-1.5">
+          <h1 className="hidden text-sm font-medium text-slate-400 sm:block">추천 시간</h1>
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
               {total}명 중 {current.submitted}명 응답
             </span>
@@ -2594,12 +2649,14 @@ function SubmittedCalendarScreen({
 
   return (
     <div className="space-y-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-2 sm:pb-8">
+      {/* 뒤로가기: 추천 시간(result) 화면으로 — 우상단 추천안 보기 아이콘과 동일 동작 */}
+      <MobileHeaderTitle title="회의 캘린더" onBack={onBack} />
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+        <div className="hidden items-center gap-2 sm:flex">
           <Emoji symbol="📅" size={22} />
           <h2 className="text-xl font-extrabold text-slate-900">회의 캘린더</h2>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
             {DEMO_PEOPLE.length}명 중 {respondedCount}명 응답
           </span>

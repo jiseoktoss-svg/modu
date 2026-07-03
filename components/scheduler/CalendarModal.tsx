@@ -129,7 +129,7 @@ export function CalendarModal({
   blockedDates,
   showSelectedChips = false,
   extra,
-  ctaGlows,
+  ctaGlow = false,
   onClose,
   onConfirm,
 }: {
@@ -147,9 +147,9 @@ export function CalendarModal({
   showSelectedChips?: boolean;
   // 달력 아래에 붙일 부가 영역(특정 날짜+시간 단계의 시간 입력기 등).
   extra?: ReactNode;
-  // 모바일 하단 CTA 경계 불빛: 스크롤 밖(아래)에 있어 아직 확인하지 못한 칩들을
-  // 각 칩의 가로 위치·폭만큼 tone 색으로 깜빡여 알린다. 비어 있으면 표시하지 않음.
-  ctaGlows?: Array<{ key: string; left: number; width: number }>;
+  // 모바일 하단 CTA 경계 불빛: 스크롤 밖(아래)에 아직 확인하지 못한 칩이 있으면
+  // 하단 경계 전체를 tone 색으로 깜빡여 알린다.
+  ctaGlow?: boolean;
   onClose: () => void;
   onConfirm: () => void;
 }) {
@@ -263,19 +263,16 @@ export function CalendarModal({
               aria-hidden="true"
               className="pointer-events-none absolute inset-x-0 bottom-full h-6 bg-gradient-to-b from-white/0 to-white"
             />
-            {/* 경계 불빛: 아직 확인하지 않은 칩 전부를 각 위치·폭만큼 tone 색으로 깜빡임.
-                blur 를 넉넉히 주고 칩보다 살짝 넓혀 부드럽게 퍼지는 느낌을 낸다. */}
-            {ctaGlows?.map((glow) => (
+            {/* 경계 불빛: 확인하지 않은 칩이 아래에 있으면 하단 경계 전체가 tone 색으로 깜빡임 */}
+            {ctaGlow && (
               <div
-                key={glow.key}
                 aria-hidden="true"
                 className={cn(
-                  "modu-cta-glow pointer-events-none absolute -top-3.5 h-4 rounded-full blur-[12px]",
+                  "modu-cta-glow pointer-events-none absolute inset-x-0 -top-3.5 h-4 blur-[12px]",
                   tone === "busy" ? "bg-red-400" : "bg-brand-400",
                 )}
-                style={{ left: glow.left - 6, width: glow.width + 12 }}
               />
-            ))}
+            )}
             <button
               type="button"
               onClick={requestConfirm}

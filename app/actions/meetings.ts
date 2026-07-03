@@ -60,7 +60,7 @@ const DEFAULT_WORKDAY_END = "18:00";
 const DISABLED_LUNCH_START = "00:00";
 const DISABLED_LUNCH_END = "00:01";
 const MEETING_STORAGE_ERROR_MESSAGE =
-  "회의 링크를 만들기 위한 서버 연결에 문제가 있습니다. 잠시 후 다시 시도해주세요.";
+  "회의 링크를 만드는 중에 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.";
 
 function logMeetingStorageError(context: string, error: unknown) {
   console.error(`[meetings] ${context}`, error);
@@ -136,38 +136,38 @@ export async function createMeeting(
   // 검증
   if (!title) return { error: "회의명을 입력해 주세요." };
   if (rawTitle.length > MAX_MEETING_TITLE_LENGTH) {
-    return { error: `회의명은 최대 ${MAX_MEETING_TITLE_LENGTH}글자까지 입력할 수 있습니다.` };
+    return { error: `회의명은 최대 ${MAX_MEETING_TITLE_LENGTH}글자까지 입력할 수 있어요.` };
   }
   if (!agenda) return { error: "회의 안건을 입력해 주세요." };
   if (rawAgenda.length > MAX_MEETING_AGENDA_LENGTH) {
-    return { error: `회의 안건은 최대 ${MAX_MEETING_AGENDA_LENGTH}글자까지 입력할 수 있습니다.` };
+    return { error: `회의 안건은 최대 ${MAX_MEETING_AGENDA_LENGTH}글자까지 입력할 수 있어요.` };
   }
   if (!location) return { error: "회의 장소를 입력해 주세요." };
   if (rawLocation.length > MAX_MEETING_LOCATION_LENGTH) {
-    return { error: `회의 장소는 최대 ${MAX_MEETING_LOCATION_LENGTH}글자까지 입력할 수 있습니다.` };
+    return { error: `회의 장소는 최대 ${MAX_MEETING_LOCATION_LENGTH}글자까지 입력할 수 있어요.` };
   }
   if (participants.length < MIN_MEETING_PARTICIPANTS) {
-    return { error: `참석자는 최소 ${MIN_MEETING_PARTICIPANTS}명 이상이어야 합니다.` };
+    return { error: `참석자를 ${MIN_MEETING_PARTICIPANTS}명 이상 선택해 주세요.` };
   }
   if (participants.length > MAX_MEETING_PARTICIPANTS) {
-    return { error: `참석자는 최대 ${MAX_MEETING_PARTICIPANTS}명까지 선택할 수 있습니다.` };
+    return { error: `참석자는 최대 ${MAX_MEETING_PARTICIPANTS}명까지 선택할 수 있어요.` };
   }
   if (!deadlineDate) {
     return { error: "회의 마감 날짜를 선택해 주세요." };
   }
   const minDeadlineDate = addDaysToDateStr(dateStart, 2);
   if (deadlineDate < minDeadlineDate) {
-    return { error: "회의 마감 날짜는 오늘부터 이틀 뒤 이후로 선택해 주세요." };
+    return { error: "회의가 끝나야 하는 날은 오늘부터 이틀 뒤부터 고를 수 있어요." };
   }
 
   // 응답 마감일(날짜 + 시간). 폼에서 항상 전송되지만, 없으면 null 로 둔다(구버전 데모 링크 호환).
   let responseDeadline: string | null = null;
   if (responseDeadlineDate) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(responseDeadlineDate)) {
-      return { error: "응답 마감 날짜가 올바르지 않습니다." };
+      return { error: "응답 마감 날짜를 다시 확인해 주세요." };
     }
     if (responseDeadlineTime && !/^\d{2}:\d{2}$/.test(responseDeadlineTime)) {
-      return { error: "응답 마감 시간이 올바르지 않습니다." };
+      return { error: "응답 마감 시간을 다시 확인해 주세요." };
     }
     if (responseDeadlineDate < dateStart) {
       return { error: "응답 마감 날짜는 오늘 이후로 선택해 주세요." };
@@ -189,12 +189,12 @@ export async function createMeeting(
     return { error: "회의 길이를 시간과 분으로 올바르게 입력해 주세요." };
   }
   if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
-    return { error: "회의 길이는 1분 이상이어야 합니다." };
+    return { error: "회의 길이를 1분 이상으로 입력해 주세요." };
   }
   const ws = parseHm(workdayStart);
   const we = parseHm(workdayEnd);
-  if (!(ws < we)) return { error: "근무 시작 시간은 종료 시간보다 빨라야 합니다." };
-  if (durationMinutes > we - ws) return { error: "회의 길이가 근무 시간보다 깁니다." };
+  if (!(ws < we)) return { error: "근무 시작 시간은 종료 시간보다 빨라야 해요." };
+  if (durationMinutes > we - ws) return { error: "회의 길이를 근무 시간 안으로 줄여 주세요." };
 
   if (process.env.NODE_ENV === "production" && !hasSupabaseConfig()) {
     const demoMeetingId = createDemoMeetingId({
@@ -241,7 +241,7 @@ export async function createMeeting(
 
   if (meetingError || !meetingData) {
     logMeetingStorageError("failed to create meeting", meetingError);
-    return { error: "회의 생성에 실패했습니다. 잠시 후 다시 시도해 주세요." };
+    return { error: "회의를 만들지 못했어요. 잠시 후 다시 시도해 주세요." };
   }
 
   const meetingId = meetingData.id as string;
@@ -256,7 +256,7 @@ export async function createMeeting(
   const { error: participantError } = await sb.from("participants").insert(participantRows);
   if (participantError) {
     logMeetingStorageError("failed to insert participants", participantError);
-    return { error: "참석자 저장에 실패했습니다. 잠시 후 다시 시도해 주세요." };
+    return { error: "참석자를 저장하지 못했어요. 잠시 후 다시 시도해 주세요." };
   }
 
   redirect(`/meetings/${meetingId}/share`);
@@ -273,9 +273,9 @@ export async function verifyParticipantIdentity(
   if (!role) return { ok: false, error: "직무를 선택해 주세요." };
 
   const meeting = await fetchMeeting(args.meetingId);
-  if (!meeting) return { ok: false, error: "회의를 찾을 수 없습니다." };
+  if (!meeting) return { ok: false, error: "회의를 찾지 못했어요." };
   if (meeting.confirmedSlotId) {
-    return { ok: false, error: "이미 확정된 회의는 응답할 수 없습니다." };
+    return { ok: false, error: "이미 확정된 회의라 응답할 수 없어요." };
   }
 
   const participants = await fetchParticipants(args.meetingId);
@@ -284,7 +284,7 @@ export async function verifyParticipantIdentity(
   );
 
   if (!participant) {
-    return { ok: false, error: "입력한 이름과 직무가 참석자 명단과 일치하지 않습니다." };
+    return { ok: false, error: "입력한 이름과 직무가 참석자 명단과 달라요. 다시 확인해 주세요." };
   }
 
   const hasValidToken =
@@ -313,10 +313,10 @@ export async function verifyParticipantIdentity(
 
 export async function submitAvailability(args: SubmitAvailabilityArgs): Promise<SubmitResult> {
   if ((args.memo ?? "").length > MAX_MEMO_LENGTH) {
-    return { ok: false, error: "메모가 너무 깁니다." };
+    return { ok: false, error: "메모가 너무 길어요." };
   }
   if ((args.role ?? "").length > MAX_ROLE_LENGTH) {
-    return { ok: false, error: "역할이 너무 깁니다." };
+    return { ok: false, error: "역할이 너무 길어요." };
   }
 
   if (isDemoMeetingId(args.meetingId)) {
@@ -326,7 +326,7 @@ export async function submitAvailability(args: SubmitAvailabilityArgs): Promise<
       args.participantId,
       args.token ?? "",
     );
-    if (!meeting || !participant) return { ok: false, error: "참석자를 찾을 수 없습니다." };
+    if (!meeting || !participant) return { ok: false, error: "참석자를 찾지 못했어요." };
 
     const blockCheck = validateSubmittedBlocks(toSchedulerMeeting(meeting), args.blocks);
     if (!blockCheck.ok) return { ok: false, error: blockCheck.reason };
@@ -337,7 +337,7 @@ export async function submitAvailability(args: SubmitAvailabilityArgs): Promise<
   const sb = getSupabaseAdmin();
 
   const meeting = await fetchMeeting(args.meetingId);
-  if (!meeting) return { ok: false, error: "회의를 찾을 수 없습니다." };
+  if (!meeting) return { ok: false, error: "회의를 찾지 못했어요." };
   if (meeting.confirmedSlotId) {
     return { ok: false, error: "이미 확정된 회의는 응답을 수정할 수 없어요." };
   }
@@ -347,11 +347,11 @@ export async function submitAvailability(args: SubmitAvailabilityArgs): Promise<
     .select("*")
     .eq("id", args.participantId)
     .maybeSingle();
-  if (pErr || !pData) return { ok: false, error: "참석자를 찾을 수 없습니다." };
+  if (pErr || !pData) return { ok: false, error: "참석자를 찾지 못했어요." };
 
   const participant = pData as ParticipantRow;
   if (participant.meeting_id !== args.meetingId) {
-    return { ok: false, error: "잘못된 요청입니다." };
+    return { ok: false, error: "잘못된 요청이에요." };
   }
 
   // 이미 제출한 응답은 같은 브라우저(토큰 일치)에서만 수정할 수 있다.
@@ -359,7 +359,7 @@ export async function submitAvailability(args: SubmitAvailabilityArgs): Promise<
     if (!args.token || args.token !== participant.participant_token) {
       return {
         ok: false,
-        error: "이 응답을 수정할 권한이 없습니다. 처음 제출한 브라우저에서만 수정할 수 있어요.",
+        error: "처음 제출한 브라우저에서만 수정할 수 있어요.",
       };
     }
   }
@@ -373,7 +373,7 @@ export async function submitAvailability(args: SubmitAvailabilityArgs): Promise<
     .from("availability_blocks")
     .delete()
     .eq("participant_id", args.participantId);
-  if (delErr) return { ok: false, error: "응답 저장에 실패했습니다." };
+  if (delErr) return { ok: false, error: "응답을 저장하지 못했어요." };
 
   if (args.blocks.length > 0) {
     const rows = args.blocks.map((b) => ({
@@ -385,7 +385,7 @@ export async function submitAvailability(args: SubmitAvailabilityArgs): Promise<
       note: b.note ?? null,
     }));
     const { error: insErr } = await sb.from("availability_blocks").insert(rows);
-    if (insErr) return { ok: false, error: "응답 저장에 실패했습니다." };
+    if (insErr) return { ok: false, error: "응답을 저장하지 못했어요." };
   }
 
   // 메모는 블록 유무와 무관하게 참석자 레코드에 저장한다(빈 시간표여도 메모 보존).
@@ -395,14 +395,14 @@ export async function submitAvailability(args: SubmitAvailabilityArgs): Promise<
     .from("participants")
     .update({ response_status: "submitted", role, memo, updated_at: new Date().toISOString() })
     .eq("id", args.participantId);
-  if (updErr) return { ok: false, error: "응답 저장에 실패했습니다." };
+  if (updErr) return { ok: false, error: "응답을 저장하지 못했어요." };
 
   // 응답이 바뀌면 추천 후보가 달라질 수 있으므로 해당 회의의 기존 후보 투표를 초기화한다.
   const { error: voteDeleteErr } = await sb
     .from("meeting_votes")
     .delete()
     .eq("meeting_id", args.meetingId);
-  if (voteDeleteErr) return { ok: false, error: "후보 투표 초기화에 실패했습니다." };
+  if (voteDeleteErr) return { ok: false, error: "투표를 초기화하지 못했어요." };
   revalidatePath(`/m/${args.meetingId}`);
 
   return { ok: true, participantId: args.participantId, token: participant.participant_token };
@@ -417,7 +417,7 @@ export async function loadParticipantResponse(
     const participant = await assertParticipantToken(args.meetingId, args.participantId, args.token);
     return participant
       ? { ok: true, blocks: [], memo: null }
-      : { ok: false, error: "권한이 없습니다." };
+      : { ok: false, error: "권한이 없어요." };
   }
 
   const sb = getSupabaseAdmin();
@@ -426,11 +426,11 @@ export async function loadParticipantResponse(
     .select("*")
     .eq("id", args.participantId)
     .maybeSingle();
-  if (!pData) return { ok: false, error: "참석자를 찾을 수 없습니다." };
+  if (!pData) return { ok: false, error: "참석자를 찾지 못했어요." };
 
   const participant = pData as ParticipantRow;
   if (participant.meeting_id !== args.meetingId || participant.participant_token !== args.token) {
-    return { ok: false, error: "권한이 없습니다." };
+    return { ok: false, error: "권한이 없어요." };
   }
 
   const blocks = await fetchBlocksForParticipant(args.meetingId, args.participantId);
@@ -454,14 +454,14 @@ export async function loadCalendarSnapshot(
     args.participantId,
     args.token,
   );
-  if (!participant) return { ok: false, error: "권한이 없습니다." };
+  if (!participant) return { ok: false, error: "권한이 없어요." };
 
   const [meeting, participants, blocks] = await Promise.all([
     fetchMeeting(args.meetingId),
     fetchParticipants(args.meetingId),
     fetchBlocks(args.meetingId),
   ]);
-  if (!meeting) return { ok: false, error: "회의를 찾을 수 없습니다." };
+  if (!meeting) return { ok: false, error: "회의를 찾지 못했어요." };
 
   return {
     ok: true,
@@ -577,7 +577,7 @@ async function finalizeMeetingIfReady(meetingId: string): Promise<SimpleResult> 
     fetchBlocks(meetingId),
     fetchVotes(meetingId),
   ]);
-  if (!meeting) return { ok: false, error: "회의를 찾을 수 없습니다." };
+  if (!meeting) return { ok: false, error: "회의를 찾지 못했어요." };
   if (meeting.confirmedSlotId) return { ok: true };
   if (participants.length === 0 || participants.some((p) => p.responseStatus !== "submitted")) {
     return { ok: true };
@@ -585,7 +585,7 @@ async function finalizeMeetingIfReady(meetingId: string): Promise<SimpleResult> 
 
   const requiredParticipants = participants.filter((p) => p.attendanceType === "required");
   if (requiredParticipants.length === 0) {
-    return { ok: false, error: "필수 참석자가 없어 회의 시간을 확정할 수 없습니다." };
+    return { ok: false, error: "필수 참석자가 있어야 회의 시간을 정할 수 있어요." };
   }
 
   const requiredParticipantIds = new Set(requiredParticipants.map((p) => p.id));
@@ -597,7 +597,7 @@ async function finalizeMeetingIfReady(meetingId: string): Promise<SimpleResult> 
 
   const recommendations = recommendSlots(toSchedulerInput(meeting, participants, blocks));
   if (recommendations.length === 0) {
-    return { ok: false, error: "확정할 수 있는 후보 시간이 없습니다." };
+    return { ok: false, error: "확정할 수 있는 후보가 없어요." };
   }
 
   const voteCounts = new Map<string, number>();
@@ -611,7 +611,7 @@ async function finalizeMeetingIfReady(meetingId: string): Promise<SimpleResult> 
       (voteCounts.get(voteKey(candidate.startAt, candidate.endAt)) ?? 0) === maxVoteCount,
   );
   if (!winner) {
-    return { ok: false, error: "최다 득표 후보를 찾을 수 없습니다." };
+    return { ok: false, error: "가장 많이 득표한 후보를 찾지 못했어요." };
   }
 
   const schedulerInput = toSchedulerInput(meeting, participants, blocks);
@@ -641,7 +641,7 @@ async function finalizeMeetingIfReady(meetingId: string): Promise<SimpleResult> 
 
   const sb = getSupabaseAdmin();
   const latestMeeting = await fetchMeeting(meetingId);
-  if (!latestMeeting) return { ok: false, error: "회의를 찾을 수 없습니다." };
+  if (!latestMeeting) return { ok: false, error: "회의를 찾지 못했어요." };
   if (latestMeeting.confirmedSlotId) return { ok: true };
 
   const { data: slot, error } = await sb
@@ -654,13 +654,13 @@ async function finalizeMeetingIfReady(meetingId: string): Promise<SimpleResult> 
     })
     .select("id")
     .single();
-  if (error || !slot) return { ok: false, error: "회의 시간 확정에 실패했습니다." };
+  if (error || !slot) return { ok: false, error: "회의 시간을 확정하지 못했어요." };
 
   const { error: updateError } = await sb
     .from("meetings")
     .update({ confirmed_slot_id: slot.id })
     .eq("id", meetingId);
-  if (updateError) return { ok: false, error: "회의 시간 확정에 실패했습니다." };
+  if (updateError) return { ok: false, error: "회의 시간을 확정하지 못했어요." };
 
   revalidatePath(`/m/${meetingId}`);
   revalidatePath(`/meetings/${meetingId}/confirmed`);
@@ -675,7 +675,7 @@ export async function loadVotingOptions(
     args.participantId,
     args.token,
   );
-  if (!participant) return { ok: false, error: "권한이 없습니다." };
+  if (!participant) return { ok: false, error: "권한이 없어요." };
   if (isDemoMeetingId(args.meetingId)) {
     return {
       ok: true,
@@ -686,9 +686,9 @@ export async function loadVotingOptions(
     return { ok: false, error: "가능한 시간을 먼저 제출해 주세요." };
   }
   const meeting = await fetchMeeting(args.meetingId);
-  if (!meeting) return { ok: false, error: "회의를 찾을 수 없습니다." };
+  if (!meeting) return { ok: false, error: "회의를 찾지 못했어요." };
   if (meeting.confirmedSlotId) {
-    return { ok: false, error: "이미 확정된 회의예요. 후보 투표를 볼 수 없습니다." };
+    return { ok: false, error: "이미 확정된 회의라 후보 투표를 볼 수 없어요." };
   }
   const votingOpen = await assertVotingOpen(args.meetingId);
   if (!votingOpen.ok) return { ok: false, error: votingOpen.error };
@@ -701,7 +701,7 @@ export async function submitVote(args: SubmitVoteArgs): Promise<SimpleResult> {
     args.participantId,
     args.token,
   );
-  if (!participant) return { ok: false, error: "권한이 없습니다." };
+  if (!participant) return { ok: false, error: "권한이 없어요." };
   if (participant.attendance_type !== "required") {
     return { ok: false, error: "필수 참석자만 후보 시간대에 투표할 수 있어요." };
   }
@@ -712,7 +712,7 @@ export async function submitVote(args: SubmitVoteArgs): Promise<SimpleResult> {
     );
     return selected
       ? { ok: true }
-      : { ok: false, error: "현재 후보 시간대 중 하나만 투표할 수 있습니다." };
+      : { ok: false, error: "현재 후보 시간대 중 하나만 투표할 수 있어요." };
   }
   if (participant.response_status !== "submitted") {
     return { ok: false, error: "가능한 시간을 먼저 제출해 주세요." };
@@ -721,7 +721,7 @@ export async function submitVote(args: SubmitVoteArgs): Promise<SimpleResult> {
   if (!votingOpen.ok) return { ok: false, error: votingOpen.error };
 
   const meeting = await fetchMeeting(args.meetingId);
-  if (!meeting) return { ok: false, error: "회의를 찾을 수 없습니다." };
+  if (!meeting) return { ok: false, error: "회의를 찾지 못했어요." };
   if (meeting.confirmedSlotId) {
     return { ok: false, error: "이미 확정된 회의예요. 투표를 변경할 수 없어요." };
   }
@@ -732,7 +732,7 @@ export async function submitVote(args: SubmitVoteArgs): Promise<SimpleResult> {
     (c) => c.startAt === args.startAt && c.endAt === args.endAt,
   );
   if (!selected) {
-    return { ok: false, error: "현재 후보 시간대 중 하나만 투표할 수 있습니다." };
+    return { ok: false, error: "현재 후보 시간대 중 하나만 투표할 수 있어요." };
   }
 
   const sb = getSupabaseAdmin();
@@ -741,7 +741,7 @@ export async function submitVote(args: SubmitVoteArgs): Promise<SimpleResult> {
     .delete()
     .eq("meeting_id", args.meetingId)
     .eq("participant_id", args.participantId);
-  if (delErr) return { ok: false, error: "투표 저장에 실패했습니다." };
+  if (delErr) return { ok: false, error: "투표를 저장하지 못했어요." };
 
   const { error } = await sb.from("meeting_votes").insert({
     meeting_id: args.meetingId,
@@ -749,7 +749,7 @@ export async function submitVote(args: SubmitVoteArgs): Promise<SimpleResult> {
     start_at: args.startAt,
     end_at: args.endAt,
   });
-  if (error) return { ok: false, error: "투표 저장에 실패했습니다." };
+  if (error) return { ok: false, error: "투표를 저장하지 못했어요." };
 
   const finalizeResult = await finalizeMeetingIfReady(args.meetingId);
   if (!finalizeResult.ok) return finalizeResult;

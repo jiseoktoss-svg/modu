@@ -49,10 +49,10 @@ export function isSlotConfirmable(
   const s = isoToEpoch(startAt);
   const e = isoToEpoch(endAt);
   if (!Number.isFinite(s) || !Number.isFinite(e) || !(s < e)) {
-    return { ok: false, reason: "시간 범위가 올바르지 않습니다." };
+    return { ok: false, reason: "시간 범위가 올바르지 않아요." };
   }
   if (e - s !== meeting.durationMinutes * 60000) {
-    return { ok: false, reason: "회의 길이와 맞지 않는 시간입니다." };
+    return { ok: false, reason: "회의 길이와 맞지 않는 시간이에요." };
   }
 
   const sp = getKstParts(startAt);
@@ -62,25 +62,25 @@ export function isSlotConfirmable(
 
   // 같은 날 안이어야 하고, 날짜 범위 안이어야 한다.
   if (dateStrOf(sp) !== dateStrOf(ep)) {
-    return { ok: false, reason: "하루를 벗어나는 시간입니다." };
+    return { ok: false, reason: "하루를 벗어나는 시간이에요." };
   }
   if (!eachDateInRange(meeting.dateStart, meeting.dateEnd).includes(dateStrOf(sp))) {
-    return { ok: false, reason: "회의 날짜 범위 밖의 시간입니다." };
+    return { ok: false, reason: "회의 날짜 범위 밖의 시간이에요." };
   }
 
   const workStart = parseHm(meeting.workdayStart);
   const workEnd = parseHm(meeting.workdayEnd);
   if ((startMin - workStart) % SLOT_STEP_MINUTES !== 0) {
-    return { ok: false, reason: "30분 단위 시작 시간이 아닙니다." };
+    return { ok: false, reason: "시작 시간은 30분 단위로 선택할 수 있어요." };
   }
   if (startMin < workStart || endMin > workEnd) {
-    return { ok: false, reason: "근무 시간 밖의 시간입니다." };
+    return { ok: false, reason: "근무 시간 밖의 시간이에요." };
   }
 
   const lunchStart = parseHm(meeting.lunchStart);
   const lunchEnd = parseHm(meeting.lunchEnd);
   if (overlaps(startMin, endMin, lunchStart, lunchEnd)) {
-    return { ok: false, reason: "점심 시간과 겹치는 시간입니다." };
+    return { ok: false, reason: "점심 시간과 겹치는 시간이에요." };
   }
 
   const requiredIds = new Set(
@@ -93,7 +93,7 @@ export function isSlotConfirmable(
       overlaps(s, e, isoToEpoch(b.startAt), isoToEpoch(b.endAt)),
   );
   if (requiredBusy) {
-    return { ok: false, reason: "필수 참석자가 참석할 수 없는 시간입니다." };
+    return { ok: false, reason: "필수 참석자가 참석할 수 없는 시간이에요." };
   }
 
   return { ok: true };
@@ -113,7 +113,7 @@ export function validateSubmittedBlocks(
   blocks: SubmittedBlock[],
 ): ValidationResult {
   if (blocks.length > MAX_BLOCKS_PER_PARTICIPANT) {
-    return { ok: false, reason: "응답 블록 수가 너무 많습니다." };
+    return { ok: false, reason: "안 되는 시간을 너무 많이 입력했어요." };
   }
 
   const workStart = parseHm(meeting.workdayStart);
@@ -124,37 +124,37 @@ export function validateSubmittedBlocks(
 
   for (const b of blocks) {
     if (!VALID_STATUSES.includes(b.status)) {
-      return { ok: false, reason: "알 수 없는 상태 값이 있습니다." };
+      return { ok: false, reason: "알 수 없는 상태 값이 있어요." };
     }
     if (b.note != null && b.note.length > MAX_NOTE_LENGTH) {
-      return { ok: false, reason: "메모가 너무 깁니다." };
+      return { ok: false, reason: "메모가 너무 길어요." };
     }
 
     const s = isoToEpoch(b.startAt);
     const e = isoToEpoch(b.endAt);
     if (!Number.isFinite(s) || !Number.isFinite(e) || !(s < e)) {
-      return { ok: false, reason: "시간 범위가 올바르지 않습니다." };
+      return { ok: false, reason: "시간 범위가 올바르지 않아요." };
     }
 
     const sp = getKstParts(b.startAt);
     const ep = getKstParts(b.endAt);
     if (dateStrOf(sp) !== dateStrOf(ep)) {
-      return { ok: false, reason: "하루를 벗어나는 응답이 있습니다." };
+      return { ok: false, reason: "하루를 벗어나는 응답이 있어요." };
     }
     if (!dates.has(dateStrOf(sp))) {
-      return { ok: false, reason: "회의 날짜 범위 밖의 응답이 있습니다." };
+      return { ok: false, reason: "회의 날짜 범위 밖의 응답이 있어요." };
     }
 
     const startMin = sp.hours * 60 + sp.minutes;
     const endMin = ep.hours * 60 + ep.minutes;
     if (startMin % SLOT_STEP_MINUTES !== 0 || (endMin - startMin) % SLOT_STEP_MINUTES !== 0) {
-      return { ok: false, reason: "30분 단위가 아닌 응답이 있습니다." };
+      return { ok: false, reason: "30분 단위가 아닌 응답이 있어요." };
     }
     if (startMin < workStart || endMin > workEnd) {
-      return { ok: false, reason: "근무 시간 밖의 응답이 있습니다." };
+      return { ok: false, reason: "근무 시간 밖의 응답이 있어요." };
     }
     if (overlaps(startMin, endMin, lunchStart, lunchEnd)) {
-      return { ok: false, reason: "점심 시간과 겹치는 응답이 있습니다." };
+      return { ok: false, reason: "점심 시간과 겹치는 응답이 있어요." };
     }
   }
 

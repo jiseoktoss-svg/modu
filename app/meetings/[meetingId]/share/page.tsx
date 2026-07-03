@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { MobileHeaderTitle } from "@/components/layout/MobileHeaderTitle";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { MeetingCreatedPanel } from "@/components/meeting/MeetingCreatedPanel";
 import { MeetingShareError } from "@/components/meeting/MeetingShareError";
@@ -21,6 +22,7 @@ export default async function SharePage({
       <div className="flex min-h-dvh flex-col bg-white/95">
         <SiteHeader />
         <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 sm:px-6">
+          <MobileHeaderTitle title="회의 만들기" />
           <MeetingShareError />
         </main>
       </div>
@@ -36,6 +38,7 @@ export default async function SharePage({
       <div className="flex min-h-dvh flex-col bg-white/95">
         <SiteHeader />
         <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 sm:px-6">
+          <MobileHeaderTitle title="회의 만들기" />
           <MeetingShareError />
         </main>
       </div>
@@ -46,6 +49,7 @@ export default async function SharePage({
     <div className="flex min-h-dvh flex-col bg-white/95">
       <SiteHeader />
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 sm:px-6">
+        <MobileHeaderTitle title="회의 만들기" />
         <MeetingCreatedPanel meeting={meeting} participants={participants} />
       </main>
     </div>

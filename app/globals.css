@@ -377,6 +377,34 @@ body {
   }
 }
 
+/* 회의 확인·입력 확인: 절(clause)이 회색 밑글 위로 좌→우 잉크처럼 채워지는 등장 효과.
+   mask 타일을 요소보다 넓게(220%) 잡고 position 을 100%→0 으로 밀어 부드러운 경계로 드러낸다.
+   색상은 알파만 깎이므로 본문/강조 색이 그대로 유지된다. */
+@keyframes modu-fill-reveal {
+  from {
+    -webkit-mask-position: 100% 0;
+    mask-position: 100% 0;
+  }
+
+  to {
+    -webkit-mask-position: 0 0;
+    mask-position: 0 0;
+  }
+}
+
+.modu-fill-clause {
+  -webkit-mask-image: linear-gradient(to right, #000 45%, transparent 55%);
+  mask-image: linear-gradient(to right, #000 45%, transparent 55%);
+  -webkit-mask-size: 220% 100%;
+  mask-size: 220% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  /* 절이 줄바꿈에 걸치면 전체 bbox 기준으로 번지지 않고, 줄 조각마다 각자 좌→우로 채워지게 */
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  animation: modu-fill-reveal 1.8s ease-out both;
+}
+
 .modu-cell-pop {
   animation: modu-cell-pop 0.25s ease-out both;
   /* 셀 자체 shadow-* 유틸리티(예: 1순위 shadow-sm)와의 충돌을 피해 여기서 직접 지정.
@@ -395,6 +423,13 @@ body {
   .modu-cell-pop {
     animation: none;
     transform: translateY(-1px) scale(1.04);
+  }
+
+  /* 저감 모션: 채움 스윕 없이 즉시 완성 상태로 표시 */
+  .modu-fill-clause {
+    animation: none;
+    -webkit-mask-image: none;
+    mask-image: none;
   }
 
   .modu-tds-button {

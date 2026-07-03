@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { MobileHeaderTitle } from "@/components/layout/MobileHeaderTitle";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { ResponseForm } from "@/components/scheduler/ResponseForm";
 import { Card, CardTitle } from "@/components/ui/Card";
@@ -27,6 +28,7 @@ export default async function ParticipantPage({
       <main className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col px-4 pt-4 sm:px-6 sm:pt-8">
         {meeting.confirmedSlotId ? (
           <>
+            <MobileHeaderTitle title="확정된 회의" />
             <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
               {meeting.title}
             </h1>
@@ -34,7 +36,7 @@ export default async function ParticipantPage({
               <Card className="space-y-4 text-center">
                 <Emoji symbol="📅" size={36} className="mx-auto" />
                 <div>
-                  <CardTitle>회의 시간이 확정되었어요</CardTitle>
+                  <CardTitle>회의 시간이 정해졌어요</CardTitle>
                   <p className="mt-2 text-sm text-slate-600">
                     확정된 회의는 응답과 투표를 수정할 수 없어요.
                   </p>

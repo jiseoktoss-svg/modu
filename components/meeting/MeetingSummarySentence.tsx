@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
+import { hasBatchim } from "@/lib/korean";
 import { formatKoreanDate, formatKoreanTime } from "@/lib/time";
 
 // 회의 생성 화면(MeetingCreateForm) 상단 안내 문장을 읽기 전용으로 재사용한다.
@@ -54,15 +55,15 @@ export function MeetingSummarySentence({
       )}
     >
       <p>
-        이번 회의명은 <Val>{title}</Val> 에요.{" "}
+        이번 회의명은 <Val>{title}</Val> {hasBatchim(title) ? "이에요." : "예요."}{" "}
         {agenda.trim() !== "" && (
           <>
-            회의 안건은 <Val>{agenda}</Val> 입니다.{" "}
+            회의 안건은 <Val>{agenda}</Val> {hasBatchim(agenda) ? "이에요." : "예요."}{" "}
           </>
         )}
         {location.trim() !== "" && (
           <>
-            회의 장소는 <Val>{location}</Val> 이며,{" "}
+            회의 장소는 <Val>{location}</Val> 이고,{" "}
           </>
         )}
         예상 회의 진행 시간은{" "}
@@ -76,10 +77,10 @@ export function MeetingSummarySentence({
             <Val>{mins}</Val> 분
           </>
         )}{" "}
-        입니다.{" "}
+        이에요.{" "}
         {deadlineText !== "" && (
           <>
-            <Val>{deadlineText}</Val> 까지는 회의가 완료되어야 해요.{" "}
+            <Val>{deadlineText}</Val> 까지는 회의를 마쳐야 해요.{" "}
           </>
         )}
         {responseDeadline && (

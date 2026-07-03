@@ -13,11 +13,11 @@ export interface ShareTextInput {
 
 export function buildShareText(input: ShareTextInput): string {
   const requiredLine = input.requiredAllAvailable
-    ? "필수 참석자는 모두 참석 가능한 시간입니다."
-    : "필수 참석자 중 일부는 아직 응답 전이라 변동될 수 있습니다.";
+    ? "필수 참석자 모두 참석할 수 있는 시간이에요."
+    : "필수 참석자 중 일부는 아직 응답 전이라 바뀔 수 있어요.";
 
   const lines = [
-    "[modu] 회의 시간이 확정되었습니다.",
+    "[modu] 회의 시간이 정해졌어요.",
     `회의명: ${input.title}`,
     input.agenda ? `안건: ${input.agenda}` : null,
     input.location ? `장소: ${input.location}` : null,

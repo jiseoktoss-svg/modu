@@ -135,10 +135,10 @@ describe("recommendSlots — 미응답 / 등급 / 설명", () => {
     expect(occurrences).toBe(1);
   });
 
-  it("선택 미응답자는 변동 가능성으로 별도 언급된다", () => {
+  it("선택 미응답자는 순위가 바뀔 수 있다고 별도 언급된다", () => {
     const recs = recommendSlots(
       input([P("r", "required"), P("o", "optional", "pending")], []),
     );
-    expect(recs[0].reason).toContain("변동 가능성");
+    expect(recs[0].reason).toContain("순위가 바뀔 수 있어요");
   });
 });

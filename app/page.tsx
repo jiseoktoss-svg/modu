@@ -12,7 +12,7 @@ import {
 export default function LandingPage() {
   return (
     <div className="flex min-h-dvh flex-col bg-white/95">
-      <SiteHeader />
+      <SiteHeader mobileLogo />
 
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 pb-40 sm:px-6 sm:pb-44">
         {/* 1. 문구 | 이미지 */}
@@ -25,7 +25,7 @@ export default function LandingPage() {
                 회의를 시작해요
               </h2>
               <p className="mt-3 break-keep text-sm leading-relaxed text-slate-500 sm:text-base">
-                회의를 만들면 바로 링크가 생겨요. 함께할 분들께 보내기만 하면
+                회의를 만들면 바로 링크가 생겨요. 함께할 분들에게 보내기만 하면
                 준비는 끝나요.
               </p>
             </div>

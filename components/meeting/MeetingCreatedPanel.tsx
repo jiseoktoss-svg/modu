@@ -281,7 +281,7 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
             className="relative rounded-[22px] bg-white p-5 shadow-sm border-y border-slate-100 animate-fade-up-blur motion-reduce:animate-none"
             style={{ animationDelay: "400ms" }}
           >
-            <h2 className="text-sm font-bold text-slate-400">참석자 전달 링크</h2>
+            <h2 className="text-sm font-bold text-slate-400">참석자에게 보낼 링크</h2>
             <div className="mt-3 flex items-center gap-2 rounded-[16px] bg-slate-50 px-3 py-2.5 ring-1 ring-slate-100">
               <p className="min-w-0 flex-1 truncate text-left text-sm font-medium text-slate-700">
                 {participantUrl}
@@ -321,7 +321,7 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
             size="xl"
             display="block"
           >
-            회의시간 입력하기
+            회의 시간 입력하기
           </TDSButton>
         </div>
       </MobileStickyAction>

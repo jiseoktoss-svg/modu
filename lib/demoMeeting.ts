@@ -204,8 +204,8 @@ export function getDemoVoteOptions(meetingId: string, participantId: string): Vo
     grade: index === 0 ? "A" : "B",
     reason:
       index === 0
-        ? "데모 모드에서 확인할 수 있는 추천 후보입니다."
-        : "비교용으로 제공되는 두 번째 데모 후보입니다.",
+        ? "데모에서 확인할 수 있는 추천 후보예요."
+        : "비교해 볼 수 있게 준비한 두 번째 데모 후보예요.",
     voteCount: 0,
     userSelected: false,
   }));
