@@ -53,8 +53,6 @@ describe("response draft storage", () => {
       dtDate: "2026-07-11",
       draftStart: "10:00",
       draftEnd: "11:00",
-      resultSelectedIndex: 1,
-      resultVotedIndex: 2,
     });
 
     const draft = readResponseDraft(storage, "meeting-1");
@@ -79,8 +77,6 @@ describe("response draft storage", () => {
       dtDate: "2026-07-11",
       draftStart: "10:00",
       draftEnd: "11:00",
-      resultSelectedIndex: 1,
-      resultVotedIndex: 2,
     });
   });
 

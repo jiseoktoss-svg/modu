@@ -63,6 +63,8 @@ export interface ConfirmedSlot {
   createdAt: string;
 }
 
+/** @deprecated 투표 개념 제거(자동 확정으로 대체). meeting_votes 테이블은 호환을 위해 남아 있지만
+ *  앱은 더 이상 읽거나 쓰지 않는다. 안정화 후 drop 마이그레이션과 함께 삭제 예정. */
 export interface MeetingVote {
   id: string;
   meetingId: string;

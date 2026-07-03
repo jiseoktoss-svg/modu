@@ -38,7 +38,7 @@ export default async function ParticipantPage({
                 <div>
                   <CardTitle>회의 시간이 정해졌어요</CardTitle>
                   <p className="mt-2 text-sm text-slate-600">
-                    확정된 회의는 응답과 투표를 수정할 수 없어요.
+                    확정된 회의는 응답을 수정할 수 없어요.
                   </p>
                 </div>
                 <TDSButton as="a" href={`/meetings/${meeting.id}/confirmed`} size="xl">

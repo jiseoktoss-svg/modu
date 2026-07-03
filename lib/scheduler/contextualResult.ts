@@ -263,6 +263,10 @@ export function labelRankGroup(group: EvaluatedSlot[]): string {
     return group.length > 1 ? "모두 참석할 수 있는 후보" : "가장 무난한 후보";
   }
   if (first.isRequiredAllAvailable) {
+    // 미응답자가 있으면 '필수참석자가 모두 가능'은 과장이다(필수 미응답이 섞여 있을 수 있음).
+    if (first.pendingNames.length > 0) {
+      return "지금까지의 응답 기준 추천 후보";
+    }
     return group.length > 1 ? "필수참석자가 모두 가능한 후보" : "추천 후보";
   }
   if (first.requiredBusyCount === 1) {
@@ -476,6 +480,25 @@ export function buildNarrative(args: {
   }
 
   return { headline, comment };
+}
+
+// ---- 자동 확정 후보 ----
+
+/**
+ * 자동 확정 후보: 필수참석자 불가 0명 + 미응답 0명 조건을 만족하는,
+ * 그룹 정렬 순서상 가장 앞의 슬롯. 없으면 null(확정하지 않는다 — 화면이 기간 조정 안내를 담당).
+ * 비슷한 후보가 여러 개여도 사람이 고르지 않고, compareSlots 의 일관된 규칙
+ * (필수 불가 적음 → 가능 인원 많음 → 선택 불가 적음 → 이른 시간)으로 하나를 정한다.
+ */
+export function pickAutoConfirmSlot(result: ContextualScheduleResult): EvaluatedSlot | null {
+  for (const group of result.rankGroups) {
+    for (const slot of group.slots) {
+      if (slot.requiredBusyCount === 0 && slot.pendingNames.length === 0) {
+        return slot;
+      }
+    }
+  }
+  return null;
 }
 
 // ---- 최종 결과 ----

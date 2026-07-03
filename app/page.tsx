@@ -60,13 +60,13 @@ export default function LandingPage() {
           <Reveal>
             <div className="text-center sm:text-left">
               <h2 className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
-                가장 좋은 시간을
+                가장 나은 시간을
                 <br />
-                함께 골라요
+                찾아드려요
               </h2>
               <p className="mt-3 break-keep text-sm leading-relaxed text-slate-500 sm:text-base">
-                모두가 답하면 좋은 시간을 추려서 보여드려요. 마음에 드는
-                시간에 투표하면 회의는 저절로 정해져요.
+                모두가 답하면 modu가 응답을 해석해서 가장 나은 시간을
+                알려드려요. 모두가 참석할 수 있으면 회의는 저절로 정해져요.
               </p>
             </div>
           </Reveal>

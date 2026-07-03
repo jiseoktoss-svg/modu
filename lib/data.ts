@@ -6,7 +6,6 @@ import {
   mapAvailabilityBlock,
   mapConfirmedSlot,
   mapMeeting,
-  mapMeetingVote,
   mapParticipant,
   type AvailabilityBlock,
   type AvailabilityBlockRow,
@@ -15,8 +14,6 @@ import {
   type ConfirmedSlotRow,
   type Meeting,
   type MeetingRow,
-  type MeetingVote,
-  type MeetingVoteRow,
   type Participant,
   type ParticipantRow,
   type ResponseStatus,
@@ -87,18 +84,6 @@ export async function fetchConfirmedSlot(slotId: string): Promise<ConfirmedSlot 
     .maybeSingle();
   if (error) throw error;
   return data ? mapConfirmedSlot(data as ConfirmedSlotRow) : null;
-}
-
-export async function fetchVotes(meetingId: string): Promise<MeetingVote[]> {
-  if (isDemoMeetingId(meetingId)) return [];
-
-  const sb = getSupabaseAdmin();
-  const { data, error } = await sb
-    .from("meeting_votes")
-    .select("*")
-    .eq("meeting_id", meetingId);
-  if (error) throw error;
-  return (data as MeetingVoteRow[]).map(mapMeetingVote);
 }
 
 // 클라이언트로 내려보내는 참석자 공개 형태 — 토큰은 절대 포함하지 않는다.

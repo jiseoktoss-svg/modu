@@ -30,7 +30,6 @@ type DemoSlot = {
   dateIndex: number;
   startMin: number; // 자정 이후 분 (KST)
   busy: number[]; // 이 시간에 불가능한 사람 인덱스(DEMO_PEOPLE)
-  votes?: number; // 투표 케이스에서만 사용
   // 등급/순위는 buildCaseCandidates 가 §8.5 로직으로 도출한다(하드코딩 안 함).
 };
 
@@ -42,7 +41,6 @@ export type DemoCase = {
   banner?: { tone: "info" | "caution" | "danger"; text: string };
   submitted: number; // 응답 완료 인원 (총 6명 중)
   pendingNames: string[];
-  votingOpen: boolean;
   slots: DemoSlot[];
 };
 
@@ -56,7 +54,6 @@ export const DEMO_CASES: DemoCase[] = [
     judgment: "전원이 가능한 날을 1순위로 추천해요. 전원 가능한 날이 여러 개면 더 빠른 날짜가 위예요.",
     submitted: 6,
     pendingNames: [],
-    votingOpen: true,
     slots: [
       { dateIndex: 1, startMin: H(14), busy: [] },
       { dateIndex: 2, startMin: H(10), busy: [4] },
@@ -71,7 +68,6 @@ export const DEMO_CASES: DemoCase[] = [
     judgment: "필수인원이 다 되면 정상 후보로 유지해요. 다만 전원이 가능한 날이 있으면 그날이 먼저예요.",
     submitted: 6,
     pendingNames: [],
-    votingOpen: true,
     slots: [
       { dateIndex: 1, startMin: H(14), busy: [4] },
       { dateIndex: 2, startMin: H(10), busy: [5] },
@@ -87,7 +83,6 @@ export const DEMO_CASES: DemoCase[] = [
       "빠지는 사람이 있는 날끼리는 필수인원이 다 되는 날을 위에 둬요. 선택인원이 더 많이 돼도 필수인원이 빠지면 뒤로 밀려요.",
     submitted: 6,
     pendingNames: [],
-    votingOpen: true,
     slots: [
       // 필수 전원 가능, 선택 둘 다 빠짐 → 그래도 필수 빠지는 후보들보다 위
       { dateIndex: 1, startMin: H(14), busy: [4, 5] },
@@ -108,7 +103,6 @@ export const DEMO_CASES: DemoCase[] = [
     },
     submitted: 6,
     pendingNames: [],
-    votingOpen: true,
     slots: [
       { dateIndex: 1, startMin: H(14), busy: [3] },
       { dateIndex: 2, startMin: H(10), busy: [1] },
@@ -126,7 +120,6 @@ export const DEMO_CASES: DemoCase[] = [
     },
     submitted: 6,
     pendingNames: [],
-    votingOpen: true,
     slots: [
       { dateIndex: 0, startMin: H(10), busy: [0] },
       { dateIndex: 1, startMin: H(14), busy: [1] },
@@ -144,7 +137,6 @@ export const DEMO_CASES: DemoCase[] = [
     },
     submitted: 6,
     pendingNames: [],
-    votingOpen: false,
     slots: [
       { dateIndex: 1, startMin: H(14), busy: [0, 1] },
       { dateIndex: 2, startMin: H(10), busy: [2, 3] },
@@ -156,14 +148,13 @@ export const DEMO_CASES: DemoCase[] = [
     title: "아직 응답 안 한 사람 있음",
     situation: "참석자 6명 중 2명이 아직 불가능 시간을 입력하지 않았어요. (필수인원 1명 포함)",
     judgment:
-      "전원이 응답하기 전엔 투표를 열지 않아요. 미응답자는 가능 인원으로 세지 않고 잠정 순위만 보여줘요.",
+      "전원이 응답하기 전엔 확정하지 않아요. 미응답자는 가능 인원으로 세지 않고 잠정 결과만 보여줘요.",
     banner: {
       tone: "caution",
-      text: "아직 응답하지 않은 사람이 있어 잠정 순위만 보여줘요. 모두 응답하면 투표가 열려요.",
+      text: "아직 응답하지 않은 사람이 있어 잠정 결과만 보여줘요. 모두 응답하면 modu가 가장 나은 시간을 정해요.",
     },
     submitted: 4,
     pendingNames: ["최수아", "한예린"],
-    votingOpen: false,
     slots: [
       { dateIndex: 2, startMin: H(10), busy: [] },
       { dateIndex: 1, startMin: H(14), busy: [4] },
@@ -172,22 +163,21 @@ export const DEMO_CASES: DemoCase[] = [
   },
   {
     id: 8,
-    title: "투표가 동점",
-    situation: "필수인원 투표 결과가 2표씩 똑같이 나왔어요.",
+    title: "비슷한 후보가 여러 개 있음",
+    situation: "전원 또는 대부분이 참석할 수 있는 후보가 여러 개 있어요.",
     judgment:
-      "동점이면 주최자가 고르지 않고, 더 많은 인원이 참석할 수 있는 시간을 위에 둔 추천순을 따라요.",
+      "억지로 순위를 나누지 않고 같은 그룹으로 묶어 보여줘요. 확정이 필요하면 더 이른 날짜와 시간을 먼저 골라요.",
     banner: {
       tone: "info",
-      text: "투표가 2표로 동점이에요. 더 많은 인원이 참석할 수 있는 후보가 위에 있어요.",
+      text: "비슷하게 좋은 후보는 한 그룹으로 묶어 보여줘요. 확정은 더 이른 시간이 우선이에요.",
     },
     submitted: 6,
     pendingNames: [],
-    votingOpen: true,
     slots: [
-      // 6명 전원 가능(2표) vs 5명(2표) 동점 → 더 많은 인원이 참석 가능한 위 후보가 상위
-      { dateIndex: 1, startMin: H(14), busy: [], votes: 2 },
-      { dateIndex: 2, startMin: H(10), busy: [4], votes: 2 },
-      { dateIndex: 0, startMin: H(15), busy: [4, 5], votes: 0 },
+      // 전원 가능한 후보가 여러 개(같은 그룹) + 두 명 빠지는 아래 그룹 하나
+      { dateIndex: 1, startMin: H(14), busy: [] },
+      { dateIndex: 2, startMin: H(10), busy: [] },
+      { dateIndex: 0, startMin: H(15), busy: [4, 5] },
     ],
   },
 ];
@@ -206,7 +196,6 @@ export type CaseCandidate = {
   availableNames: string[];
   busyNames: string[];
   pendingNames: string[];
-  votes: number | null;
   reason: string;
 };
 
@@ -353,7 +342,6 @@ export function buildCaseCandidates(c: DemoCase, dates: string[]): CaseCandidate
       availableNames: e.availableNames,
       busyNames: e.busyNames,
       pendingNames: e.pendingNames,
-      votes: c.votingOpen && e.slot.votes != null ? e.slot.votes : null,
       reason: `${requiredText} · ${optionalText}`,
     };
   });

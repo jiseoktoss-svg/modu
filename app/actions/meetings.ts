@@ -8,8 +8,6 @@ import {
   fetchBlocksForParticipant,
   fetchMeeting,
   fetchParticipants,
-  fetchVotes,
-  isRequiredAllAvailable,
   toSchedulerInput,
   toSchedulerMeeting,
 } from "@/lib/data";
@@ -17,13 +15,16 @@ import {
   isSlotConfirmable,
   MAX_MEMO_LENGTH,
   validateSubmittedBlocks,
-  recommendSlots,
 } from "@/lib/scheduler";
+import {
+  buildContextualScheduleResult,
+  evaluateAllSlots,
+  pickAutoConfirmSlot,
+} from "@/lib/scheduler/contextualResult";
 import { buildShareText } from "@/lib/share";
 import {
   createDemoMeetingId,
   getDemoParticipants,
-  getDemoVoteOptions,
   isDemoMeetingId,
 } from "@/lib/demoMeeting";
 import { getSupabaseAdmin, hasSupabaseConfig } from "@/lib/supabase/server";
@@ -43,15 +44,11 @@ import type {
   LoadCalendarSnapshotResult,
   LoadResponseArgs,
   LoadResponseResult,
-  LoadVotingOptionsArgs,
-  LoadVotingOptionsResult,
   SimpleResult,
   SubmitAvailabilityArgs,
-  SubmitVoteArgs,
   SubmitResult,
   VerifyParticipantIdentityArgs,
   VerifyParticipantIdentityResult,
-  VoteOption,
 } from "@/lib/actionTypes";
 
 const MAX_ROLE_LENGTH = 40;
@@ -397,12 +394,9 @@ export async function submitAvailability(args: SubmitAvailabilityArgs): Promise<
     .eq("id", args.participantId);
   if (updErr) return { ok: false, error: "응답을 저장하지 못했어요." };
 
-  // 응답이 바뀌면 추천 후보가 달라질 수 있으므로 해당 회의의 기존 후보 투표를 초기화한다.
-  const { error: voteDeleteErr } = await sb
-    .from("meeting_votes")
-    .delete()
-    .eq("meeting_id", args.meetingId);
-  if (voteDeleteErr) return { ok: false, error: "투표를 초기화하지 못했어요." };
+  // 투표는 없다 — 모든 참석자가 응답을 마쳤고 확정 조건을 만족하면 modu 가 자동 확정한다.
+  const confirmResult = await autoConfirmMeetingIfReady(args.meetingId);
+  if (!confirmResult.ok) return { ok: false, error: confirmResult.error };
   revalidatePath(`/m/${args.meetingId}`);
 
   return { ok: true, participantId: args.participantId, token: participant.participant_token };
@@ -481,10 +475,6 @@ export async function loadCalendarSnapshot(
   };
 }
 
-function voteKey(startAt: string, endAt: string) {
-  return `${startAt}|${endAt}`;
-}
-
 async function assertParticipantToken(
   meetingId: string,
   participantId: string,
@@ -522,124 +512,54 @@ async function assertParticipantToken(
   return participant;
 }
 
-async function getVoteOptions(
-  meetingId: string,
-  participantId: string,
-): Promise<VoteOption[]> {
-  const meeting = await fetchMeeting(meetingId);
-  if (!meeting) return [];
-  const participants = await fetchParticipants(meetingId);
-  const blocks = await fetchBlocks(meetingId);
-  const votes = await fetchVotes(meetingId);
-  const recommendations = recommendSlots(toSchedulerInput(meeting, participants, blocks));
-  const requiredParticipantIds = new Set(
-    participants.filter((p) => p.attendanceType === "required").map((p) => p.id),
-  );
-  const counts = new Map<string, number>();
-  for (const v of votes) {
-    if (!requiredParticipantIds.has(v.participantId)) continue;
-    const key = voteKey(v.startAt, v.endAt);
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  const ownVote = requiredParticipantIds.has(participantId)
-    ? votes.find((v) => v.participantId === participantId)
-    : undefined;
-  const ownKey = ownVote ? voteKey(ownVote.startAt, ownVote.endAt) : null;
+// ---- 자동 확정 ----
+// 투표는 없다. 모든 참석자가 응답을 마치면 modu 가 전체 응답을 해석해(evaluateAllSlots →
+// buildContextualScheduleResult), 확정 조건(필수참석자 불가 0명 + 미응답 0명)을 만족하는
+// 최상위 후보를 회의 시간으로 확정한다. 조건을 만족하는 후보가 없으면 확정하지 않고
+// 화면이 기간 조정 안내를 담당한다(noGoodOption 문구).
 
-  return recommendations.map((c) => {
-    const key = voteKey(c.startAt, c.endAt);
-    return {
-      startAt: c.startAt,
-      endAt: c.endAt,
-      grade: c.grade,
-      reason: c.reason,
-      voteCount: counts.get(key) ?? 0,
-      userSelected: ownKey === key,
-    };
-  });
-}
+async function autoConfirmMeetingIfReady(meetingId: string): Promise<SimpleResult> {
+  // 데모 회의는 저장소가 없어 확정하지 않는다.
+  if (isDemoMeetingId(meetingId)) return { ok: true };
 
-async function assertVotingOpen(meetingId: string) {
-  const participants = await fetchParticipants(meetingId);
-  if (participants.length === 0 || participants.some((p) => p.responseStatus !== "submitted")) {
-    return {
-      ok: false as const,
-      error: "아직 모든 참석자가 응답하지 않았어요. 모두 제출하면 후보 시간대에 투표할 수 있어요.",
-    };
-  }
-  return { ok: true as const, participants };
-}
-
-async function finalizeMeetingIfReady(meetingId: string): Promise<SimpleResult> {
-  const [meeting, participants, blocks, votes] = await Promise.all([
+  const [meeting, participants, blocks] = await Promise.all([
     fetchMeeting(meetingId),
     fetchParticipants(meetingId),
     fetchBlocks(meetingId),
-    fetchVotes(meetingId),
   ]);
   if (!meeting) return { ok: false, error: "회의를 찾지 못했어요." };
   if (meeting.confirmedSlotId) return { ok: true };
-  if (participants.length === 0 || participants.some((p) => p.responseStatus !== "submitted")) {
-    return { ok: true };
-  }
+  if (participants.length === 0) return { ok: true };
+  // 미응답자가 있으면 확정하지 않는다(화면은 잠정 결과만 보여준다).
+  if (participants.some((p) => p.responseStatus !== "submitted")) return { ok: true };
 
-  const requiredParticipants = participants.filter((p) => p.attendanceType === "required");
-  if (requiredParticipants.length === 0) {
-    return { ok: false, error: "필수 참석자가 있어야 회의 시간을 정할 수 있어요." };
-  }
+  const input = toSchedulerInput(meeting, participants, blocks);
+  const contextual = buildContextualScheduleResult(evaluateAllSlots(input));
+  const candidate = pickAutoConfirmSlot(contextual);
+  if (!candidate) return { ok: true };
 
-  const requiredParticipantIds = new Set(requiredParticipants.map((p) => p.id));
-  const requiredVotes = votes.filter((vote) => requiredParticipantIds.has(vote.participantId));
-  const requiredVoterIds = new Set(requiredVotes.map((vote) => vote.participantId));
-  if (!requiredParticipants.every((participant) => requiredVoterIds.has(participant.id))) {
-    return { ok: true };
-  }
-
-  const recommendations = recommendSlots(toSchedulerInput(meeting, participants, blocks));
-  if (recommendations.length === 0) {
-    return { ok: false, error: "확정할 수 있는 후보가 없어요." };
-  }
-
-  const voteCounts = new Map<string, number>();
-  for (const vote of requiredVotes) {
-    const key = voteKey(vote.startAt, vote.endAt);
-    voteCounts.set(key, (voteCounts.get(key) ?? 0) + 1);
-  }
-  const maxVoteCount = Math.max(...voteCounts.values());
-  const winner = recommendations.find(
-    (candidate) =>
-      (voteCounts.get(voteKey(candidate.startAt, candidate.endAt)) ?? 0) === maxVoteCount,
-  );
-  if (!winner) {
-    return { ok: false, error: "가장 많이 득표한 후보를 찾지 못했어요." };
-  }
-
-  const schedulerInput = toSchedulerInput(meeting, participants, blocks);
+  // 확정 직전 서버 검증(회의 길이·날짜 범위·근무시간·점심 등)을 한 번 더 통과해야 한다.
   const confirmable = isSlotConfirmable(
-    schedulerInput.meeting,
-    schedulerInput.participants,
-    schedulerInput.blocks,
-    winner.startAt,
-    winner.endAt,
+    input.meeting,
+    input.participants,
+    input.blocks,
+    candidate.startAt,
+    candidate.endAt,
   );
   if (!confirmable.ok) return { ok: false, error: confirmable.reason };
 
-  const requiredAllAvailable = isRequiredAllAvailable(
-    participants,
-    blocks,
-    winner.startAt,
-    winner.endAt,
-  );
   const summaryText = buildShareText({
     title: meeting.title,
     agenda: meeting.agenda,
     location: meeting.location,
-    startAt: winner.startAt,
-    endAt: winner.endAt,
-    requiredAllAvailable,
+    startAt: candidate.startAt,
+    endAt: candidate.endAt,
+    // 확정 조건이 '필수 전원 가능 + 미응답 없음'이므로 항상 참이다.
+    requiredAllAvailable: true,
   });
 
   const sb = getSupabaseAdmin();
+  // 경합 방지: 동시에 두 응답이 제출될 수 있어 확정 직전 최신 상태를 다시 확인한다.
   const latestMeeting = await fetchMeeting(meetingId);
   if (!latestMeeting) return { ok: false, error: "회의를 찾지 못했어요." };
   if (latestMeeting.confirmedSlotId) return { ok: true };
@@ -648,8 +568,8 @@ async function finalizeMeetingIfReady(meetingId: string): Promise<SimpleResult> 
     .from("confirmed_slots")
     .insert({
       meeting_id: meetingId,
-      start_at: winner.startAt,
-      end_at: winner.endAt,
+      start_at: candidate.startAt,
+      end_at: candidate.endAt,
       summary_text: summaryText,
     })
     .select("id")
@@ -664,96 +584,5 @@ async function finalizeMeetingIfReady(meetingId: string): Promise<SimpleResult> 
 
   revalidatePath(`/m/${meetingId}`);
   revalidatePath(`/meetings/${meetingId}/confirmed`);
-  return { ok: true };
-}
-
-export async function loadVotingOptions(
-  args: LoadVotingOptionsArgs,
-): Promise<LoadVotingOptionsResult> {
-  const participant = await assertParticipantToken(
-    args.meetingId,
-    args.participantId,
-    args.token,
-  );
-  if (!participant) return { ok: false, error: "권한이 없어요." };
-  if (isDemoMeetingId(args.meetingId)) {
-    return {
-      ok: true,
-      options: getDemoVoteOptions(args.meetingId, args.participantId) ?? [],
-    };
-  }
-  if (participant.response_status !== "submitted") {
-    return { ok: false, error: "가능한 시간을 먼저 제출해 주세요." };
-  }
-  const meeting = await fetchMeeting(args.meetingId);
-  if (!meeting) return { ok: false, error: "회의를 찾지 못했어요." };
-  if (meeting.confirmedSlotId) {
-    return { ok: false, error: "이미 확정된 회의라 후보 투표를 볼 수 없어요." };
-  }
-  const votingOpen = await assertVotingOpen(args.meetingId);
-  if (!votingOpen.ok) return { ok: false, error: votingOpen.error };
-  return { ok: true, options: await getVoteOptions(args.meetingId, args.participantId) };
-}
-
-export async function submitVote(args: SubmitVoteArgs): Promise<SimpleResult> {
-  const participant = await assertParticipantToken(
-    args.meetingId,
-    args.participantId,
-    args.token,
-  );
-  if (!participant) return { ok: false, error: "권한이 없어요." };
-  if (participant.attendance_type !== "required") {
-    return { ok: false, error: "필수 참석자만 후보 시간대에 투표할 수 있어요." };
-  }
-  if (isDemoMeetingId(args.meetingId)) {
-    const options = getDemoVoteOptions(args.meetingId, args.participantId) ?? [];
-    const selected = options.some(
-      (option) => option.startAt === args.startAt && option.endAt === args.endAt,
-    );
-    return selected
-      ? { ok: true }
-      : { ok: false, error: "현재 후보 시간대 중 하나만 투표할 수 있어요." };
-  }
-  if (participant.response_status !== "submitted") {
-    return { ok: false, error: "가능한 시간을 먼저 제출해 주세요." };
-  }
-  const votingOpen = await assertVotingOpen(args.meetingId);
-  if (!votingOpen.ok) return { ok: false, error: votingOpen.error };
-
-  const meeting = await fetchMeeting(args.meetingId);
-  if (!meeting) return { ok: false, error: "회의를 찾지 못했어요." };
-  if (meeting.confirmedSlotId) {
-    return { ok: false, error: "이미 확정된 회의예요. 투표를 변경할 수 없어요." };
-  }
-  const participants = votingOpen.participants;
-  const blocks = await fetchBlocks(args.meetingId);
-  const recommendations = recommendSlots(toSchedulerInput(meeting, participants, blocks));
-  const selected = recommendations.some(
-    (c) => c.startAt === args.startAt && c.endAt === args.endAt,
-  );
-  if (!selected) {
-    return { ok: false, error: "현재 후보 시간대 중 하나만 투표할 수 있어요." };
-  }
-
-  const sb = getSupabaseAdmin();
-  const { error: delErr } = await sb
-    .from("meeting_votes")
-    .delete()
-    .eq("meeting_id", args.meetingId)
-    .eq("participant_id", args.participantId);
-  if (delErr) return { ok: false, error: "투표를 저장하지 못했어요." };
-
-  const { error } = await sb.from("meeting_votes").insert({
-    meeting_id: args.meetingId,
-    participant_id: args.participantId,
-    start_at: args.startAt,
-    end_at: args.endAt,
-  });
-  if (error) return { ok: false, error: "투표를 저장하지 못했어요." };
-
-  const finalizeResult = await finalizeMeetingIfReady(args.meetingId);
-  if (!finalizeResult.ok) return finalizeResult;
-
-  revalidatePath(`/m/${args.meetingId}`);
   return { ok: true };
 }

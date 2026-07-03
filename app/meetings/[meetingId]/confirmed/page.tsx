@@ -58,8 +58,8 @@ export default async function ConfirmedPage({
           <Card className="space-y-3 text-center">
             <CardTitle>아직 확정 전이에요</CardTitle>
             <p className="text-sm text-slate-600">
-              이 회의는 아직 시간이 확정되지 않았어요. 필수 참석자의 투표가 모이면
-              여기에서 공유 문구와 캘린더 파일을 받을 수 있어요.
+              이 회의는 아직 시간이 확정되지 않았어요. 모두가 응답하면 modu가 가장
+              나은 시간을 정하고, 여기에서 공유 문구와 캘린더 파일을 받을 수 있어요.
             </p>
             <div>
               <Link href="/" className="text-sm font-semibold text-brand-600">

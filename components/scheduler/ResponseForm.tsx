@@ -13,13 +13,10 @@ import { createPortal } from "react-dom";
 import { Emoji } from "@/components/ui/Emoji";
 import {
   loadCalendarSnapshot,
-  loadVotingOptions,
   loadParticipantResponse,
   submitAvailability,
-  submitVote,
   verifyParticipantIdentity,
 } from "@/app/actions/meetings";
-import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { Input, Label } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -49,7 +46,6 @@ import { useScrollLock } from "@/lib/useScrollLock";
 import { cellKey, cellsToBlocks, GRID_STEP_MINUTES } from "@/lib/grid";
 import {
   addDaysToDateStr,
-  formatKoreanDate,
   formatKoreanDateTimeRange,
   formatKoreanTime,
   formatKoreanTimeRange,
@@ -61,7 +57,6 @@ import type { PublicParticipant } from "@/lib/data";
 import type {
   CalendarSnapshotBlock,
   CalendarSnapshotParticipant,
-  VoteOption,
 } from "@/lib/actionTypes";
 import type { AttendanceType, AvailabilityStatus, CellStatus } from "@/lib/types";
 import { recommendSlots, GRADE_LABELS, type SlotCandidate } from "@/lib/scheduler";
@@ -729,8 +724,6 @@ export function ResponseForm(props: Props) {
   // 회의 안내(intro): 문장 채움이 끝난 뒤에야 '시간 정하러 가기' CTA 를 노출한다.
   const [introCtaReady, setIntroCtaReady] = useState(false);
   const [responseDraftReady, setResponseDraftReady] = useState(false);
-  const [resultSelectedIndex, setResultSelectedIndex] = useState<number | null>(null);
-  const [resultVotedIndex, setResultVotedIndex] = useState<number | null>(null);
 
   const selected = participants.find((p) => p.id === selectedId) ?? null;
   const roleOptions = Array.from(
@@ -772,8 +765,6 @@ export function ResponseForm(props: Props) {
       setDtDate(draft.dtDate);
       setDraftStart(draft.draftStart);
       setDraftEnd(draft.draftEnd);
-      setResultSelectedIndex(draft.resultSelectedIndex);
-      setResultVotedIndex(draft.resultVotedIndex);
       setResponseDraftReady(true);
       return;
     }
@@ -846,8 +837,6 @@ export function ResponseForm(props: Props) {
       dtDate,
       draftStart,
       draftEnd,
-      resultSelectedIndex,
-      resultVotedIndex,
     });
   }, [
     responseDraftReady,
@@ -868,8 +857,6 @@ export function ResponseForm(props: Props) {
     dtDate,
     draftStart,
     draftEnd,
-    resultSelectedIndex,
-    resultVotedIndex,
   ]);
 
   function persistIdentity(participantId: string, tok: string) {
@@ -1229,8 +1216,6 @@ export function ResponseForm(props: Props) {
       setDtDate(null);
       setDraftStart(DEFAULT_DRAFT_START);
       setDraftEnd(DEFAULT_DRAFT_END);
-      setResultSelectedIndex(null);
-      setResultVotedIndex(null);
     }
 
     setSelectedId(res.participantId);
@@ -1263,15 +1248,11 @@ export function ResponseForm(props: Props) {
     }
     setToken(res.token);
     persistIdentity(res.participantId, res.token);
-    setResultSelectedIndex(null);
-    setResultVotedIndex(null);
     setStep("waiting");
   }
 
   const handleSelectCase = (id: number) => {
     setCaseId(id);
-    setResultSelectedIndex(null);
-    setResultVotedIndex(null);
   };
 
   // 본인확인 단계가 바뀌면 입력에 포커스(최초 진입은 건너뜀, 스크롤 점프 방지).
@@ -1455,16 +1436,12 @@ export function ResponseForm(props: Props) {
     );
   }
 
-  // 제출 후 결과 화면 — 응답 현황 + 현재 후보 순위. 캘린더는 버튼으로 이동.
+  // 제출 후 결과 화면 — modu 의 판단(해석 문장 + 후보 그룹) 설명. 투표 없음. 캘린더는 버튼으로 이동.
   if (step === "result") {
     return (
       <ResultScreen
         caseId={caseId}
         onSelectCase={handleSelectCase}
-        selectedIndex={resultSelectedIndex}
-        votedIndex={resultVotedIndex}
-        onSelectedIndexChange={setResultSelectedIndex}
-        onVotedIndexChange={setResultVotedIndex}
         dates={dates}
         onViewCalendar={() => setStep("done")}
         onBack={() => setStep("waiting")}
@@ -2310,23 +2287,17 @@ function WaitingScreen({
   );
 }
 
+// 투표 없는 결과 화면 — 후보 카드는 선택 대상이 아니라 modu 의 판단을 설명하는 카드다.
+// (색·그룹·문장은 contextualResult 가 만들고, 확정은 서버 자동 확정 흐름이 담당한다.)
 function ResultScreen({
   caseId,
   onSelectCase,
-  selectedIndex,
-  votedIndex,
-  onSelectedIndexChange,
-  onVotedIndexChange,
   dates,
   onViewCalendar,
   onBack,
 }: {
   caseId: number;
   onSelectCase: (id: number) => void;
-  selectedIndex: number | null;
-  votedIndex: number | null;
-  onSelectedIndexChange: (index: number | null) => void;
-  onVotedIndexChange: (index: number | null) => void;
   dates: string[];
   onViewCalendar: () => void;
   // 모바일 헤더 뒤로가기 — 응답 완료(대기) 화면으로 복귀.
@@ -2337,7 +2308,6 @@ function ResultScreen({
   const total = DEMO_PEOPLE.length;
 
   // 같은 조건의 후보는 같은 그룹으로 — 무의미한 1·2·3순위 구분 대신 그룹 라벨로 보여준다.
-  // 선택/투표 로직은 기존 candidates 인덱스 기반을 유지하고, 표시 순서만 그룹으로 재배열한다.
   const contextual = useMemo(
     () => buildContextualScheduleResult(adaptDemoCaseToEvaluatedSlots(current, dates)),
     [current, dates],
@@ -2363,12 +2333,6 @@ function ResultScreen({
     return order;
   }, [candidateGroups]);
 
-  const handleVote = () => {
-    if (selectedIndex === null) return;
-    onVotedIndexChange(selectedIndex);
-    onSelectedIndexChange(null);
-  };
-
   return (
     <div
       // 레이아웃 기준은 회의 만들기 페이지: 페이지 전체 스크롤 구조.
@@ -2376,7 +2340,6 @@ function ResultScreen({
       // 본문은 헤더에 붙고 상단 여백(pt-4/sm:pt-8)을 본문 안쪽 패딩으로 갖는다
       // (공유 main 의 pt 는 음수 마진으로 상쇄).
       className="-mt-4 mx-auto flex w-full max-w-2xl flex-1 flex-col sm:-mt-8"
-      onClick={() => onSelectedIndexChange(null)}
     >
       <div className="flex flex-1 flex-col gap-3 pt-4 sm:pt-8">
         {/* 뒤로가기: 응답 완료(대기) 화면으로 */}
@@ -2407,10 +2370,17 @@ function ResultScreen({
         <div className="hidden sm:block">
           <CaseDescription caseId={caseId} />
         </div>
+
+        {/* 맥락형 해석 문장 — modu 가 응답 분포를 해석한 결과를 먼저 말해준다. */}
+        <div className="space-y-1 px-1">
+          <p className="break-keep text-sm font-bold text-slate-800">{contextual.headline}</p>
+          <p className="break-keep text-sm text-slate-600">{contextual.comment}</p>
+        </div>
+
         {candidates.length === 0 ? (
           <p className="text-sm text-slate-500">표시할 추천안이 없어요.</p>
         ) : (
-          // 무의미한 순위 번호 대신 같은 조건의 후보를 그룹 라벨로 묶어 보여준다.
+          // 후보 카드는 선택/투표 대상이 아니라 설명 카드 — 왜 이 시간이 좋은지(등급·참석 요약)를 보여준다.
           <div className="space-y-4 py-1">
             {candidateGroups.map((group) => (
               <section key={`${caseId}-${group.label}-${group.indexes.join(",")}`}>
@@ -2421,27 +2391,9 @@ function ResultScreen({
                     return (
                       <li
                         key={`${caseId}-${c.startAt}-${c.endAt}-${i}`}
-                        role="button"
-                        tabIndex={0}
-                        aria-pressed={selectedIndex === i}
                         // 위 그룹부터 순서대로 하나씩 페이드인.
                         style={{ animationDelay: `${(cardOrder.get(i) ?? 0) * 120}ms` }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSelectedIndexChange(selectedIndex === i ? null : i);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            onSelectedIndexChange(selectedIndex === i ? null : i);
-                          }
-                        }}
-                        className={cn(
-                          "group relative cursor-pointer animate-fade-in rounded-2xl bg-white p-4 shadow-[0_1px_4px_rgba(15,23,42,0.12)] transition-colors hover:bg-slate-100 focus:outline-none motion-reduce:animate-none",
-                          selectedIndex === i
-                            ? "ring-2 ring-brand-500"
-                            : "focus-visible:ring-2 focus-visible:ring-brand-300",
-                        )}
+                        className="relative animate-fade-in rounded-2xl bg-white p-4 shadow-[0_1px_4px_rgba(15,23,42,0.12)] motion-reduce:animate-none"
                       >
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -2461,16 +2413,6 @@ function ResultScreen({
                             >
                               {GRADE_LABELS[c.grade]}
                             </span>
-                            {c.votes != null && (
-                              <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
-                                {c.votes}표
-                              </span>
-                            )}
-                            {votedIndex === i && (
-                              <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
-                                투표됨
-                              </span>
-                            )}
                           </div>
                           <p className="mt-1 break-keep text-sm text-slate-500">{c.reason}</p>
                         </div>
@@ -2486,19 +2428,15 @@ function ResultScreen({
 
       <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} aboveCta />
 
-      {/* PC 에서도 하단 고정 — 고정 바 안에서 버튼 폭은 본문 컬럼(랜딩 CTA와 동일)과 맞춘다. */}
+      {/* PC 에서도 하단 고정 — 고정 바 안에서 버튼 폭은 본문 컬럼(랜딩 CTA와 동일)과 맞춘다.
+          투표 CTA 는 제거 — 캘린더에서 분포와 판단 근거를 확인하는 흐름으로 잇는다. */}
       <MobileStickyAction
         className="mt-6 sm:mt-8"
         stickyDesktop
         innerClassName="sm:max-w-2xl sm:px-6"
       >
-        <TDSButton
-          size="xl"
-          display="block"
-          onClick={handleVote}
-          disabled={selectedIndex === null}
-        >
-          {selectedIndex === null ? "시간을 선택해주세요" : "투표하기"}
+        <TDSButton size="xl" display="block" onClick={onViewCalendar}>
+          캘린더 보기
         </TDSButton>
       </MobileStickyAction>
     </div>
@@ -2515,8 +2453,9 @@ function LegendDot({ className, label }: { className: string; label: string }) {
 }
 
 // 추천결과 캘린더(와이드) 셀 톤: 색은 순위가 아니라 신호다.
-// 파랑 = 정말 추천할 시간이 있는 날, 옅은 빨강 = 피하는 게 좋은 날(그날 모든 슬롯이 hard avoid),
-// 나머지는 중립. 톤 판정은 lib/scheduler/contextualResult 의 calendarMarks 가 한다.
+// 파랑 = 가장 나은 시간이 있는 날(범례와 동일 표현 — busyPeriod 에선 차선 후보일 수 있음),
+// 옅은 빨강 = 피하는 게 좋은 날(그날 모든 슬롯이 hard avoid), 나머지는 중립.
+// 톤 판정은 lib/scheduler/contextualResult 의 calendarMarks 가 한다.
 const TONE_CELL: Record<CalendarTone, string> = {
   recommended: "bg-brand-500 font-bold text-white shadow-sm shadow-brand-500/20",
   avoid: "bg-red-100 font-semibold text-red-700",
@@ -3006,11 +2945,6 @@ function SubmittedCalendarScreenWide({
                       >
                         {GRADE_LABELS[candidate.grade]}
                       </span>
-                      {candidate.votes != null && (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
-                          {candidate.votes}표
-                        </span>
-                      )}
                     </div>
                     <p className="break-keep text-sm text-slate-500">{candidate.reason}</p>
                     <AttendeeGroup tone="green" label="가능" names={candidate.availableNames} />
@@ -3026,119 +2960,6 @@ function SubmittedCalendarScreenWide({
       </div>
 
       <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} />
-    </div>
-  );
-}
-
-function VotingPanel({
-  meetingId,
-  participantId,
-  token,
-}: {
-  meetingId: string;
-  participantId: string;
-  token: string;
-}) {
-  const [options, setOptions] = useState<VoteOption[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [votingKey, setVotingKey] = useState<string | null>(null);
-
-  async function load() {
-    const res = await loadVotingOptions({ meetingId, participantId, token });
-    if (!res.ok) {
-      setError(res.error);
-      setOptions([]);
-      return;
-    }
-    setError(null);
-    setOptions(res.options);
-  }
-
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [meetingId, participantId, token]);
-
-  async function vote(option: VoteOption) {
-    const key = `${option.startAt}|${option.endAt}`;
-    setVotingKey(key);
-    setError(null);
-    const res = await submitVote({
-      meetingId,
-      participantId,
-      token,
-      startAt: option.startAt,
-      endAt: option.endAt,
-    });
-    setVotingKey(null);
-    if (!res.ok) {
-      setError(res.error);
-      return;
-    }
-    await load();
-  }
-
-  if (options === null) {
-    return <p className="text-sm text-slate-500">후보 시간대를 불러오는 중...</p>;
-  }
-
-  if (options.length === 0) {
-    return (
-      <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-        <p>{error ?? "아직 투표할 수 있는 후보 시간대가 없어요."}</p>
-        <TDSButton
-          type="button"
-          size="sm"
-          tone="secondary"
-          className="mt-2"
-          onClick={() => void load()}
-        >
-          후보 다시 확인
-        </TDSButton>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2 text-left">
-      {options.map((option) => {
-        const key = `${option.startAt}|${option.endAt}`;
-        const selected = option.userSelected;
-        return (
-          <button
-            key={key}
-            type="button"
-            onClick={() => vote(option)}
-            disabled={votingKey !== null}
-            className={cn(
-              "w-full rounded-xl border px-4 py-3 text-left transition-colors disabled:opacity-60",
-              selected
-                ? "border-brand-400 bg-brand-50 ring-1 ring-brand-300"
-                : "border-slate-200 bg-white hover:bg-slate-50",
-            )}
-          >
-            <span className="block text-xs font-semibold text-slate-500">
-              {formatKoreanDate(option.startAt)}
-            </span>
-            <span className="mt-1 flex items-center justify-between gap-2">
-              <span className="text-base font-bold text-slate-900">
-                {formatKoreanTimeRange(option.startAt, option.endAt)}
-              </span>
-              <Badge tone={selected ? "brand" : "gray"}>
-                {selected ? "내 투표" : `${option.voteCount}표`}
-              </Badge>
-            </span>
-            <span className="mt-2 block text-sm leading-relaxed text-slate-600">
-              {option.reason}
-            </span>
-          </button>
-        );
-      })}
-      {error && (
-        <p className="text-sm font-medium text-red-600" role="alert">
-          {error}
-        </p>
-      )}
     </div>
   );
 }

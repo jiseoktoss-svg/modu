@@ -1,4 +1,5 @@
-export const RESPONSE_DRAFT_VERSION = 1;
+// v2: 투표 개념 제거로 resultSelectedIndex/resultVotedIndex 필드 삭제(구버전 드래프트는 폐기).
+export const RESPONSE_DRAFT_VERSION = 2;
 
 export type ResponseDraftStep =
   | "intro"
@@ -33,8 +34,6 @@ export interface ResponseDraft {
   dtDate: string | null;
   draftStart: string;
   draftEnd: string;
-  resultSelectedIndex: number | null;
-  resultVotedIndex: number | null;
   savedAt: string;
 }
 
@@ -70,10 +69,6 @@ function isStep(value: unknown): value is ResponseDraftStep {
 
 function isStepIndex(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 1;
-}
-
-function isNullableCandidateIndex(value: unknown): value is number | null {
-  return value === null || (typeof value === "number" && Number.isInteger(value) && value >= 0);
 }
 
 function isCaseId(value: unknown): value is number {
@@ -133,8 +128,6 @@ function parseResponseDraft(raw: string, meetingId: string): ResponseDraft | nul
   if (!isNullableString(parsed.dtDate)) return null;
   if (!isString(parsed.draftStart)) return null;
   if (!isString(parsed.draftEnd)) return null;
-  if (!isNullableCandidateIndex(parsed.resultSelectedIndex)) return null;
-  if (!isNullableCandidateIndex(parsed.resultVotedIndex)) return null;
   if (!isString(parsed.savedAt)) return null;
 
   return {
@@ -156,8 +149,6 @@ function parseResponseDraft(raw: string, meetingId: string): ResponseDraft | nul
     dtDate: parsed.dtDate,
     draftStart: parsed.draftStart,
     draftEnd: parsed.draftEnd,
-    resultSelectedIndex: parsed.resultSelectedIndex,
-    resultVotedIndex: parsed.resultVotedIndex,
     savedAt: parsed.savedAt,
   };
 }

@@ -55,15 +55,6 @@ export type LoadResponseResult =
   | { ok: true; blocks: SubmitBlockInput[]; memo: string | null }
   | { ok: false; error: string };
 
-export interface VoteOption {
-  startAt: string;
-  endAt: string;
-  grade: string;
-  reason: string;
-  voteCount: number;
-  userSelected: boolean;
-}
-
 export interface CalendarSnapshotParticipant {
   id: string;
   name: string;
@@ -92,21 +83,3 @@ export type LoadCalendarSnapshotResult =
       blocks: CalendarSnapshotBlock[];
     }
   | { ok: false; error: string };
-
-export interface LoadVotingOptionsArgs {
-  meetingId: string;
-  participantId: string;
-  token: string;
-}
-
-export type LoadVotingOptionsResult =
-  | { ok: true; options: VoteOption[] }
-  | { ok: false; error: string };
-
-export interface SubmitVoteArgs {
-  meetingId: string;
-  participantId: string;
-  token: string;
-  startAt: string;
-  endAt: string;
-}

@@ -4,9 +4,8 @@ import {
   MAX_MEETING_PARTICIPANTS,
   MIN_MEETING_PARTICIPANTS,
 } from "@/lib/meetingLimits";
-import { addDaysToDateStr, kstWallToIso, parseHm } from "@/lib/time";
+import { addDaysToDateStr } from "@/lib/time";
 import type { Meeting, Participant } from "@/lib/types";
-import type { VoteOption } from "@/lib/actionTypes";
 
 export const DEMO_MEETING_ID_PREFIX = "demo_";
 
@@ -180,33 +179,5 @@ export function getDemoParticipants(meetingId: string): Participant[] | null {
     memo: null,
     createdAt: `${payload.dateStart}T00:00:00+09:00`,
     updatedAt: `${payload.dateStart}T00:00:00+09:00`,
-  }));
-}
-
-export function getDemoVoteOptions(meetingId: string, participantId: string): VoteOption[] | null {
-  const payload = parseDemoMeetingPayload(meetingId);
-  const participants = getDemoParticipants(meetingId);
-  if (!payload || !participants?.some((participant) => participant.id === participantId)) {
-    return null;
-  }
-
-  const workStart = parseHm(payload.workdayStart);
-  const duration = payload.durationMinutes;
-  const firstStart = Math.min(workStart + 60, parseHm(payload.workdayEnd) - duration);
-  const secondStart = Math.min(firstStart + 90, parseHm(payload.workdayEnd) - duration);
-  const options = [firstStart, secondStart].filter((start, index, list) => {
-    return start >= workStart && start + duration <= parseHm(payload.workdayEnd) && list.indexOf(start) === index;
-  });
-
-  return options.map((start, index) => ({
-    startAt: kstWallToIso(payload.dateStart, start),
-    endAt: kstWallToIso(payload.dateStart, start + duration),
-    grade: index === 0 ? "A" : "B",
-    reason:
-      index === 0
-        ? "데모에서 확인할 수 있는 추천 후보예요."
-        : "비교해 볼 수 있게 준비한 두 번째 데모 후보예요.",
-    voteCount: 0,
-    userSelected: false,
   }));
 }

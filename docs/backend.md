@@ -6,12 +6,11 @@ modu의 백엔드는 로그인 없는 링크 기반 알파 서비스에 맞춰, 
 
 핵심 목표:
 
-- 회의, 참석자, 응답, 후보 투표, 확정 정보를 안정적으로 저장한다.
+- 회의, 참석자, 응답, 확정 정보를 안정적으로 저장한다.
 - 참석자 링크와 참석자별 수정 토큰을 생성한다.
 - 참석자는 같은 브라우저에서만 본인 응답을 수정할 수 있다.
-- 필수 참석자는 전원 응답 후 후보 시간대에 투표할 수 있다.
 - 회의 생성자는 참석자 중 한 명일 뿐이며, 별도 관리자 권한을 갖지 않는다.
-- 필수 참석자 투표가 모두 모이면 서비스 규칙에 따라 회의 시간이 확정된다.
+- **투표는 없다.** 모든 참석자가 응답하면 modu가 전체 응답을 해석해, 확정 조건(필수참석자 불가 0명 + 미응답 0명)을 만족하는 최상위 후보를 자동으로 회의 시간으로 확정한다. 조건을 만족하는 후보가 없으면 확정하지 않는다(화면이 기간 조정을 안내).
 - 추천 알고리즘은 UI와 분리해 테스트 가능하게 만든다.
 
 ## 2. 기술 기준
@@ -102,18 +101,19 @@ DB 컬럼명은 Supabase/Postgres 기준으로 snake_case를 사용한다.
 | `note` | 선택 메모 |
 | `created_at` | 생성일 |
 
-### meeting_votes
+### meeting_votes (deprecated)
+
+투표 개념 제거(자동 확정으로 대체)로 **앱은 이 테이블을 더 이상 읽거나 쓰지 않는다.**
+기존 배포 DB 호환과 롤백 가능성을 위해 테이블 자체는 남겨 두었고, 안정화 후 drop 마이그레이션을 검토한다.
 
 | 컬럼 | 설명 |
 | --- | --- |
-| `id` | 투표 ID |
+| `id` | ID |
 | `meeting_id` | 회의 ID |
 | `participant_id` | 참석자 ID |
-| `start_at` | 투표한 후보 시작 시각 |
-| `end_at` | 투표한 후보 종료 시각 |
+| `start_at` | 후보 시작 시각 |
+| `end_at` | 후보 종료 시각 |
 | `created_at` | 생성일 |
-
-필수 참석자 1명은 회의 1개당 하나의 후보에만 투표할 수 있다. 다시 투표하면 기존 투표를 삭제하고 새 투표를 저장한다.
 
 ### confirmed_slots
 
@@ -301,7 +301,7 @@ grant all on meeting_votes to service_role;
   - 확정된 회의에서는 응답을 수정할 수 없다.
   - 해당 참석자의 기존 `availability_blocks`를 교체한다.
   - `response_status`를 `submitted`로 변경한다.
-  - 응답이 바뀌면 해당 회의의 후보 투표를 초기화한다.
+  - 저장에 성공하면 `autoConfirmMeetingIfReady`를 호출한다.
 
 - `loadCalendarSnapshot`
   - 참석자 `participantToken`을 검증한다.
@@ -309,25 +309,13 @@ grant all on meeting_votes to service_role;
   - 참석자별 상세 메모와 블록 note 원문은 반환하지 않는다.
   - 반환 데이터는 가능/선호/불가능/미응답 집계를 만들기 위한 최소 정보로 제한한다.
 
-- `loadVotingOptions`
-  - 참석자 `participantToken`을 검증한다.
-  - 모든 참석자가 응답했을 때만 추천 후보를 투표 옵션으로 반환한다.
-  - 후보별 현재 투표 수와 본인 투표 여부를 함께 반환한다.
-  - 필수 참석자에게는 투표 가능 상태를, 선택 참석자에게는 결과 확인 상태를 반환한다.
-
-- `submitVote`
-  - 참석자 `participantToken`을 검증한다.
-  - 모든 참석자가 응답한 뒤에만 투표를 저장한다.
-  - 필수 참석자만 투표할 수 있다.
-  - 참석자당 1표만 유지한다.
-  - 확정된 회의에서는 투표를 받지 않는다.
-  - 필수 참석자의 투표가 모두 모이면 확정 후보를 계산한다.
-
-- `finalizeMeeting`
-  - 별도 수동 요청 없이 서버가 서비스 규칙에 따라 실행한다.
-  - 모든 참석자가 응답하고 필수 참석자의 후보 투표가 모두 모였는지 검증한다.
-  - 최다 득표 후보를 `confirmed_slots`에 저장한다. 동률이면 사람이 고르지 않고 modu 추천순이 더 높은 후보를 저장한다.
-  - `meetings.confirmed_slot_id`를 업데이트한다.
+- `autoConfirmMeetingIfReady` (내부 함수 — 투표를 대체하는 자동 확정)
+  - 모든 참석자가 `submitted`인지 확인한다. 미응답자가 있으면 확정하지 않는다.
+  - `toSchedulerInput → evaluateAllSlots → buildContextualScheduleResult`로 전체 응답을 해석한다.
+  - `pickAutoConfirmSlot`이 확정 조건(필수참석자 불가 0명 + 미응답 0명)을 만족하는 정렬상 최상위 후보를 고른다. 비슷한 후보가 여러 개여도 사람이 고르지 않고 일관된 규칙(필수 불가 적음 → 가능 인원 많음 → 선택 불가 적음 → 이른 시간)을 따른다.
+  - 조건을 만족하는 후보가 없으면 확정하지 않고 종료한다(화면이 기간 조정 안내를 담당).
+  - 확정 직전 `isSlotConfirmable`로 서버 검증을 한 번 더 통과해야 한다.
+  - `confirmed_slots`에 저장하고 `meetings.confirmed_slot_id`를 업데이트한다. 경합 방지를 위해 확정 직전 최신 상태를 재확인한다.
 
 Route Handler:
 
@@ -387,15 +375,13 @@ lib/scheduler/
 
 > 현재 참석자 응답 폼은 불가 중심 입력으로 `busy` 블록만 생성한다. `avoid`/`preferred` 채점·가점 경로는 엔진과 타입에 남아 있으나 기존 데이터 호환용이며, 신규 응답에서는 이 두 상태가 더 이상 만들어지지 않는다.
 
-### 후보 투표 및 확정
+### 자동 확정
 
-- 모든 참석자가 `submitted` 상태가 되기 전에는 투표 옵션을 반환하지 않는다.
-- 필수 참석자만 후보에 투표할 수 있고, 선택 참석자는 후보 설명과 결과를 확인한다.
-- 필수 참석자 1명은 후보 1개에 투표할 수 있고, 다시 투표하면 기존 투표를 교체한다.
-- 필수 참석자의 투표가 모두 모이면 후보별 투표 수를 계산한다.
-- 최다 득표 후보가 회의 시간으로 확정된다.
-- 1위가 동률이면 사람이 임의로 고르지 않고, 동률 후보 중 modu 추천순이 더 높은 후보가 확정된다.
-- 참석자가 응답을 수정하면 후보 투표를 초기화하고, 확정된 회의에서는 응답·투표를 잠근다.
+- 모든 참석자가 `submitted` 상태가 되기 전에는 확정하지 않는다(화면은 잠정 결과만 보여준다).
+- 전원 응답 시 modu가 전체 응답을 해석해, 확정 조건(필수참석자 불가 0명 + 미응답 0명)을 만족하는 정렬상 최상위 후보를 회의 시간으로 확정한다.
+- 조건을 만족하는 후보가 없으면 확정하지 않고, 화면이 기간 조정을 안내한다.
+- 비슷한 후보가 여러 개여도 사람이 고르지 않고, 일관된 규칙(필수 불가 적음 → 가능 인원 많음 → 선택 불가 적음 → 이른 시간)으로 하나를 정한다.
+- 확정된 회의에서는 응답을 잠근다.
 
 ### 추천 설명
 
@@ -417,7 +403,7 @@ lib/scheduler/
 - 참석자 링크를 가진 사람은 응답 화면에 접근할 수 있다.
 - 별도 관리자 화면이나 관리자 토큰은 두지 않는다.
 - 회의 생성자는 참석자 중 한 명이며, 다른 참석자보다 더 높은 관리 권한을 갖지 않는다.
-- 추천 결과 확인, 전체 캘린더, 후보 투표는 참석자 화면에서 제공한다.
+- 추천 결과 확인과 전체 캘린더는 참석자 화면에서 제공한다.
 - 참석자 수정은 같은 브라우저에 저장된 `participantToken`이 있을 때만 허용한다.
 - Supabase secret/service role key는 서버에서만 사용한다.
 - 브라우저에는 민감한 key를 노출하지 않는다.
@@ -447,13 +433,12 @@ Supabase 정책:
 - 참석자 첫 제출이 저장된다.
 - 같은 `participantToken`으로 기존 응답을 수정할 수 있다.
 - 잘못된 `participantToken`으로 수정할 수 없다.
-- 모든 참석자가 응답하기 전에는 후보 투표를 할 수 없다.
-- 필수 참석자당 후보 투표는 1표만 유지된다.
-- 선택 참석자는 후보에 투표할 수 없다.
+- 모든 참석자가 응답하기 전에는 확정하지 않는다.
+- 전원 응답 시 확정 조건(필수 불가 0명 + 미응답 0명)을 만족하는 최상위 후보가 자동 확정된다.
+- 필수참석자가 모두 참석할 수 있는 후보가 없으면 확정하지 않는다.
 - 응답 이후 참석 유형을 임의로 변경할 수 없다.
-- 필수 참석자 전원 투표 전에는 확정할 수 없다.
-- 1위가 동률이면 modu 추천순이 더 높은 후보가 확정된다.
-- 확정된 회의에서는 응답·투표를 수정할 수 없다.
+- 비슷한 후보가 여러 개면 일관된 규칙(이른 시간 우선)으로 하나가 확정된다.
+- 확정된 회의에서는 응답을 수정할 수 없다.
 - 확정된 회의만 `.ics` 파일을 다운로드할 수 있다.
 
 ## 10. 구현 완료 후 README 정리 항목
@@ -493,9 +478,9 @@ Supabase 정책:
 | --- | --- | --- |
 | `createMeeting` | 입력 검증(필수·길이·인원 2~8·회의 마감일≥오늘+2일·응답 마감일≤마감일−2일) | 회의(`response_deadline` 포함)+참석자 insert, 참석자별 `participant_token` 발급, 공유 화면 redirect. **운영+env 없음** 시 `lib/demoMeeting` 데모 ID로 우회 |
 | `verifyParticipantIdentity` | 이름+직무 명단 대조 | `participant_token` 반환(기존 제출자는 토큰 일치 시 수정 허용) |
-| `submitAvailability` | `participantId`+토큰, 미확정 | 기존 블록 교체(delete→insert), `response_status='submitted'`, **회의 투표 초기화** |
+| `submitAvailability` | `participantId`+토큰, 미확정 | 기존 블록 교체(delete→insert), `response_status='submitted'`, 성공 시 **`autoConfirmMeetingIfReady` 호출** |
 | `loadParticipantResponse` / `loadCalendarSnapshot` | participant 토큰 | 본인 응답 / 캘린더 집계용 최소 데이터(메모 원문 제외) |
-| `loadVotingOptions` / `submitVote` | participant 토큰, 전원 응답 | 후보=추천결과, 필수 참석자 1인 1표(재투표 교체), 필수 참석자 투표 완료 시 자동 확정 |
+| `autoConfirmMeetingIfReady`(내부) | 전원 응답 + 확정 조건(필수 불가 0·미응답 0) + `isSlotConfirmable` | `evaluateAllSlots → buildContextualScheduleResult → pickAutoConfirmSlot`로 최상위 후보를 골라 `confirmed_slots` insert + `confirmed_slot_id` update. 조건 미충족 시 아무것도 하지 않음 |
 
 Route Handler: `app/api/meetings/[meetingId]/ics/route.ts` — 확정 슬롯 있을 때만 `.ics`(`lib/ics.ts: buildIcs`).
 
@@ -520,15 +505,15 @@ Route Handler: `app/api/meetings/[meetingId]/ics/route.ts` — 확정 슬롯 있
 
 ### 11.4 데이터·영속 계층
 
-- **`lib/data.ts`** — 읽기 어댑터 `fetchMeeting/fetchParticipants/fetchBlocks/fetchVotes/fetchConfirmedSlot`, 행→도메인 매핑, `toPublicParticipant`(토큰·메모 제거), `toSchedulerInput`(엔진 입력 변환), `isRequiredAllAvailable`. 데모 ID는 여기서 분기.
+- **`lib/data.ts`** — 읽기 어댑터 `fetchMeeting/fetchParticipants/fetchBlocks/fetchConfirmedSlot`, 행→도메인 매핑, `toPublicParticipant`(토큰·메모 제거), `toSchedulerInput`(엔진 입력 변환), `isRequiredAllAvailable`. 데모 ID는 여기서 분기.
 - **`lib/supabase/server.ts`** — `getSupabaseAdmin()`(키: `SUPABASE_SECRET_KEY ?? SUPABASE_SERVICE_ROLE_KEY`), `hasSupabaseConfig()`(데모 진입 게이트). `server-only`.
 - **`lib/supabase/localClient.ts`** — supabase-js thenable 체이닝 흉내 + `runExclusive` 직렬화. **unique/check/FK는 강제 안 함**(로컬은 되는데 운영은 실패 가능).
 - **`lib/tokens.ts`** — `generateToken(bytes=24)` = `randomBytes(24).toString('base64url')`(192비트 CSPRNG, 평문 저장).
-- **`lib/demoMeeting.ts`** — 회의 페이로드를 `demo_` + base64url(JSON) meetingId에 인코딩(무서명). `isDemoMeetingId`, `createDemoMeetingId`, `getDemoMeeting/Participants/VoteOptions`, 고정 참석자 토큰 `demo-token-N`.
+- **`lib/demoMeeting.ts`** — 회의 페이로드를 `demo_` + base64url(JSON) meetingId에 인코딩(무서명). `isDemoMeetingId`, `createDemoMeetingId`, `getDemoMeeting/Participants`, 고정 참석자 토큰 `demo-token-N`.
 
 ### 11.5 함정 / 주의
 
-- **비원자성**: `submitVote`의 자동 확정·`submitAvailability`(delete→insert)·`createMeeting`이 트랜잭션 아님 → 부분 실패·경쟁 조건 가능.
+- **비원자성**: `autoConfirmMeetingIfReady`(confirmed_slots insert→meetings update)·`submitAvailability`(delete→insert)·`createMeeting`이 트랜잭션 아님 → 부분 실패·경쟁 조건 가능.
 - **권한은 평문 토큰 `===` 비교**(상수시간 아님). RLS는 service_role만 grant라 보안이 앱 내부 토큰 비교에 전적으로 의존.
 - **데모 소비 경로는 env 게이트 안 됨**: 생성은 `production && !hasSupabaseConfig()`로 막지만, 읽기/액션 단락은 `isDemoMeetingId`만으로 발동(운영에서도 `demo_` ID 위조 가능). 데모 토큰은 추측 가능·페이로드 무서명.
 - **`expires_at`은 선언만** 있고 삭제 잡 없음. 점심 비활성화는 `lunch_start='00:00'/lunch_end='00:01'` 센티넬(서버가 점심 겹침 블록 거부, DDL 기본값 `12:00/13:00`과 다름 — 코드가 insert 시 센티넬 명시).
