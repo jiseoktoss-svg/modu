@@ -36,6 +36,8 @@ create table if not exists meetings (
   lunch_end time not null default '13:00',
   admin_token text not null unique,
   confirmed_slot_id uuid,
+  -- 응답 마감 시각(ISO). 미설정이면 null.
+  response_deadline timestamptz,
   created_at timestamptz not null default now(),
   expires_at timestamptz not null default (now() + interval '30 days'),
   check (date_start <= date_end),
@@ -45,6 +47,7 @@ create table if not exists meetings (
 
 alter table meetings add column if not exists agenda text not null default '';
 alter table meetings add column if not exists location text not null default '';
+alter table meetings add column if not exists response_deadline timestamptz;
 
 create table if not exists participants (
   id uuid primary key default gen_random_uuid(),

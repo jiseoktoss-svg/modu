@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   buildCalendarMarks,
   buildContextualScheduleResult,
+  evaluateAllSlots,
   type EvaluatedSlot,
 } from "@/lib/scheduler/contextualResult";
 import { adaptDemoCaseToEvaluatedSlots } from "@/data/demoCaseAdapter";
 import { DEMO_CASES } from "@/data/demoCases";
 import { addDaysToDateStr, todayDateStrKst } from "@/lib/time";
+import type { SchedulerInput } from "@/lib/scheduler";
 
 // ---- fixture 도우미 ----
 
@@ -180,5 +182,76 @@ describe("contextualResult", () => {
       result.rankGroups[0].slots.map((s) => `${s.requiredBusyCount}|${s.totalAvailable}`),
     );
     expect(signatures.size).toBe(1);
+  });
+});
+
+// 실제 회의 데이터(SchedulerInput) 경로 — 데모 어댑터 없이 evaluateAllSlots 를 직접 검증한다.
+// 나중에 실데이터를 연결할 때 toSchedulerInput → evaluateAllSlots → buildContextualScheduleResult
+// 로 이어지는 진입점을 잠가 둔다.
+describe("evaluateAllSlots", () => {
+  const REAL_INPUT: SchedulerInput = {
+    meeting: {
+      durationMinutes: 60,
+      dateStart: "2026-07-01",
+      dateEnd: "2026-07-01",
+      workdayStart: "09:00",
+      workdayEnd: "12:00",
+      // 점심 비활성 센티널(제품과 동일)
+      lunchStart: "00:00",
+      lunchEnd: "00:01",
+    },
+    participants: [
+      { id: "r1", name: "필수일", attendanceType: "required", responseStatus: "submitted" },
+      { id: "r2", name: "필수이", attendanceType: "required", responseStatus: "submitted" },
+      { id: "o1", name: "선택일", attendanceType: "optional", responseStatus: "submitted" },
+    ],
+    blocks: [
+      {
+        participantId: "r1",
+        startAt: "2026-07-01T09:00:00+09:00",
+        endAt: "2026-07-01T10:00:00+09:00",
+        status: "busy",
+      },
+    ],
+  };
+
+  it("11. 필수참석자가 빠지는 슬롯도 버리지 않고 평가에 남긴다", () => {
+    const slots = evaluateAllSlots(REAL_INPUT);
+
+    // 09:00~12:00, 60분 회의, 30분 간격 → 09:00/09:30/10:00/10:30/11:00 시작 5개
+    expect(slots).toHaveLength(5);
+
+    const nine = slots.find((s) => s.startAt.includes("T09:00"));
+    expect(nine).toBeDefined();
+    expect(nine?.requiredBusyCount).toBe(1);
+    expect(nine?.requiredBusyNames).toEqual(["필수일"]);
+    expect(nine?.isSoftAvoid).toBe(true);
+    expect(nine?.date).toBe("2026-07-01");
+
+    // busy(09~10)와 겹치지 않는 슬롯은 전원 가능이다.
+    const eleven = slots.find((s) => s.startAt.includes("T11:00"));
+    expect(eleven?.isAllAvailable).toBe(true);
+    expect(eleven?.totalAvailable).toBe(3);
+  });
+
+  it("12. 미응답자는 가능 인원에서 빼고 pendingNames 로 전달한다", () => {
+    const slots = evaluateAllSlots({
+      ...REAL_INPUT,
+      blocks: [],
+      participants: [
+        ...REAL_INPUT.participants,
+        { id: "o2", name: "미응답일", attendanceType: "optional", responseStatus: "pending" },
+      ],
+    });
+
+    const first = slots[0];
+    expect(first.pendingNames).toEqual(["미응답일"]);
+    expect(first.totalParticipants).toBe(4);
+    expect(first.totalAvailable).toBe(3); // 미응답자는 가능 인원으로 세지 않는다
+    expect(first.isAllAvailable).toBe(false);
+
+    const result = buildContextualScheduleResult(slots);
+    expect(result.hasPending).toBe(true);
+    expect(result.headline).toContain("잠정 결과");
   });
 });

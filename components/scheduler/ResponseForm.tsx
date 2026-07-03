@@ -74,6 +74,7 @@ import {
 import { adaptDemoCaseToEvaluatedSlots } from "@/data/demoCaseAdapter";
 import {
   buildContextualScheduleResult,
+  type CalendarMark,
   type CalendarTone,
 } from "@/lib/scheduler/contextualResult";
 
@@ -2513,49 +2514,6 @@ function LegendDot({ className, label }: { className: string; label: string }) {
   );
 }
 
-// 등급별 날짜 강조 톤 — 정상 후보(브랜드 블루), 차선(앰버), 성립 어려움(레드).
-type DayEmphasisTone = "brand" | "amber" | "red";
-
-// 순위 색상은 4단계: 1·2·3순위는 각자 한 단계씩, 4순위부터는 전부 'rest' 한 그룹.
-const DAY_EMPHASIS: Record<
-  DayEmphasisTone,
-  { rank1: string; rank2: string; rank3: string; rest: string; badge: string; pill: string }
-> = {
-  brand: {
-    rank1: "bg-brand-500 font-bold text-white shadow-sm shadow-brand-500/20",
-    rank2: "bg-brand-200 font-bold text-brand-900",
-    rank3: "bg-brand-100 font-semibold text-brand-800",
-    rest: "bg-brand-50 font-medium text-brand-700",
-    badge: "bg-brand-600",
-    pill: "bg-brand-50 text-brand-700",
-  },
-  amber: {
-    rank1: "bg-amber-500 font-bold text-white shadow-sm shadow-amber-500/20",
-    rank2: "bg-amber-200 font-bold text-amber-900",
-    rank3: "bg-amber-100 font-semibold text-amber-800",
-    rest: "bg-amber-50 font-medium text-amber-700",
-    badge: "bg-amber-600",
-    pill: "bg-amber-50 text-amber-700",
-  },
-  red: {
-    rank1: "bg-red-500 font-bold text-white shadow-sm shadow-red-500/20",
-    rank2: "bg-red-200 font-bold text-red-900",
-    rank3: "bg-red-100 font-semibold text-red-800",
-    rest: "bg-red-50 font-medium text-red-700",
-    badge: "bg-red-600",
-    pill: "bg-red-50 text-red-700",
-  },
-};
-
-// 후보의 강조 톤(2색 체계): 파랑 = 추천, 빨강 = 주의(필수 인원 빠짐/성립 어려움).
-// 노랑(앰버)은 사용자가 외울 색을 줄이기 위해 쓰지 않는다. (DAY_EMPHASIS 의 amber 항목은
-// 보존용 원본 화면 타입 호환을 위해 남아 있을 뿐 런타임에서 반환되지 않는다.)
-// 두 번째 인자는 보존용 원본 화면의 호출 시그니처 호환을 위해 남겨둔다.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function caseEmphasisTone(candidate: CaseCandidate, _dangerCase: boolean): DayEmphasisTone {
-  return candidate.grade === "caution" ? "red" : "brand";
-}
-
 // 추천결과 캘린더(와이드) 셀 톤: 색은 순위가 아니라 신호다.
 // 파랑 = 정말 추천할 시간이 있는 날, 옅은 빨강 = 피하는 게 좋은 날(그날 모든 슬롯이 hard avoid),
 // 나머지는 중립. 톤 판정은 lib/scheduler/contextualResult 의 calendarMarks 가 한다.
@@ -2626,237 +2584,9 @@ function buildWeeksFromDates(dates: string[]): string[][] {
   return weeks;
 }
 
-// ⚠️ 보존용 원본(현재 미사용) — 회의 캘린더 화면의 와이드 버전(SubmittedCalendarScreenWide)을
-// 도입하면서 원래 화면을 나중에 다시 쓸 수 있게 그대로 남겨 두었다. done 스텝은 와이드 버전을 쓴다.
-function SubmittedCalendarScreen({
-  caseId,
-  onSelectCase,
-  dates,
-  onBack,
-}: {
-  caseId: number;
-  onSelectCase: (id: number) => void;
-  dates: string[];
-  onBack: () => void;
-}) {
-  // 데모 단계: 선택한 케이스의 더미 응답으로 월 달력을 채운다.
-  const current = DEMO_CASES.find((c) => c.id === caseId) ?? DEMO_CASES[0];
-  const candidates = useMemo(() => buildCaseCandidates(current, dates), [current, dates]);
-  const respondedCount = DEMO_PEOPLE.length - current.pendingNames.length;
-  const dangerCase = current.banner?.tone === "danger";
-
-  // 날짜 → 그 날의 후보들(순위 오름차순). 보통 하루에 후보 하나.
-  const candidatesByDate = useMemo(() => {
-    const map = new Map<string, { rank: number; candidate: CaseCandidate }[]>();
-    candidates.forEach((candidate, i) => {
-      const list = map.get(candidate.date) ?? [];
-      list.push({ rank: i + 1, candidate });
-      map.set(candidate.date, list);
-    });
-    return map;
-  }, [candidates]);
-
-  const months = useMemo(
-    () => getCalendarMonthsWithDates([...dates, ...candidates.map((c) => c.date)]),
-    [dates, candidates],
-  );
-  const monthIndexOf = (dateStr: string) => {
-    const [y, m] = dateStr.split("-").map(Number);
-    return months.findIndex((mm) => mm.y === y && mm.m === m);
-  };
-
-  const [selectedDate, setSelectedDate] = useState<string | null>(candidates[0]?.date ?? null);
-  const [monthIdx, setMonthIdx] = useState(() =>
-    Math.max(0, candidates[0] ? monthIndexOf(candidates[0].date) : 0),
-  );
-  // 케이스가 바뀌면 1순위 날짜를 다시 선택하고 그 달로 이동한다.
-  useEffect(() => {
-    const top = candidates[0]?.date ?? null;
-    setSelectedDate(top);
-    if (top) setMonthIdx(Math.max(0, monthIndexOf(top)));
-  }, [caseId]);
-
-  const safeMonthIdx = Math.min(Math.max(monthIdx, 0), Math.max(0, months.length - 1));
-  const month = months[safeMonthIdx];
-  const selectedCandidates = selectedDate ? (candidatesByDate.get(selectedDate) ?? []) : [];
-  const tonesInCase = useMemo(() => {
-    const set = new Set<DayEmphasisTone>();
-    candidates.forEach((c) => set.add(caseEmphasisTone(c, dangerCase)));
-    return set;
-  }, [candidates, dangerCase]);
-
-  return (
-    <div className="space-y-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-2 sm:pb-8">
-      {/* 뒤로가기: 추천 시간(result) 화면으로 — 우상단 추천안 보기 아이콘과 동일 동작 */}
-      <MobileHeaderTitle title="회의 캘린더" onBack={onBack} />
-      <div className="flex items-center justify-between gap-2">
-        <div className="hidden items-center gap-2 sm:flex">
-          <Emoji symbol="📅" size={22} />
-          <h2 className="text-xl font-extrabold text-slate-900">회의 캘린더</h2>
-        </div>
-        <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
-            {DEMO_PEOPLE.length}명 중 {respondedCount}명 응답
-          </span>
-          {/* 추천안으로 돌아가기 — 추천안 화면의 캘린더 버튼과 짝(같은 자리) */}
-          <button
-            type="button"
-            onClick={onBack}
-            aria-label="추천안 보기"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
-          >
-            <RankListIcon />
-          </button>
-        </div>
-      </div>
-
-      {/* 데스크톱: 인라인 케이스 선택. 모바일은 우하단 플로팅 버튼으로 대체(화면 절약). */}
-      <div className="hidden sm:block">
-        <CaseSelector caseId={caseId} onSelect={onSelectCase} />
-      </div>
-      <div className="hidden sm:block">
-        <CaseDescription caseId={caseId} />
-      </div>
-
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-slate-500">
-        {tonesInCase.has("brand") && <LegendDot className="bg-brand-500" label="추천 후보" />}
-        {tonesInCase.has("amber") && <LegendDot className="bg-amber-500" label="차선 후보" />}
-        {tonesInCase.has("red") && <LegendDot className="bg-red-500" label="성립 어려움" />}
-        <span className="text-slate-400">색이 진할수록 상위 순위 · 날짜를 누르면 참석 명단이 보여요.</span>
-      </div>
-
-      {/* 한 달 달력 — 추천 날짜는 순위/등급에 따라 강조.
-          좌우 패딩을 줄여 달력을 가로로 최대한 넓게 쓴다(px 가 p 를 덮음). */}
-      {month && (
-        <Card className="border-none px-2 sm:px-3">
-          <CalendarGrid
-            month={month}
-            canPrev={safeMonthIdx > 0}
-            canNext={safeMonthIdx < months.length - 1}
-            onPrev={() => setMonthIdx(safeMonthIdx - 1)}
-            onNext={() => setMonthIdx(safeMonthIdx + 1)}
-            emptyCellPrefix="done-cal"
-            renderDate={(cell) => {
-              const dayCandidates = candidatesByDate.get(cell.date);
-              const best = dayCandidates?.[0];
-              const tone = best ? caseEmphasisTone(best.candidate, dangerCase) : null;
-              // 주말·지난 날짜는 비활성. 미래 평일은 전부 순위가 매겨진 후보.
-              const clickable = Boolean(best);
-              const isSelected = selectedDate === cell.date;
-              const emphasis =
-                best && tone
-                  ? best.rank === 1
-                    ? DAY_EMPHASIS[tone].rank1
-                    : best.rank === 2
-                      ? DAY_EMPHASIS[tone].rank2
-                      : best.rank === 3
-                        ? DAY_EMPHASIS[tone].rank3
-                        : DAY_EMPHASIS[tone].rest
-                  : null;
-              return (
-                <button
-                  key={cell.key}
-                  type="button"
-                  disabled={!clickable}
-                  onClick={() => setSelectedDate(cell.date)}
-                  aria-pressed={isSelected}
-                  aria-label={`${month.m}월 ${cell.day}일${best ? ` — 추천 ${best.rank}순위` : ""}`}
-                  className={cn(
-                    "relative flex aspect-square flex-col items-center justify-center rounded-lg text-sm leading-none transition motion-reduce:transition-none",
-                    !clickable
-                      ? "cursor-default text-slate-300"
-                      : emphasis ?? "text-slate-700 hover:bg-slate-100",
-                    // 선택: 테두리 대신 셀이 위로 움직이며 튀어나오는(pop) 애니메이션.
-                    // 그림자는 shadow-* 유틸리티와의 충돌을 피해 modu-cell-pop 클래스가 직접 가진다.
-                    isSelected && "modu-cell-pop z-10",
-                  )}
-                >
-                  {cell.day}
-                </button>
-              );
-            }}
-          />
-        </Card>
-      )}
-
-      {/* 선택한 날짜의 참석 명단 패널 */}
-      <Card className="space-y-3">
-        {selectedDate === null ? (
-          <p className="text-sm text-slate-500">날짜를 누르면 참석자별 가능 여부를 볼 수 있어요.</p>
-        ) : (
-          <>
-            <p className="text-base font-bold text-slate-900">
-              {formatKoreanDateLabel(selectedDate)}
-            </p>
-            {selectedCandidates.length === 0 ? (
-              <>
-                <p className="break-keep text-sm text-slate-600">
-                  이 날을 불가능으로 입력한 사람이 없어요.{" "}
-                  {current.pendingNames.length > 0
-                    ? "응답한 사람은 모두 참석할 수 있어요."
-                    : "모두 참석할 수 있는 날이에요."}
-                </p>
-                <AttendeeGroup
-                  tone="green"
-                  label="가능"
-                  names={DEMO_PEOPLE.filter((p) => !current.pendingNames.includes(p.name)).map(
-                    (p) => p.name,
-                  )}
-                />
-                <AttendeeGroup tone="slate" label="미응답" names={current.pendingNames} />
-              </>
-            ) : (
-              selectedCandidates.map(({ rank, candidate }) => {
-                const tone = caseEmphasisTone(candidate, dangerCase);
-                return (
-                  <div key={candidate.startAt} className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span
-                        className={cn(
-                          "rounded-full px-2 py-0.5 text-[11px] font-bold text-white",
-                          DAY_EMPHASIS[tone].badge,
-                        )}
-                      >
-                        {rank}순위
-                      </span>
-                      <p className="font-bold text-slate-900">
-                        {formatKoreanTimeRange(candidate.startAt, candidate.endAt)}
-                      </p>
-                      <span
-                        className={cn(
-                          "rounded-full px-2 py-0.5 text-[11px] font-bold",
-                          DAY_EMPHASIS[tone].pill,
-                        )}
-                      >
-                        {GRADE_LABELS[candidate.grade]}
-                      </span>
-                      {candidate.votes != null && (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
-                          {candidate.votes}표
-                        </span>
-                      )}
-                    </div>
-                    <p className="break-keep text-sm text-slate-500">{candidate.reason}</p>
-                    <AttendeeGroup tone="green" label="가능" names={candidate.availableNames} />
-                    <AttendeeGroup tone="red" label="불가능" names={candidate.busyNames} />
-                    <AttendeeGroup tone="slate" label="미응답" names={candidate.pendingNames} />
-                  </div>
-                );
-              })
-            )}
-            <p className="px-0.5 text-[11px] text-slate-400">이름 앞 점(•)은 필수인원이에요.</p>
-          </>
-        )}
-      </Card>
-
-      <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} />
-    </div>
-  );
-}
-
-// SubmittedCalendarScreen 의 사본(와이드 작업용) — 원본은 위에 보존. done 스텝이 쓰는 현재 화면.
-// PC 전용 추가: ① 주간/월간 전환 토글 ② 이 화면만 페이지 폭을 넓게 씀(뷰포트 기준 브레이크아웃)
-// ③ 달력 + 명단 패널 2열 배치, 월간 셀에 순위·시간 요약 표시. 모바일 UI 는 원본과 동일하다.
+// 회의 캘린더(done) 화면. (순위 농도 방식의 구버전 SubmittedCalendarScreen 은 삭제 — git 히스토리 참고)
+// PC 전용: ① 주간/월간 전환 토글 ② 이 화면만 페이지 폭을 넓게 씀(뷰포트 기준 브레이크아웃)
+// ③ 달력 + 명단 패널 2열 배치. 색은 맥락형 해석(contextualResult)의 신호 3톤(파랑/빨강/중립)만 쓴다.
 function SubmittedCalendarScreenWide({
   caseId,
   onSelectCase,
@@ -2872,7 +2602,6 @@ function SubmittedCalendarScreenWide({
   const current = DEMO_CASES.find((c) => c.id === caseId) ?? DEMO_CASES[0];
   const candidates = useMemo(() => buildCaseCandidates(current, dates), [current, dates]);
   const respondedCount = DEMO_PEOPLE.length - current.pendingNames.length;
-  const dangerCase = current.banner?.tone === "danger";
 
   // 날짜 → 그 날의 후보들(순위 오름차순). 보통 하루에 후보 하나.
   const candidatesByDate = useMemo(() => {
@@ -2941,23 +2670,25 @@ function SubmittedCalendarScreenWide({
     () => buildContextualScheduleResult(adaptDemoCaseToEvaluatedSlots(current, dates)),
     [current, dates],
   );
-  const toneByDate = useMemo(() => {
-    const map = new Map<string, CalendarTone>();
-    contextual.calendarMarks.forEach((mark) => map.set(mark.date, mark.tone));
+  const markByDate = useMemo(() => {
+    const map = new Map<string, CalendarMark>();
+    contextual.calendarMarks.forEach((mark) => map.set(mark.date, mark));
     return map;
   }, [contextual]);
-  // 날짜 셀 공통 계산: 그 날의 1순위 후보, 신호 톤, 가능 인원, 주의(필수 빠짐) 여부.
+  // 날짜 셀 공통 계산 — 톤을 정한 대표 슬롯(representativeSlot)을 표시에도 그대로 써서,
+  // 하루에 슬롯이 여러 개여도 톤과 숫자/시간이 서로 다른 슬롯에서 오지 않게 한다.
   const cellInfo = (dateStr: string) => {
-    const best = candidatesByDate.get(dateStr)?.[0];
-    if (!best) return null;
-    const tone = toneByDate.get(dateStr) ?? "none";
+    const mark = markByDate.get(dateStr);
+    const rep = mark?.representativeSlot;
+    if (!mark || !rep) return null;
     return {
-      best,
-      tone,
-      cellClass: TONE_CELL[tone],
-      availCount: best.candidate.availableNames.length,
-      // 필수 인원이 빠지는 날(주의 등급)은 배경 대신 가능 인원 숫자를 빨간색으로(soft 경고).
-      warn: best.candidate.grade === "caution",
+      tone: mark.tone,
+      cellClass: TONE_CELL[mark.tone],
+      availCount: rep.totalAvailable,
+      startAt: rep.startAt,
+      endAt: rep.endAt,
+      // 필수 인원이 빠지는 날은 배경 대신 가능 인원 숫자를 빨간색으로(soft 경고).
+      warn: rep.requiredBusyCount >= 1,
     };
   };
 
@@ -2991,7 +2722,7 @@ function SubmittedCalendarScreenWide({
                   info
                     ? `${
                         info.tone === "recommended"
-                          ? " — 추천 시간"
+                          ? " — 가장 나은 시간"
                           : info.tone === "avoid"
                             ? " — 피하는 게 좋은 날"
                             : ""
@@ -3008,7 +2739,7 @@ function SubmittedCalendarScreenWide({
                 {cell.day}
                 {info?.tone === "recommended" && (
                   <span className="hidden text-[11px] font-semibold leading-tight sm:block">
-                    {formatKoreanTimeRange(info.best.candidate.startAt, info.best.candidate.endAt)}
+                    {formatKoreanTimeRange(info.startAt, info.endAt)}
                   </span>
                 )}
                 {info && (
@@ -3030,7 +2761,7 @@ function SubmittedCalendarScreenWide({
       </Card>
     );
 
-  // 주간 달력 카드(PC 전용) — 하루가 한 칸을 넓게 써서 순위·시간·등급을 함께 보여준다.
+  // 주간 달력 카드(PC 전용) — 하루가 한 칸을 넓게 써서 시간대와 가능 인원을 함께 보여준다.
   const weekCard = week && (
     <Card className="hidden border-none px-2 sm:block sm:px-3">
       <div className="mb-3 flex items-center justify-between sm:mb-4">
@@ -3083,7 +2814,7 @@ function SubmittedCalendarScreenWide({
                 info
                   ? `${
                       info.tone === "recommended"
-                        ? " — 추천 시간"
+                        ? " — 가장 나은 시간"
                         : info.tone === "avoid"
                           ? " — 피하는 게 좋은 날"
                           : ""
@@ -3100,7 +2831,7 @@ function SubmittedCalendarScreenWide({
               {info && (
                 <>
                   <span className="text-xs font-semibold">
-                    {formatKoreanTimeRange(info.best.candidate.startAt, info.best.candidate.endAt)}
+                    {formatKoreanTimeRange(info.startAt, info.endAt)}
                   </span>
                   <span
                     className={cn(
@@ -3206,8 +2937,9 @@ function SubmittedCalendarScreenWide({
         ))}
       </div>
 
+      {/* 범례 — busyPeriod 에선 차선 후보도 파랗게 칠해질 수 있어 '추천'이 아니라 '가장 나은'으로 쓴다. */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-slate-500">
-        <LegendDot className="bg-brand-500" label="추천 시간" />
+        <LegendDot className="bg-brand-500" label="가장 나은 시간" />
         <LegendDot className="bg-red-300" label="피하는 게 좋은 날" />
         <span>숫자는 참석할 수 있는 인원이에요.</span>
         <span className="text-slate-400">날짜를 누르면 참석 명단이 보여요.</span>
@@ -3254,43 +2986,38 @@ function SubmittedCalendarScreenWide({
                   <AttendeeGroup tone="slate" label="미응답" names={current.pendingNames} />
                 </>
               ) : (
-                selectedCandidates.map(({ rank, candidate }) => {
-                  const tone = caseEmphasisTone(candidate, dangerCase);
-                  return (
-                    <div key={candidate.startAt} className="space-y-2">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span
-                          className={cn(
-                            "rounded-full px-2 py-0.5 text-[11px] font-bold text-white",
-                            DAY_EMPHASIS[tone].badge,
-                          )}
-                        >
-                          {rank}순위
-                        </span>
-                        <p className="font-bold text-slate-900">
-                          {formatKoreanTimeRange(candidate.startAt, candidate.endAt)}
-                        </p>
-                        <span
-                          className={cn(
-                            "rounded-full px-2 py-0.5 text-[11px] font-bold",
-                            DAY_EMPHASIS[tone].pill,
-                          )}
-                        >
-                          {GRADE_LABELS[candidate.grade]}
-                        </span>
-                        {candidate.votes != null && (
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
-                            {candidate.votes}표
-                          </span>
+                // 순위 뱃지는 두지 않는다(무의미한 순위 구분 제거) — 상태는 등급 라벨이 전달한다.
+                selectedCandidates.map(({ candidate }) => (
+                  <div key={candidate.startAt} className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <p className="font-bold text-slate-900">
+                        {formatKoreanTimeRange(candidate.startAt, candidate.endAt)}
+                      </p>
+                      <span
+                        className={cn(
+                          // 2색 체계: 파랑 = 추천, 빨강 = 주의(추천안 카드의 등급 배지와 동일).
+                          "rounded-full px-2 py-0.5 text-[11px] font-bold",
+                          candidate.grade === "best"
+                            ? "bg-brand-50 text-brand-700"
+                            : candidate.grade === "caution"
+                              ? "bg-red-50 text-red-600"
+                              : "bg-slate-100 text-slate-600",
                         )}
-                      </div>
-                      <p className="break-keep text-sm text-slate-500">{candidate.reason}</p>
-                      <AttendeeGroup tone="green" label="가능" names={candidate.availableNames} />
-                      <AttendeeGroup tone="red" label="불가능" names={candidate.busyNames} />
-                      <AttendeeGroup tone="slate" label="미응답" names={candidate.pendingNames} />
+                      >
+                        {GRADE_LABELS[candidate.grade]}
+                      </span>
+                      {candidate.votes != null && (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
+                          {candidate.votes}표
+                        </span>
+                      )}
                     </div>
-                  );
-                })
+                    <p className="break-keep text-sm text-slate-500">{candidate.reason}</p>
+                    <AttendeeGroup tone="green" label="가능" names={candidate.availableNames} />
+                    <AttendeeGroup tone="red" label="불가능" names={candidate.busyNames} />
+                    <AttendeeGroup tone="slate" label="미응답" names={candidate.pendingNames} />
+                  </div>
+                ))
               )}
               <p className="px-0.5 text-[11px] text-slate-400">이름 앞 점(•)은 필수인원이에요.</p>
             </>
