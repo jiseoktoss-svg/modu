@@ -71,6 +71,11 @@ import {
   buildCaseCandidates,
   type CaseCandidate,
 } from "@/data/demoCases";
+import { adaptDemoCaseToEvaluatedSlots } from "@/data/demoCaseAdapter";
+import {
+  buildContextualScheduleResult,
+  type CalendarTone,
+} from "@/lib/scheduler/contextualResult";
 
 interface Props {
   meetingId: string;
@@ -2330,6 +2335,33 @@ function ResultScreen({
   const candidates = useMemo(() => buildCaseCandidates(current, dates), [current, dates]);
   const total = DEMO_PEOPLE.length;
 
+  // 같은 조건의 후보는 같은 그룹으로 — 무의미한 1·2·3순위 구분 대신 그룹 라벨로 보여준다.
+  // 선택/투표 로직은 기존 candidates 인덱스 기반을 유지하고, 표시 순서만 그룹으로 재배열한다.
+  const contextual = useMemo(
+    () => buildContextualScheduleResult(adaptDemoCaseToEvaluatedSlots(current, dates)),
+    [current, dates],
+  );
+  const candidateGroups = useMemo(() => {
+    const indexByKey = new Map<string, number>();
+    candidates.forEach((c, i) => indexByKey.set(`${c.startAt}|${c.endAt}`, i));
+    return contextual.rankGroups
+      .map((group) => ({
+        label: group.label,
+        indexes: group.slots
+          .map((slot) => indexByKey.get(`${slot.startAt}|${slot.endAt}`))
+          .filter((i): i is number => i != null),
+      }))
+      .filter((group) => group.indexes.length > 0);
+  }, [contextual, candidates]);
+  // 그룹 순서대로 하나씩 페이드인시키기 위한 표시 순번.
+  const cardOrder = useMemo(() => {
+    const order = new Map<number, number>();
+    candidateGroups.forEach((group) => {
+      group.indexes.forEach((i) => order.set(i, order.size));
+    });
+    return order;
+  }, [candidateGroups]);
+
   const handleVote = () => {
     if (selectedIndex === null) return;
     onVotedIndexChange(selectedIndex);
@@ -2377,71 +2409,77 @@ function ResultScreen({
         {candidates.length === 0 ? (
           <p className="text-sm text-slate-500">표시할 추천안이 없어요.</p>
         ) : (
-          <ol className="space-y-2 py-1">
-            {candidates.map((c, i) => (
-              <li
-                key={`${caseId}-${c.startAt}-${c.endAt}-${i}`}
-                role="button"
-                tabIndex={0}
-                aria-pressed={selectedIndex === i}
-                // 1순위부터 순서대로 하나씩 페이드인.
-                style={{ animationDelay: `${i * 120}ms` }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelectedIndexChange(selectedIndex === i ? null : i);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onSelectedIndexChange(selectedIndex === i ? null : i);
-                  }
-                }}
-                className={cn(
-                  "group relative cursor-pointer animate-fade-in rounded-2xl bg-white p-4 shadow-[0_1px_4px_rgba(15,23,42,0.12)] transition-colors hover:bg-slate-100 focus:outline-none motion-reduce:animate-none",
-                  selectedIndex === i
-                    ? "ring-2 ring-brand-500"
-                    : "focus-visible:ring-2 focus-visible:ring-brand-300",
-                )}
-              >
-                <div className="flex items-start gap-3">
-                  <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-xs font-bold text-brand-700">
-                    {i + 1}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <p className="font-bold text-slate-900">
-                        {formatKoreanDateTimeRange(c.startAt, c.endAt)}
-                      </p>
-                      <span
+          // 무의미한 순위 번호 대신 같은 조건의 후보를 그룹 라벨로 묶어 보여준다.
+          <div className="space-y-4 py-1">
+            {candidateGroups.map((group) => (
+              <section key={`${caseId}-${group.label}-${group.indexes.join(",")}`}>
+                <h2 className="px-1 pb-2 text-xs font-bold text-slate-500">{group.label}</h2>
+                <ol className="space-y-2">
+                  {group.indexes.map((i) => {
+                    const c = candidates[i];
+                    return (
+                      <li
+                        key={`${caseId}-${c.startAt}-${c.endAt}-${i}`}
+                        role="button"
+                        tabIndex={0}
+                        aria-pressed={selectedIndex === i}
+                        // 위 그룹부터 순서대로 하나씩 페이드인.
+                        style={{ animationDelay: `${(cardOrder.get(i) ?? 0) * 120}ms` }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectedIndexChange(selectedIndex === i ? null : i);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onSelectedIndexChange(selectedIndex === i ? null : i);
+                          }
+                        }}
                         className={cn(
-                          // 2색 체계: 파랑 = 추천, 빨강 = 주의. 앰버는 쓰지 않는다.
-                          "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold",
-                          c.grade === "best"
-                            ? "bg-brand-50 text-brand-700"
-                            : c.grade === "caution"
-                              ? "bg-red-50 text-red-600"
-                              : "bg-slate-100 text-slate-600",
+                          "group relative cursor-pointer animate-fade-in rounded-2xl bg-white p-4 shadow-[0_1px_4px_rgba(15,23,42,0.12)] transition-colors hover:bg-slate-100 focus:outline-none motion-reduce:animate-none",
+                          selectedIndex === i
+                            ? "ring-2 ring-brand-500"
+                            : "focus-visible:ring-2 focus-visible:ring-brand-300",
                         )}
                       >
-                        {GRADE_LABELS[c.grade]}
-                      </span>
-                      {c.votes != null && (
-                        <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
-                          {c.votes}표
-                        </span>
-                      )}
-                      {votedIndex === i && (
-                        <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
-                          투표됨
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1 break-keep text-sm text-slate-500">{c.reason}</p>
-                  </div>
-                </div>
-              </li>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <p className="font-bold text-slate-900">
+                              {formatKoreanDateTimeRange(c.startAt, c.endAt)}
+                            </p>
+                            <span
+                              className={cn(
+                                // 2색 체계: 파랑 = 추천, 빨강 = 주의. 앰버는 쓰지 않는다.
+                                "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold",
+                                c.grade === "best"
+                                  ? "bg-brand-50 text-brand-700"
+                                  : c.grade === "caution"
+                                    ? "bg-red-50 text-red-600"
+                                    : "bg-slate-100 text-slate-600",
+                              )}
+                            >
+                              {GRADE_LABELS[c.grade]}
+                            </span>
+                            {c.votes != null && (
+                              <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
+                                {c.votes}표
+                              </span>
+                            )}
+                            {votedIndex === i && (
+                              <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
+                                투표됨
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1 break-keep text-sm text-slate-500">{c.reason}</p>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </section>
             ))}
-          </ol>
+          </div>
         )}
       </div>
 
@@ -2518,16 +2556,14 @@ function caseEmphasisTone(candidate: CaseCandidate, _dangerCase: boolean): DayEm
   return candidate.grade === "caution" ? "red" : "brand";
 }
 
-// 추천결과 캘린더(와이드) 셀 배경: 케이스 안 상대 순위를 파랑 농도 6단계로 환산한다(2색 체계).
-// 1순위가 가장 진하고 마지막 순위가 가장 연하다. 등급(주의)은 배경 대신 빨간 숫자로 전달한다.
-const RANK_RAMP = [
-  "bg-brand-500 font-bold text-white shadow-sm shadow-brand-500/20",
-  "bg-brand-400 font-bold text-white",
-  "bg-brand-300 font-semibold text-brand-900",
-  "bg-brand-200 font-semibold text-brand-900",
-  "bg-brand-100 font-medium text-brand-800",
-  "bg-brand-50 font-medium text-brand-700",
-];
+// 추천결과 캘린더(와이드) 셀 톤: 색은 순위가 아니라 신호다.
+// 파랑 = 정말 추천할 시간이 있는 날, 옅은 빨강 = 피하는 게 좋은 날(그날 모든 슬롯이 hard avoid),
+// 나머지는 중립. 톤 판정은 lib/scheduler/contextualResult 의 calendarMarks 가 한다.
+const TONE_CELL: Record<CalendarTone, string> = {
+  recommended: "bg-brand-500 font-bold text-white shadow-sm shadow-brand-500/20",
+  avoid: "bg-red-100 font-semibold text-red-700",
+  none: "text-slate-700 hover:bg-slate-100",
+};
 
 const REQUIRED_NAMES = new Set(
   DEMO_PEOPLE.filter((p) => p.attendanceType === "required").map((p) => p.name),
@@ -2900,20 +2936,27 @@ function SubmittedCalendarScreenWide({
   };
 
   const totalPeople = DEMO_PEOPLE.length;
-  // 상대 순위(1..후보 수)를 파랑 농도 램프로 — 후보 수에 맞춰 진한→연한 순으로 배분한다.
-  const rankCellClass = (rank: number) => {
-    const t = candidates.length <= 1 ? 0 : (rank - 1) / (candidates.length - 1);
-    return RANK_RAMP[Math.min(RANK_RAMP.length - 1, Math.round(t * (RANK_RAMP.length - 1)))];
-  };
-  // 날짜 셀 공통 계산: 그 날의 1순위 후보, 농도 클래스, 가능 인원, 주의(필수 빠짐) 여부.
+  // 맥락형 해석 — 후보 전체를 평가해 컨텍스트·해석 문장·날짜 톤(신호)을 만든다.
+  const contextual = useMemo(
+    () => buildContextualScheduleResult(adaptDemoCaseToEvaluatedSlots(current, dates)),
+    [current, dates],
+  );
+  const toneByDate = useMemo(() => {
+    const map = new Map<string, CalendarTone>();
+    contextual.calendarMarks.forEach((mark) => map.set(mark.date, mark.tone));
+    return map;
+  }, [contextual]);
+  // 날짜 셀 공통 계산: 그 날의 1순위 후보, 신호 톤, 가능 인원, 주의(필수 빠짐) 여부.
   const cellInfo = (dateStr: string) => {
     const best = candidatesByDate.get(dateStr)?.[0];
     if (!best) return null;
+    const tone = toneByDate.get(dateStr) ?? "none";
     return {
       best,
-      cellClass: rankCellClass(best.rank),
+      tone,
+      cellClass: TONE_CELL[tone],
       availCount: best.candidate.availableNames.length,
-      // 필수 인원이 빠지는 날(주의 등급)은 가능 인원 숫자를 빨간색으로 보여준다.
+      // 필수 인원이 빠지는 날(주의 등급)은 배경 대신 가능 인원 숫자를 빨간색으로(soft 경고).
       warn: best.candidate.grade === "caution",
     };
   };
@@ -2946,7 +2989,13 @@ function SubmittedCalendarScreenWide({
                 aria-pressed={isSelected}
                 aria-label={`${month.m}월 ${cell.day}일${
                   info
-                    ? ` — 추천 ${info.best.rank}순위, ${info.availCount}/${totalPeople}명 가능`
+                    ? `${
+                        info.tone === "recommended"
+                          ? " — 추천 시간"
+                          : info.tone === "avoid"
+                            ? " — 피하는 게 좋은 날"
+                            : ""
+                      }, ${info.availCount}/${totalPeople}명 가능`
                     : ""
                 }`}
                 className={cn(
@@ -2957,6 +3006,11 @@ function SubmittedCalendarScreenWide({
                 )}
               >
                 {cell.day}
+                {info?.tone === "recommended" && (
+                  <span className="hidden text-[11px] font-semibold leading-tight sm:block">
+                    {formatKoreanTimeRange(info.best.candidate.startAt, info.best.candidate.endAt)}
+                  </span>
+                )}
                 {info && (
                   <span
                     className={cn(
@@ -3027,7 +3081,13 @@ function SubmittedCalendarScreenWide({
               aria-pressed={isSelected}
               aria-label={`${m}월 ${d}일${
                 info
-                  ? ` — 추천 ${info.best.rank}순위, ${info.availCount}/${totalPeople}명 가능`
+                  ? `${
+                      info.tone === "recommended"
+                        ? " — 추천 시간"
+                        : info.tone === "avoid"
+                          ? " — 피하는 게 좋은 날"
+                          : ""
+                    }, ${info.availCount}/${totalPeople}명 가능`
                   : ""
               }`}
               className={cn(
@@ -3128,11 +3188,28 @@ function SubmittedCalendarScreenWide({
         <CaseDescription caseId={caseId} />
       </div>
 
-      {/* 범례(2색 체계): 배경 농도 = 상대 순위, 숫자 = 가능 인원, 빨간 숫자 = 필수 빠짐. */}
+      {/* 맥락형 해석 문장 — 결과 분포(대부분 가능/보통/바쁨/없음)에 따라 문구가 달라진다. */}
+      <div className="space-y-1 px-1">
+        <p className="break-keep text-sm font-bold text-slate-800">{contextual.headline}</p>
+        <p className="break-keep text-sm text-slate-600">{contextual.comment}</p>
+        {/* 특정 시간대 경고 — mostlyAvailable 은 첫 경고가 이미 코멘트에 있어 건너뛴다. */}
+        {(contextual.context === "mostlyAvailable"
+          ? contextual.warnings.slice(1, 3)
+          : contextual.warnings.slice(0, 3)
+        ).map((warning) => (
+          <p
+            key={`${warning.startAt}-${warning.level}`}
+            className="break-keep text-xs font-medium text-red-500"
+          >
+            {warning.message}
+          </p>
+        ))}
+      </div>
+
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-slate-500">
-        <span>색이 진할수록 상위 순위예요.</span>
-        <span>숫자는 가능 인원/전체 인원이에요.</span>
-        <span className="text-red-500">빨간 숫자는 필수 인원이 빠지는 날이에요.</span>
+        <LegendDot className="bg-brand-500" label="추천 시간" />
+        <LegendDot className="bg-red-300" label="피하는 게 좋은 날" />
+        <span>숫자는 참석할 수 있는 인원이에요.</span>
         <span className="text-slate-400">날짜를 누르면 참석 명단이 보여요.</span>
       </div>
 
