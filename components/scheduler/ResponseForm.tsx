@@ -25,6 +25,8 @@ import { Input, Label } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { TDSButton } from "@/components/ui/TDSButton";
 import { MeetingSummarySentence } from "@/components/meeting/MeetingSummarySentence";
+import { CharFillSentence } from "@/components/ui/CharFillSentence";
+import { charFillTiming, type CharFillSegment } from "@/lib/charFill";
 import { CalendarModal } from "@/components/scheduler/CalendarModal";
 import { CalendarGrid } from "@/components/ui/CalendarGrid";
 import {
@@ -87,14 +89,20 @@ type Step = "loading" | ResponseDraftStep;
 type DateSummaryStatus = "available" | "preferred" | "busy" | "mixed";
 type CalendarStatus = "available" | "preferred" | "avoid" | "busy" | "pending";
 
-// 절 채움(fill): 앞 절이 다 채워진 뒤 다음 절이 시작되도록 시차 = 지속 시간(순차 채움).
-const REVIEW_CLAUSE_DURATION_MS = 1200;
-const REVIEW_CLAUSE_STAGGER_MS = REVIEW_CLAUSE_DURATION_MS;
-// 채움(fill) 애니메이션 종료 시점 — 절 3개 기준(마지막 절 시작 + 지속 시간).
-const REVIEW_FILL_DONE_MS = REVIEW_CLAUSE_STAGGER_MS * 2 + REVIEW_CLAUSE_DURATION_MS;
-const REVIEW_HELP_DELAY_MS = REVIEW_FILL_DONE_MS - 200; // 마지막 절이 거의 채워진 뒤
-const REVIEW_CTA_DELAY_MS = REVIEW_HELP_DELAY_MS + 600;
+// 입력 확인(review) 문장은 글자 잉크 채움(공용 CharFillSentence)으로 등장한다.
 const REVIEW_CTA_DURATION_MS = 1000;
+
+// 입력 확인 값 조각: 글자 span 들을 빨강 EditValue 로 감싼다(shine 은 채움 완료 후 점등).
+function reviewValue(text: string, fieldLabel: string, onEdit: () => void): CharFillSegment {
+  return {
+    text,
+    wrap: (chars, shine) => (
+      <EditValue fieldLabel={fieldLabel} tone="negative" withShine={shine} onEdit={onEdit}>
+        {chars}
+      </EditValue>
+    ),
+  };
+}
 
 function storageKey(meetingId: string) {
   return `modu:p:${meetingId}`;
@@ -709,9 +717,8 @@ export function ResponseForm(props: Props) {
   const [toastOpen, setToastOpen] = useState(false);
   const toastTimer = useRef<number | null>(null);
   const [reviewCtaReady, setReviewCtaReady] = useState(false);
-  // 채움 애니메이션 완료 여부 — 끝나면 mask 를 걷어 일반 렌더링으로 되돌린다
-  // (inline 요소에 mask 가 남으면 텍스트가 흐릿해질 수 있어서).
-  const [reviewFillDone, setReviewFillDone] = useState(false);
+  // 회의 안내(intro): 문장 채움이 끝난 뒤에야 '시간 정하러 가기' CTA 를 노출한다.
+  const [introCtaReady, setIntroCtaReady] = useState(false);
   const [responseDraftReady, setResponseDraftReady] = useState(false);
   const [resultSelectedIndex, setResultSelectedIndex] = useState<number | null>(null);
   const [resultVotedIndex, setResultVotedIndex] = useState<number | null>(null);
@@ -1272,23 +1279,57 @@ export function ResponseForm(props: Props) {
     document.getElementById(formStep === 0 ? "pName" : "pRole")?.focus({ preventScroll: true });
   }, [formStep, step]);
 
+  // 입력 확인(review): 문장 조각과 글자 채움 타이밍(글자 수 비례)을 계산한다.
+  const goBusyDatesEdit = () => {
+    setAvailStep(0);
+    setStep("availability");
+  };
+  const goDateTimesEdit = () => {
+    setAvailStep(1);
+    setStep("availability");
+  };
+  const busyDatesText =
+    busyDates.size > 0 ? [...busyDates].sort().map(fmtMD).join(", ") : null;
+  const dtText =
+    Object.keys(dateTimeBusy).length > 0
+      ? Object.entries(dateTimeBusy)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([ds, rs]) => `${fmtMD(ds)} ${rs.map(fmtRange).join("·")}`)
+          .join(", ")
+      : null;
+  const reviewClauses: CharFillSegment[][] = [
+    [`${personName}님은`],
+    busyDatesText
+      ? [
+          reviewValue(busyDatesText, "불가능한 날짜", goBusyDatesEdit),
+          "에는 회의가 불가능하고,",
+        ]
+      : [reviewValue("불가능한 날짜는 없고,", "불가능한 날짜", goBusyDatesEdit)],
+    dtText
+      ? [
+          "특별히 ",
+          reviewValue(dtText, "특정 날짜 시간", goDateTimesEdit),
+          "에는 안 돼요.",
+        ]
+      : [reviewValue("특정 시간에 안 되는 날은 없어요.", "특정 날짜 시간", goDateTimesEdit)],
+  ];
+  // 채움 종료 시각 → 안내 문구·CTA 등장 지연(글자 수 비례).
+  const { fillEndMs: reviewFillEndMs } = charFillTiming(reviewClauses);
+  const reviewHelpDelayMs = Math.max(0, reviewFillEndMs - 200); // 마지막 글자가 거의 채워진 뒤
+  const reviewCtaDelayMs = reviewHelpDelayMs + 600;
+
   useEffect(() => {
     if (step !== "review") {
       setReviewCtaReady(false);
       return;
     }
-    const timer = window.setTimeout(() => setReviewCtaReady(true), REVIEW_CTA_DELAY_MS);
+    const timer = window.setTimeout(() => setReviewCtaReady(true), reviewCtaDelayMs);
     return () => window.clearTimeout(timer);
-  }, [step]);
+  }, [step, reviewCtaDelayMs]);
 
-  // 입력 확인 화면: 채움 애니메이션이 모두 끝나면 mask 를 제거한다.
+  // 회의 안내(intro)를 벗어나면 CTA 준비 상태를 되돌린다(재진입 시 채움부터 다시).
   useEffect(() => {
-    if (step !== "review") {
-      setReviewFillDone(false);
-      return;
-    }
-    const timer = window.setTimeout(() => setReviewFillDone(true), REVIEW_FILL_DONE_MS);
-    return () => window.clearTimeout(timer);
+    if (step !== "intro") setIntroCtaReady(false);
   }, [step]);
 
   if (step === "loading") {
@@ -1306,7 +1347,9 @@ export function ResponseForm(props: Props) {
           <MobileHeaderTitle title="회의 안내" />
           <p className="hidden text-sm font-medium text-slate-400 sm:block">회의 안내</p>
           <MeetingSummarySentence
-            className="relative animate-fade-up-blur motion-reduce:animate-none sm:mt-3"
+            className="sm:mt-3"
+            fill
+            onFillDone={() => setIntroCtaReady(true)}
             title={meetingTitle}
             agenda={agenda}
             location={location}
@@ -1316,17 +1359,24 @@ export function ResponseForm(props: Props) {
           />
         </div>
         <MobileStickyAction className="mt-8">
-          <TDSButton
-            size="xl"
-            display="block"
-            onClick={() => {
-              setFormStep(0);
-              setMaxFormStep(0);
-              setStep("identity");
-            }}
-          >
-            시간 정하러 가기
-          </TDSButton>
+          {introCtaReady && (
+            <div
+              className="animate-fade-up-blur motion-reduce:animate-none"
+              style={{ animationDuration: "1000ms" }}
+            >
+              <TDSButton
+                size="xl"
+                display="block"
+                onClick={() => {
+                  setFormStep(0);
+                  setMaxFormStep(0);
+                  setStep("identity");
+                }}
+              >
+                시간 정하러 가기
+              </TDSButton>
+            </div>
+          )}
         </MobileStickyAction>
       </div>
     );
@@ -1334,73 +1384,6 @@ export function ResponseForm(props: Props) {
 
   // 입력 최종 확인 화면 → '다음' 으로 제출.
   if (step === "review") {
-    const busyDatesText =
-      busyDates.size > 0 ? [...busyDates].sort().map(fmtMD).join(", ") : null;
-    const dtText =
-      Object.keys(dateTimeBusy).length > 0
-        ? Object.entries(dateTimeBusy)
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([ds, rs]) => `${fmtMD(ds)} ${rs.map(fmtRange).join("·")}`)
-            .join(", ")
-        : null;
-    const reviewClauses: ReactNode[] = [
-      <>{personName}님은 </>,
-      busyDatesText ? (
-        <>
-          <EditValue
-            fieldLabel="불가능한 날짜"
-            tone="negative"
-            withShine
-            onEdit={() => {
-              setAvailStep(0);
-              setStep("availability");
-            }}
-          >
-            {busyDatesText}
-          </EditValue>
-          에는 회의가 불가능하고,
-        </>
-      ) : (
-        <EditValue
-          fieldLabel="불가능한 날짜"
-          tone="negative"
-          onEdit={() => {
-            setAvailStep(0);
-            setStep("availability");
-          }}
-        >
-          불가능한 날짜는 없고,
-        </EditValue>
-      ),
-      dtText ? (
-        <>
-          특별히{" "}
-          <EditValue
-            fieldLabel="특정 날짜 시간"
-            tone="negative"
-            withShine
-            onEdit={() => {
-              setAvailStep(1);
-              setStep("availability");
-            }}
-          >
-            {dtText}
-          </EditValue>
-          에는 안 돼요.
-        </>
-      ) : (
-        <EditValue
-          fieldLabel="특정 날짜 시간"
-          tone="negative"
-          onEdit={() => {
-            setAvailStep(1);
-            setStep("availability");
-          }}
-        >
-          특정 시간에 안 되는 날은 없어요.
-        </EditValue>
-      ),
-    ];
     return (
       <>
         <Toast open={toastOpen} message={toastMessage} icon={toastIcon} />
@@ -1409,44 +1392,16 @@ export function ResponseForm(props: Props) {
             {/* 뒤로가기: 가능 시간 입력(마지막 단계)으로 복귀 */}
             <MobileHeaderTitle title="입력 확인" onBack={() => setStep("availability")} />
             <p className="hidden text-sm font-medium text-slate-400 sm:block">입력 확인</p>
-            {/* 절이 좌→우로 채워지는 등장: 회색 밑글(레이아웃 담당) 위에 실제 문장을 겹치고
-                절마다 시차를 두고 mask 스윕으로 드러낸다. 색상은 기존 값 그대로 유지된다. */}
-            <div className="relative break-keep text-left text-2xl leading-relaxed text-slate-800 sm:mt-3 sm:text-3xl sm:leading-relaxed">
-              {/* 투명 밑글 — 레이아웃(높이)만 담당. 채워지기 전 텍스트는 보이지 않는다. */}
-              <div
-                aria-hidden="true"
-                inert
-                className="pointer-events-none select-none opacity-0"
-              >
-                {reviewClauses.map((clause, i) => (
-                  <span key={i}>{clause} </span>
-                ))}
-              </div>
-              {/* 실제 문장 — 절 단위 잉크 채움. 완료 후엔 mask 를 걷어 일반 렌더링. */}
-              <div className="absolute inset-0">
-                {reviewClauses.map((clause, i) => (
-                  <span
-                    key={i}
-                    className={cn(!reviewFillDone && "modu-fill-clause")}
-                    style={
-                      reviewFillDone
-                        ? undefined
-                        : {
-                            animationDelay: `${i * REVIEW_CLAUSE_STAGGER_MS}ms`,
-                            animationDuration: `${REVIEW_CLAUSE_DURATION_MS}ms`,
-                          }
-                    }
-                  >
-                    {clause}{" "}
-                  </span>
-                ))}
-              </div>
-            </div>
+            {/* 글자가 읽는 순서대로 좌→우 잉크처럼 칠해지는 등장(공용 CharFillSentence). */}
+            <CharFillSentence
+              className="text-left sm:mt-3"
+              paragraphs={[{ clauses: reviewClauses }]}
+            />
             <p
               className="mt-5 animate-fade-up-blur text-sm text-slate-500 motion-reduce:animate-none"
               style={{
-                animationDelay: `${REVIEW_HELP_DELAY_MS}ms`,
-                animationDuration: `${REVIEW_CLAUSE_DURATION_MS}ms`,
+                animationDelay: `${reviewHelpDelayMs}ms`,
+                animationDuration: "1000ms",
               }}
             >
               응답 시간 마감 전까지 수정할 수 있어요. 수정하려면 키워드를 눌러 응답 화면으로 이동하세요.
@@ -1583,7 +1538,12 @@ export function ResponseForm(props: Props) {
                 </>
               ) : (
                 <>
-                  <Label htmlFor="pRole" className="text-lg">직무를 선택해주세요</Label>
+                  <div className="mb-1.5 flex items-center gap-1.5">
+                    <Label htmlFor="pRole" className="mb-0 text-lg">
+                      직무를 선택해주세요
+                    </Label>
+                    <HelpTooltip text="참석자 명단에 있는 분만 응답할 수 있도록 본인 확인을 해요. 입력한 이름·직무가 명단과 일치하면 다음 단계로 넘어가요." />
+                  </div>
                   <Select
                     variant="menu"
                     id="pRole"

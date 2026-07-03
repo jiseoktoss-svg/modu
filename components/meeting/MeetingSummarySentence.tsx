@@ -1,24 +1,35 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { Fragment } from "react";
+import { CharFillSentence } from "@/components/ui/CharFillSentence";
 import { cn } from "@/lib/cn";
 import { hasBatchim } from "@/lib/korean";
-import { formatKoreanDate, formatKoreanTime } from "@/lib/time";
+import { formatKoreanDateNoYear, formatKoreanTime } from "@/lib/time";
+import type { CharFillSegment } from "@/lib/charFill";
 
 // 회의 생성 화면(MeetingCreateForm) 상단 안내 문장을 읽기 전용으로 재사용한다.
-// 참가자 이름/명수는 의도적으로 제외한다.
+// 참가자 이름/명수는 의도적으로 제외하고, 날짜값은 년도 없이 표시한다.
+// fill 이면 회의 확인 화면과 동일한 글자 잉크 채움(CharFillSentence)으로 등장하고,
+// 채움이 끝나면 값에 shine 을 켠다.
 
 const WEEKDAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
 
-// MeetingCreateForm의 formatDeadline과 동일한 형식("2026년 6월 28일 일요일").
+// MeetingCreateForm 확인 화면과 동일한 형식("6월 28일 일요일" — 년도 없음).
 function formatDeadline(dateStr: string): string {
   const [y, m, d] = dateStr.split("-").map(Number);
   if (!y || !m || !d) return "";
   const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  return `${y}년 ${m}월 ${d}일 ${WEEKDAYS_KO[wd]}요일`;
+  return `${m}월 ${d}일 ${WEEKDAYS_KO[wd]}요일`;
 }
 
-// 문장 안에서 강조되는 값(생성 화면의 파란 강조와 동일한 톤).
-function Val({ children }: { children: ReactNode }) {
-  return <span className="modu-value-shine font-bold text-brand-600">{children}</span>;
+// 강조 값 조각(생성 화면의 파란 강조와 동일한 톤, shine 은 채움 완료 후 점등).
+function summaryValue(text: string): CharFillSegment {
+  return {
+    text,
+    wrap: (chars, shine) => (
+      <span className={cn("font-bold text-brand-600", shine && "modu-value-shine")}>{chars}</span>
+    ),
+  };
 }
 
 interface MeetingSummarySentenceProps {
@@ -28,6 +39,10 @@ interface MeetingSummarySentenceProps {
   deadlineDate: string; // YYYY-MM-DD (meeting.dateEnd)
   responseDeadline?: string | null; // ISO(+09:00), 응답 마감 시각
   durationMinutes: number;
+  /** true 면 글자 잉크 채움으로 등장(회의 안내 intro). false 면 즉시 완성 문장 + shine. */
+  fill?: boolean;
+  /** 채움이 모두 끝난 시점(mask 해제·shine 점등)에 한 번 호출된다. fill 일 때만. */
+  onFillDone?: () => void;
   className?: string;
 }
 
@@ -38,6 +53,8 @@ export function MeetingSummarySentence({
   deadlineDate,
   responseDeadline,
   durationMinutes,
+  fill = false,
+  onFillDone,
   className,
 }: MeetingSummarySentenceProps) {
   const deadlineText = formatDeadline(deadlineDate);
@@ -47,6 +64,54 @@ export function MeetingSummarySentence({
   const showMin = mins > 0;
   const showHours = hours > 0 || !showMin;
 
+  // 문장을 절(clause) 단위로 구성한다(글자 채움의 절 사이 호흡 기준).
+  const clauses: CharFillSegment[][] = [];
+  clauses.push([
+    "이번 회의명은 ",
+    summaryValue(title),
+    hasBatchim(title) ? " 이에요." : " 예요.",
+  ]);
+  if (agenda.trim() !== "") {
+    clauses.push([
+      "회의 안건은 ",
+      summaryValue(agenda),
+      hasBatchim(agenda) ? " 이에요." : " 예요.",
+    ]);
+  }
+  if (location.trim() !== "") {
+    clauses.push(["회의 장소는 ", summaryValue(location), " 이고,"]);
+  }
+  {
+    const duration: CharFillSegment[] = ["예상 회의 진행 시간은 "];
+    if (showHours) duration.push(summaryValue(String(hours)), showMin ? " 시간 " : " 시간");
+    if (showMin) duration.push(summaryValue(String(mins)), " 분");
+    duration.push(" 이에요.");
+    clauses.push(duration);
+  }
+  if (deadlineText !== "") {
+    clauses.push([summaryValue(deadlineText), " 까지는 회의를 마쳐야 해요."]);
+  }
+  if (responseDeadline) {
+    clauses.push([
+      "응답은 ",
+      summaryValue(
+        `${formatKoreanDateNoYear(responseDeadline)} ${formatKoreanTime(responseDeadline)}`,
+      ),
+      " 까지 부탁드려요.",
+    ]);
+  }
+
+  if (fill) {
+    return (
+      <CharFillSentence
+        className={className}
+        paragraphs={[{ clauses }]}
+        onFillDone={onFillDone}
+      />
+    );
+  }
+
+  // 채움 없이 즉시 완성 문장(값 shine 포함)으로 렌더한다.
   return (
     <div
       className={cn(
@@ -55,43 +120,17 @@ export function MeetingSummarySentence({
       )}
     >
       <p>
-        이번 회의명은 <Val>{title}</Val> {hasBatchim(title) ? "이에요." : "예요."}{" "}
-        {agenda.trim() !== "" && (
-          <>
-            회의 안건은 <Val>{agenda}</Val> {hasBatchim(agenda) ? "이에요." : "예요."}{" "}
-          </>
-        )}
-        {location.trim() !== "" && (
-          <>
-            회의 장소는 <Val>{location}</Val> 이고,{" "}
-          </>
-        )}
-        예상 회의 진행 시간은{" "}
-        {showHours && (
-          <>
-            <Val>{hours}</Val> 시간{showMin ? " " : ""}
-          </>
-        )}
-        {showMin && (
-          <>
-            <Val>{mins}</Val> 분
-          </>
-        )}{" "}
-        이에요.{" "}
-        {deadlineText !== "" && (
-          <>
-            <Val>{deadlineText}</Val> 까지는 회의를 마쳐야 해요.{" "}
-          </>
-        )}
-        {responseDeadline && (
-          <>
-            응답은{" "}
-            <Val>
-              {formatKoreanDate(responseDeadline)} {formatKoreanTime(responseDeadline)}
-            </Val>{" "}
-            까지 부탁드려요.{" "}
-          </>
-        )}
+        {clauses.map((clause, ci) => (
+          <span key={ci}>
+            {clause.map((seg, i) =>
+              typeof seg === "string" ? (
+                <span key={i}>{seg}</span>
+              ) : (
+                <Fragment key={i}>{seg.wrap(seg.text, true)}</Fragment>
+              ),
+            )}{" "}
+          </span>
+        ))}
       </p>
     </div>
   );

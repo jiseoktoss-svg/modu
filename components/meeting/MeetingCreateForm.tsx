@@ -18,6 +18,8 @@ import { Input, Label } from "@/components/ui/Input";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { Select } from "@/components/ui/Select";
 import { TDSButton } from "@/components/ui/TDSButton";
+import { CharFillSentence } from "@/components/ui/CharFillSentence";
+import { charFillTiming, type CharFillSegment } from "@/lib/charFill";
 import { cn } from "@/lib/cn";
 import { hasBatchim } from "@/lib/korean";
 import { useScrollLock } from "@/lib/useScrollLock";
@@ -47,13 +49,8 @@ interface Props {
 const INITIAL_PARTICIPANTS: ParticipantDraft[] = [];
 const LAST_STEP = MEETING_CREATE_DRAFT_LAST_STEP;
 const WORKDAY_MINUTES = 9 * 60; // 09:00~18:00 (서버 기본 근무시간과 일치)
-// 절 채움(fill): 앞 절이 다 채워진 뒤 다음 절이 시작되도록 시차 = 지속 시간(순차 채움).
-const CONFIRM_CLAUSE_DURATION_MS = 1200;
-const CONFIRM_CLAUSE_STAGGER_MS = CONFIRM_CLAUSE_DURATION_MS;
-const CONFIRM_LAST_CLAUSE_DELAY_MS = CONFIRM_CLAUSE_STAGGER_MS * 6;
-const CONFIRM_HELP_DELAY_MS =
-  CONFIRM_LAST_CLAUSE_DELAY_MS + CONFIRM_CLAUSE_DURATION_MS - 200; // 마지막 절이 거의 채워진 뒤
-const CONFIRM_CTA_DELAY_MS = CONFIRM_HELP_DELAY_MS + 600;
+// 글자 채움(fill): 확인 문장이 글자 하나씩 읽는 순서대로 좌→우 잉크처럼 칠해진다.
+// 타이밍·슬롯 규칙은 lib/charFill.ts 공용(회의 안내 문장과 동일한 리듬).
 const CONFIRM_CTA_DURATION_MS = 1000;
 
 // 단계별 하단 입력의 포커스 대상 element id.
@@ -69,11 +66,11 @@ const FOCUS_IDS = [
 
 const WEEKDAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
 
-function formatDeadline(dateStr: string): string {
+function formatDeadline(dateStr: string, withYear = true): string {
   const [y, m, d] = dateStr.split("-").map(Number);
   if (!y || !m || !d) return "";
   const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  return `${y}년 ${m}월 ${d}일 ${WEEKDAYS_KO[wd]}요일`;
+  return `${withYear ? `${y}년 ` : ""}${m}월 ${d}일 ${WEEKDAYS_KO[wd]}요일`;
 }
 
 // 빈 값 자리표시: 회색 dot 3개 파도타기 애니메이션.
@@ -92,13 +89,17 @@ function DotWave() {
 }
 
 // 상단 문장에서 클릭하면 해당 항목으로 돌아가 수정할 수 있는 값(파란 강조, 밑줄은 호버 시에만).
+// shine: 회의 안내(intro) 필드값과 동일한 shine 스윕. 글자 채움 mask 와 같은 요소에 겹칠 수
+// 없어서(둘 다 animation·배경을 쓰므로) 확인 화면에서는 채움이 끝난 뒤에만 켠다.
 function EditValue({
   fieldLabel,
   onEdit,
+  shine = false,
   children,
 }: {
   fieldLabel: string;
   onEdit: () => void;
+  shine?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -106,7 +107,10 @@ function EditValue({
       type="button"
       onClick={onEdit}
       aria-label={`${fieldLabel} 수정`}
-      className="inline whitespace-normal break-all rounded text-left align-baseline font-semibold text-brand-600 decoration-brand-400 decoration-2 underline-offset-4 transition-colors hover:text-brand-700 hover:underline focus:outline-none focus-visible:underline focus-visible:ring-2 focus-visible:ring-brand-200"
+      className={cn(
+        "inline whitespace-normal break-all rounded text-left align-baseline font-bold text-brand-600 decoration-brand-400 decoration-2 underline-offset-4 transition-colors hover:text-brand-700 hover:underline focus:outline-none focus-visible:underline focus-visible:ring-2 focus-visible:ring-brand-200",
+        shine && "modu-value-shine",
+      )}
     >
       {children}
     </button>
@@ -259,10 +263,6 @@ export function MeetingCreateForm({
   const [maxStep, setMaxStep] = useState(0);
   const [confirming, setConfirming] = useState(false); // 회의 확인 화면 표시 여부
   const [confirmCtaReady, setConfirmCtaReady] = useState(false); // 7번 문구 등장 후 회의 만들기 노출
-  // 채움(fill) 애니메이션 완료 여부 — 끝나면 mask 를 걷어 일반 렌더링으로 되돌린다
-  // (inline 요소에 mask 가 남으면 텍스트가 흐릿해질 수 있어서).
-  const [confirmFillDone, setConfirmFillDone] = useState(false);
-
   // 포커스 제어용 ref.
   const skipInitialFocus = useRef(true); // 최초 마운트 자동 포커스(스크롤 점프) 방지
   const skipNextAutoFocus = useRef(false); // 모바일 '다음' 이동 시 자동 포커스(키보드 팝업·스크롤) 방지
@@ -327,6 +327,11 @@ export function MeetingCreateForm({
   const deadlineText = formatDeadline(deadlineDate);
   const responseDeadlineText = responseDeadlineDate
     ? `${formatDeadline(responseDeadlineDate)} ${responseDeadlineTime}`
+    : "";
+  // 회의 확인 화면의 날짜값은 년도 없이 표시한다("7월 5일 일요일").
+  const confirmDeadlineText = formatDeadline(deadlineDate, false);
+  const confirmResponseDeadlineText = responseDeadlineDate
+    ? `${formatDeadline(responseDeadlineDate, false)} ${responseDeadlineTime}`
     : "";
 
   const goTo = (next: number) => {
@@ -521,56 +526,61 @@ export function MeetingCreateForm({
   ]
     .filter(Boolean)
     .join(" ");
-  const confirmClauses: ReactNode[] = [
-    <>
-      이번 회의명은{" "}
-      <EditValue fieldLabel="회의명" onEdit={() => editFromConfirm(0)}>
-        {title.trim()}
-      </EditValue>{" "}
-      {hasBatchim(title) ? "이에요." : "예요."}
-    </>,
-    <>
-      회의 안건은{" "}
-      <EditValue fieldLabel="안건" onEdit={() => editFromConfirm(1)}>
-        {agenda.trim()}
-      </EditValue>{" "}
-      {hasBatchim(agenda) ? "이에요." : "예요."}
-    </>,
-    <>
-      회의 장소는{" "}
-      <EditValue fieldLabel="장소" onEdit={() => editFromConfirm(2)}>
-        {location.trim()}
-      </EditValue>{" "}
-      이고,
-    </>,
-    <>
-      예상 회의 진행 시간은{" "}
-      <EditValue fieldLabel="회의 길이" onEdit={() => editFromConfirm(3)}>
-        {durationText}
-      </EditValue>{" "}
-      이에요.
-    </>,
-    <>
-      <EditValue fieldLabel="회의 마감 날짜" onEdit={() => editFromConfirm(4)}>
-        {deadlineText}
-      </EditValue>{" "}
-      까지는 회의를 마쳐야 해요.
-    </>,
-    <>
-      참여자는{" "}
-      <EditValue fieldLabel="응답 마감" onEdit={() => editFromConfirm(5)}>
-        {responseDeadlineText}
-      </EditValue>{" "}
-      까지 응답해주세요.
-    </>,
-    <>
-      회의 참석자 명단은{" "}
-      <EditValue fieldLabel="참석자" onEdit={editParticipantsFromConfirm}>
-        {participantNames}
-      </EditValue>{" "}
-      총 {filledParticipants.length}명이에요.
-    </>,
+  // 수정 가능한 값 조각: 글자 span 들을 EditValue 로 감싼다(shine 은 채움 완료 후 점등).
+  const confirmValue = (
+    text: string,
+    fieldLabel: string,
+    onEdit: () => void,
+  ): CharFillSegment => ({
+    text,
+    wrap: (chars, shine) => (
+      <EditValue fieldLabel={fieldLabel} onEdit={onEdit} shine={shine}>
+        {chars}
+      </EditValue>
+    ),
+  });
+  // 글자 하나 단위로 칠하기 위해 문장을 [일반 텍스트 | 수정 가능한 값] 조각으로 둔다.
+  const confirmClauses: CharFillSegment[][] = [
+    [
+      "이번 회의명은 ",
+      confirmValue(title.trim(), "회의명", () => editFromConfirm(0)),
+      hasBatchim(title) ? " 이에요." : " 예요.",
+    ],
+    [
+      "회의 안건은 ",
+      confirmValue(agenda.trim(), "안건", () => editFromConfirm(1)),
+      hasBatchim(agenda) ? " 이에요." : " 예요.",
+    ],
+    [
+      "회의 장소는 ",
+      confirmValue(location.trim(), "장소", () => editFromConfirm(2)),
+      " 이고,",
+    ],
+    [
+      "예상 회의 진행 시간은 ",
+      confirmValue(durationText, "회의 길이", () => editFromConfirm(3)),
+      " 이에요.",
+    ],
+    [
+      confirmValue(confirmDeadlineText, "회의 마감 날짜", () => editFromConfirm(4)),
+      " 까지는 회의를 마쳐야 해요.",
+    ],
+    [
+      "참여자는 ",
+      confirmValue(confirmResponseDeadlineText, "응답 마감", () => editFromConfirm(5)),
+      " 까지 응답해주세요.",
+    ],
+    [
+      "회의 참석자 명단은 ",
+      confirmValue(participantNames, "참석자", editParticipantsFromConfirm),
+      ` 총 ${filledParticipants.length}명이에요.`,
+    ],
   ];
+
+  // 채움 종료 시각 → 안내 문구·CTA 등장 지연(글자 수 비례).
+  const { fillEndMs: confirmFillEndMs } = charFillTiming(confirmClauses);
+  const confirmHelpDelayMs = Math.max(0, confirmFillEndMs - 200); // 마지막 글자가 거의 채워진 뒤
+  const confirmCtaDelayMs = confirmHelpDelayMs + 600;
 
   // 단계가 바뀌면 해당 입력에 포커스(최초 마운트·모바일 '다음' 이동은 건너뜀).
   useEffect(() => {
@@ -596,22 +606,9 @@ export function MeetingCreateForm({
       setConfirmCtaReady(false);
       return;
     }
-    const timer = window.setTimeout(() => setConfirmCtaReady(true), CONFIRM_CTA_DELAY_MS);
+    const timer = window.setTimeout(() => setConfirmCtaReady(true), confirmCtaDelayMs);
     return () => window.clearTimeout(timer);
-  }, [confirming]);
-
-  // 회의 확인 화면: 채움 애니메이션이 모두 끝나면 mask 를 제거한다.
-  useEffect(() => {
-    if (!confirming) {
-      setConfirmFillDone(false);
-      return;
-    }
-    const timer = window.setTimeout(
-      () => setConfirmFillDone(true),
-      CONFIRM_LAST_CLAUSE_DELAY_MS + CONFIRM_CLAUSE_DURATION_MS,
-    );
-    return () => window.clearTimeout(timer);
-  }, [confirming]);
+  }, [confirming, confirmCtaDelayMs]);
 
   // 참석자 모달 접근성: Esc 닫기 + 열림 시 포커스 이동 + 닫힘 시 트리거로 복원.
   useEffect(() => {
@@ -1023,61 +1020,18 @@ export function MeetingCreateForm({
             {/* 확인 화면 뒤로가기: 마지막 입력 단계(참석자)로 복귀 */}
             <MobileHeaderTitle title="회의 확인" onBack={() => setConfirming(false)} />
             <p className="hidden text-sm font-medium text-slate-400 sm:block">회의 확인</p>
-            {/* 절이 좌→우로 채워지는 등장: 회색 밑글(레이아웃 담당) 위에 실제 문장을 겹치고
-                절마다 시차를 두고 mask 스윕으로 드러낸다. 색상은 기존 값 그대로 유지된다. */}
-            <div className="relative break-keep text-left text-2xl leading-relaxed text-slate-800 sm:mt-3 sm:text-3xl sm:leading-relaxed">
-              {/* 투명 밑글 — 레이아웃(높이)만 담당. 채워지기 전 텍스트는 보이지 않는다. */}
-              <div
-                aria-hidden="true"
-                inert
-                className="pointer-events-none select-none opacity-0"
-              >
-                <p>
-                  {confirmClauses.slice(0, 6).map((clause, i) => (
-                    <span key={i}>{clause} </span>
-                  ))}
-                </p>
-                <p className="mt-4">{confirmClauses[6]}</p>
-              </div>
-              {/* 실제 문장 — 절 단위 잉크 채움. 완료 후엔 mask 를 걷어 일반 렌더링. */}
-              <div className="absolute inset-0">
-                <p>
-                  {confirmClauses.slice(0, 6).map((clause, i) => (
-                    <span
-                      key={i}
-                      className={cn(!confirmFillDone && "modu-fill-clause")}
-                      style={
-                        confirmFillDone
-                          ? undefined
-                          : {
-                              animationDelay: `${i * CONFIRM_CLAUSE_STAGGER_MS}ms`,
-                              animationDuration: `${CONFIRM_CLAUSE_DURATION_MS}ms`,
-                            }
-                      }
-                    >
-                      {clause}{" "}
-                    </span>
-                  ))}
-                </p>
-                <p
-                  className={cn("mt-4 text-left", !confirmFillDone && "modu-fill-clause")}
-                  style={
-                    confirmFillDone
-                      ? undefined
-                      : {
-                          animationDelay: `${CONFIRM_LAST_CLAUSE_DELAY_MS}ms`,
-                          animationDuration: `${CONFIRM_CLAUSE_DURATION_MS}ms`,
-                        }
-                  }
-                >
-                  {confirmClauses[6]}
-                </p>
-              </div>
-            </div>
+            {/* 글자가 읽는 순서대로 좌→우 잉크처럼 칠해지는 등장(공용 CharFillSentence). */}
+            <CharFillSentence
+              className="text-left sm:mt-3"
+              paragraphs={[
+                { clauses: confirmClauses.slice(0, 6) },
+                { clauses: [confirmClauses[6]], className: "mt-4" },
+              ]}
+            />
             <p
               className="relative mt-4 animate-fade-up-blur text-sm text-slate-400 motion-reduce:animate-none"
               style={{
-                animationDelay: `${CONFIRM_HELP_DELAY_MS}ms`,
+                animationDelay: `${confirmHelpDelayMs}ms`,
                 animationDuration: "1s",
               }}
             >

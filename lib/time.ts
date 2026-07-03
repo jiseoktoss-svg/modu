@@ -65,6 +65,12 @@ export function formatKoreanDate(iso: string): string {
   return `${p.year}년 ${p.month}월 ${p.day}일 ${WEEKDAYS_KO[p.weekday]}요일`;
 }
 
+/** "7월 1일 수요일" (년도 없음) */
+export function formatKoreanDateNoYear(iso: string): string {
+  const p = getKstParts(iso);
+  return `${p.month}월 ${p.day}일 ${WEEKDAYS_KO[p.weekday]}요일`;
+}
+
 /** "14:00" (KST) */
 export function formatKoreanTime(iso: string): string {
   const p = getKstParts(iso);
