@@ -1932,10 +1932,11 @@ function CaseDescription({ caseId }: { caseId: number }) {
         <p
           className={cn(
             "mt-2.5 break-keep rounded-xl px-2.5 py-2 text-xs font-bold",
+            // 2색 체계: caution 도 빨강 계열(danger 보다 옅게)로 — 앰버는 쓰지 않는다.
             current.banner.tone === "danger"
               ? "bg-red-50 text-red-700"
               : current.banner.tone === "caution"
-                ? "bg-amber-50 text-amber-700"
+                ? "bg-red-50/70 text-red-500"
                 : "bg-brand-50 text-brand-700",
           )}
         >
@@ -2413,11 +2414,12 @@ function ResultScreen({
                       </p>
                       <span
                         className={cn(
+                          // 2색 체계: 파랑 = 추천, 빨강 = 주의. 앰버는 쓰지 않는다.
                           "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold",
                           c.grade === "best"
                             ? "bg-brand-50 text-brand-700"
                             : c.grade === "caution"
-                              ? "bg-amber-50 text-amber-700"
+                              ? "bg-red-50 text-red-600"
                               : "bg-slate-100 text-slate-600",
                         )}
                       >
@@ -2445,7 +2447,12 @@ function ResultScreen({
 
       <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} aboveCta />
 
-      <MobileStickyAction className="mt-6 sm:mt-8">
+      {/* PC 에서도 하단 고정 — 고정 바 안에서 버튼 폭은 본문 컬럼(랜딩 CTA와 동일)과 맞춘다. */}
+      <MobileStickyAction
+        className="mt-6 sm:mt-8"
+        stickyDesktop
+        innerClassName="sm:max-w-2xl sm:px-6"
+      >
         <TDSButton
           size="xl"
           display="block"
@@ -2502,11 +2509,25 @@ const DAY_EMPHASIS: Record<
   },
 };
 
-// 후보의 강조 톤: 필수인원이 빠지면 차선(앰버), 성립 어려움 케이스(danger 배너)면 레드.
-function caseEmphasisTone(candidate: CaseCandidate, dangerCase: boolean): DayEmphasisTone {
-  if (candidate.grade !== "caution") return "brand";
-  return dangerCase ? "red" : "amber";
+// 후보의 강조 톤(2색 체계): 파랑 = 추천, 빨강 = 주의(필수 인원 빠짐/성립 어려움).
+// 노랑(앰버)은 사용자가 외울 색을 줄이기 위해 쓰지 않는다. (DAY_EMPHASIS 의 amber 항목은
+// 보존용 원본 화면 타입 호환을 위해 남아 있을 뿐 런타임에서 반환되지 않는다.)
+// 두 번째 인자는 보존용 원본 화면의 호출 시그니처 호환을 위해 남겨둔다.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function caseEmphasisTone(candidate: CaseCandidate, _dangerCase: boolean): DayEmphasisTone {
+  return candidate.grade === "caution" ? "red" : "brand";
 }
+
+// 추천결과 캘린더(와이드) 셀 배경: 케이스 안 상대 순위를 파랑 농도 6단계로 환산한다(2색 체계).
+// 1순위가 가장 진하고 마지막 순위가 가장 연하다. 등급(주의)은 배경 대신 빨간 숫자로 전달한다.
+const RANK_RAMP = [
+  "bg-brand-500 font-bold text-white shadow-sm shadow-brand-500/20",
+  "bg-brand-400 font-bold text-white",
+  "bg-brand-300 font-semibold text-brand-900",
+  "bg-brand-200 font-semibold text-brand-900",
+  "bg-brand-100 font-medium text-brand-800",
+  "bg-brand-50 font-medium text-brand-700",
+];
 
 const REQUIRED_NAMES = new Set(
   DEMO_PEOPLE.filter((p) => p.attendanceType === "required").map((p) => p.name),
@@ -2867,11 +2888,6 @@ function SubmittedCalendarScreenWide({
   const safeWeekIdx = Math.min(Math.max(weekIdx, 0), Math.max(0, weeks.length - 1));
   const week = weeks[safeWeekIdx];
   const selectedCandidates = selectedDate ? (candidatesByDate.get(selectedDate) ?? []) : [];
-  const tonesInCase = useMemo(() => {
-    const set = new Set<DayEmphasisTone>();
-    candidates.forEach((c) => set.add(caseEmphasisTone(c, dangerCase)));
-    return set;
-  }, [candidates, dangerCase]);
 
   // 주간 전환: 선택된 날짜(없으면 1순위)가 속한 주로 이동한다.
   const switchToWeek = () => {
@@ -2883,21 +2899,23 @@ function SubmittedCalendarScreenWide({
     }
   };
 
-  // 날짜 셀 공통 계산: 그 날의 1순위 후보와 강조 톤/클래스.
+  const totalPeople = DEMO_PEOPLE.length;
+  // 상대 순위(1..후보 수)를 파랑 농도 램프로 — 후보 수에 맞춰 진한→연한 순으로 배분한다.
+  const rankCellClass = (rank: number) => {
+    const t = candidates.length <= 1 ? 0 : (rank - 1) / (candidates.length - 1);
+    return RANK_RAMP[Math.min(RANK_RAMP.length - 1, Math.round(t * (RANK_RAMP.length - 1)))];
+  };
+  // 날짜 셀 공통 계산: 그 날의 1순위 후보, 농도 클래스, 가능 인원, 주의(필수 빠짐) 여부.
   const cellInfo = (dateStr: string) => {
     const best = candidatesByDate.get(dateStr)?.[0];
-    const tone = best ? caseEmphasisTone(best.candidate, dangerCase) : null;
-    const emphasis =
-      best && tone
-        ? best.rank === 1
-          ? DAY_EMPHASIS[tone].rank1
-          : best.rank === 2
-            ? DAY_EMPHASIS[tone].rank2
-            : best.rank === 3
-              ? DAY_EMPHASIS[tone].rank3
-              : DAY_EMPHASIS[tone].rest
-        : null;
-    return { best, tone, emphasis };
+    if (!best) return null;
+    return {
+      best,
+      cellClass: rankCellClass(best.rank),
+      availCount: best.candidate.availableNames.length,
+      // 필수 인원이 빠지는 날(주의 등급)은 가능 인원 숫자를 빨간색으로 보여준다.
+      warn: best.candidate.grade === "caution",
+    };
   };
 
   const fmtKoMonthDay = (dateStr: string) => {
@@ -2917,31 +2935,38 @@ function SubmittedCalendarScreenWide({
           onNext={() => setMonthIdx(safeMonthIdx + 1)}
           emptyCellPrefix="done-cal-wide"
           renderDate={(cell) => {
-            const { best, tone, emphasis } = cellInfo(cell.date);
-            const clickable = Boolean(best);
+            const info = cellInfo(cell.date);
             const isSelected = selectedDate === cell.date;
             return (
               <button
                 key={cell.key}
                 type="button"
-                disabled={!clickable}
+                disabled={!info}
                 onClick={() => setSelectedDate(cell.date)}
                 aria-pressed={isSelected}
-                aria-label={`${month.m}월 ${cell.day}일${best ? ` — 추천 ${best.rank}순위` : ""}`}
+                aria-label={`${month.m}월 ${cell.day}일${
+                  info
+                    ? ` — 추천 ${info.best.rank}순위, ${info.availCount}/${totalPeople}명 가능`
+                    : ""
+                }`}
                 className={cn(
-                  "relative flex aspect-square flex-col items-center justify-center rounded-lg text-sm leading-none transition motion-reduce:transition-none",
+                  "relative flex aspect-square flex-col items-center justify-center gap-0.5 rounded-lg text-sm leading-none transition motion-reduce:transition-none",
                   "sm:aspect-auto sm:h-24 sm:items-start sm:justify-start sm:gap-1 sm:p-2 sm:text-left sm:leading-tight",
-                  !clickable
-                    ? "cursor-default text-slate-300"
-                    : emphasis ?? "text-slate-700 hover:bg-slate-100",
+                  !info ? "cursor-default text-slate-300" : info.cellClass,
                   isSelected && "modu-cell-pop z-10",
                 )}
               >
                 {cell.day}
-                {best && tone && (
-                  <span className="hidden text-[11px] font-semibold leading-tight sm:block">
-                    {best.rank}순위 ·{" "}
-                    {formatKoreanTimeRange(best.candidate.startAt, best.candidate.endAt)}
+                {info && (
+                  <span
+                    className={cn(
+                      "text-[10px] font-semibold leading-none sm:text-[11px] sm:leading-tight",
+                      info.warn
+                        ? "rounded-full bg-white/85 px-1 py-px text-red-600"
+                        : "opacity-80",
+                    )}
+                  >
+                    {info.availCount}/{totalPeople}
                   </span>
                 )}
               </button>
@@ -2990,42 +3015,42 @@ function SubmittedCalendarScreenWide({
           </div>
         ))}
         {week.map((dateStr) => {
-          const { best, tone, emphasis } = cellInfo(dateStr);
-          const clickable = Boolean(best);
+          const info = cellInfo(dateStr);
           const isSelected = selectedDate === dateStr;
           const { m, d } = parseDateStr(dateStr);
           return (
             <button
               key={dateStr}
               type="button"
-              disabled={!clickable}
+              disabled={!info}
               onClick={() => setSelectedDate(dateStr)}
               aria-pressed={isSelected}
-              aria-label={`${m}월 ${d}일${best ? ` — 추천 ${best.rank}순위` : ""}`}
+              aria-label={`${m}월 ${d}일${
+                info
+                  ? ` — 추천 ${info.best.rank}순위, ${info.availCount}/${totalPeople}명 가능`
+                  : ""
+              }`}
               className={cn(
                 "relative flex h-32 flex-col items-start gap-1.5 rounded-lg p-2.5 text-left text-sm leading-tight transition motion-reduce:transition-none",
-                !clickable
-                  ? "cursor-default text-slate-300"
-                  : emphasis ?? "text-slate-700 hover:bg-slate-100",
+                !info ? "cursor-default text-slate-300" : info.cellClass,
                 isSelected && "modu-cell-pop z-10",
               )}
             >
               <span className="text-sm font-bold leading-none">{d}</span>
-              {best && tone && (
+              {info && (
                 <>
+                  <span className="text-xs font-semibold">
+                    {formatKoreanTimeRange(info.best.candidate.startAt, info.best.candidate.endAt)}
+                  </span>
                   <span
                     className={cn(
-                      "rounded-full px-2 py-0.5 text-[11px] font-bold text-white",
-                      DAY_EMPHASIS[tone].badge,
+                      "text-[11px] font-semibold",
+                      info.warn
+                        ? "rounded-full bg-white/85 px-1.5 py-0.5 text-red-600"
+                        : "opacity-80",
                     )}
                   >
-                    {best.rank}순위
-                  </span>
-                  <span className="text-xs font-semibold">
-                    {formatKoreanTimeRange(best.candidate.startAt, best.candidate.endAt)}
-                  </span>
-                  <span className="text-[11px] opacity-80">
-                    {GRADE_LABELS[best.candidate.grade]}
+                    {info.availCount}/{totalPeople} 가능
                   </span>
                 </>
               )}
@@ -3103,11 +3128,12 @@ function SubmittedCalendarScreenWide({
         <CaseDescription caseId={caseId} />
       </div>
 
+      {/* 범례(2색 체계): 배경 농도 = 상대 순위, 숫자 = 가능 인원, 빨간 숫자 = 필수 빠짐. */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-slate-500">
-        {tonesInCase.has("brand") && <LegendDot className="bg-brand-500" label="추천 후보" />}
-        {tonesInCase.has("amber") && <LegendDot className="bg-amber-500" label="차선 후보" />}
-        {tonesInCase.has("red") && <LegendDot className="bg-red-500" label="성립 어려움" />}
-        <span className="text-slate-400">색이 진할수록 상위 순위 · 날짜를 누르면 참석 명단이 보여요.</span>
+        <span>색이 진할수록 상위 순위예요.</span>
+        <span>숫자는 가능 인원/전체 인원이에요.</span>
+        <span className="text-red-500">빨간 숫자는 필수 인원이 빠지는 날이에요.</span>
+        <span className="text-slate-400">날짜를 누르면 참석 명단이 보여요.</span>
       </div>
 
       {/* PC: 달력(좌) + 참석 명단(우) 2열. 모바일: 원본과 동일한 세로 스택. */}

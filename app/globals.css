@@ -74,6 +74,31 @@
       display: none;
     }
   }
+
+  /* 데스크톱에서도 하단 고정이 필요한 화면(예: 추천 시간 '투표하기' CTA):
+     슬롯에 modu-sticky-action-desktop 을 붙이면 PC 에서도 모바일과 같은
+     fixed 바(위쪽 흰색 그라데이션 + 본문 스페이서)로 동작한다. */
+  @media (min-width: 640px) {
+    .modu-sticky-action-desktop .modu-mobile-sticky-action {
+      position: fixed;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      z-index: 20;
+      /* 좌우 패딩은 0 — 폭은 안쪽 컬럼(max-w-2xl + px-6)이 전담해,
+         본문 안 다른 CTA 버튼과 어느 창 크기에서든 정확히 같은 폭이 된다. */
+      padding: 1rem 0 calc(1.5rem + env(safe-area-inset-bottom));
+      background: rgb(255 255 255);
+    }
+
+    .modu-sticky-action-desktop .modu-mobile-sticky-action::before {
+      content: "";
+    }
+
+    .modu-sticky-action-desktop .modu-mobile-sticky-action-spacer {
+      display: block;
+    }
+  }
 }
 
 @font-face {
@@ -442,7 +467,6 @@ body {
     animation-name: modu-fill-char-reveal-flat;
   }
 }
-
 .modu-cell-pop {
   animation: modu-cell-pop 0.25s ease-out both;
   /* 셀 자체 shadow-* 유틸리티(예: 1순위 shadow-sm)와의 충돌을 피해 여기서 직접 지정.

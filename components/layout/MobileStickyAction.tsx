@@ -13,6 +13,8 @@ interface MobileStickyActionProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode;
   innerClassName?: string;
   bleed?: boolean;
+  /** true 면 데스크톱에서도 하단 고정(fixed) 바로 동작한다(기본: 모바일만 고정). */
+  stickyDesktop?: boolean;
 }
 
 // 본문과 하단 고정 영역 사이에 둘 최소 여백(px).
@@ -23,6 +25,7 @@ export function MobileStickyAction({
   className,
   innerClassName,
   bleed = true,
+  stickyDesktop = false,
   ...props
 }: MobileStickyActionProps) {
   const actionRef = useRef<HTMLDivElement>(null);
@@ -38,7 +41,7 @@ export function MobileStickyAction({
     const measure = () => {
       const isMobile = window.matchMedia("(max-width: 639px)").matches;
       const actionHeight = node.getBoundingClientRect().height;
-      setSpacerHeight(isMobile ? actionHeight + BOTTOM_GAP : 0);
+      setSpacerHeight(isMobile || stickyDesktop ? actionHeight + BOTTOM_GAP : 0);
     };
 
     const scheduleMeasure = () => {
@@ -55,11 +58,16 @@ export function MobileStickyAction({
       observer.disconnect();
       window.removeEventListener("resize", scheduleMeasure);
     };
-  }, []);
+  }, [stickyDesktop]);
 
   return (
     <div
-      className={cn("modu-mobile-sticky-action-slot", bleed && "-mx-4 sm:mx-0", className)}
+      className={cn(
+        "modu-mobile-sticky-action-slot",
+        bleed && "-mx-4 sm:mx-0",
+        stickyDesktop && "modu-sticky-action-desktop",
+        className,
+      )}
       {...props}
     >
       <div
