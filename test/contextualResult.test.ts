@@ -3,7 +3,6 @@ import {
   buildCalendarMarks,
   buildContextualScheduleResult,
   evaluateAllSlots,
-  pickAutoConfirmSlot,
   type EvaluatedSlot,
 } from "@/lib/scheduler/contextualResult";
 import { adaptDemoCaseToEvaluatedSlots } from "@/data/demoCaseAdapter";
@@ -188,45 +187,58 @@ describe("contextualResult", () => {
   });
 });
 
-// 자동 확정 — 투표 없이 modu 가 확정 조건(필수 전원 가능 + 미응답 없음)을 만족하는
-// 최상위 후보를 일관된 규칙으로 고른다(서버 autoConfirmMeetingIfReady 의 판단부).
-describe("pickAutoConfirmSlot", () => {
-  it("13. 확정 조건을 만족하는 후보 중 정렬상 가장 앞(이른 시간)을 고른다", () => {
+// 추천안 해석 — modu 는 확정하지 않는다. 후보를 어떻게 해석해 보여주는지(그룹 라벨·정렬·신호)를 검증한다.
+describe("추천안 해석(rankGroups)", () => {
+  it("13. 최상위 그룹은 정렬상 가장 좋은 조건이고, 같은 조건이면 이른 시간이 먼저 보인다", () => {
     const d = upcomingWeekdays(3);
     const slots = [
       makeSlot({ date: d[2], startHm: "10:00" }), // 전원 가능(늦은 날)
       makeSlot({ date: d[0], startHm: "14:00", optionalBusyNames: ["정우진"] }),
       makeSlot({ date: d[1], startHm: "10:00" }), // 전원 가능(빠른 날)
     ];
-    const picked = pickAutoConfirmSlot(buildContextualScheduleResult(slots));
-    // 같은 조건(전원 가능)이면 더 이른 날짜·시간이 우선 — 사람이 고르지 않는다.
-    expect(picked?.date).toBe(d[1]);
+    const result = buildContextualScheduleResult(slots);
+    // 전원 가능 후보들이 최상위 그룹, 그룹 안은 이른 시간 순 — 화면 표시 순서일 뿐 확정이 아니다.
+    expect(result.rankGroups[0].label).toBe("모두 참석할 수 있는 후보");
+    expect(result.rankGroups[0].slots[0].date).toBe(d[1]);
   });
 
-  it("14. 필수참석자가 모두 참석할 수 있는 후보가 없으면 확정하지 않는다", () => {
+  it("14. 필수참석자 1명이 빠지는 후보는 '차선 후보' 그룹으로 간다", () => {
     const d = upcomingWeekdays(2);
     const slots = [
       makeSlot({ date: d[0], startHm: "10:00", requiredBusyNames: ["김지훈"] }),
+      makeSlot({ date: d[1], startHm: "15:00" }),
+    ];
+    const result = buildContextualScheduleResult(slots);
+    const secondary = result.rankGroups.find((g) =>
+      g.slots.some((s) => s.requiredBusyCount === 1),
+    );
+    expect(secondary?.label).toBe("차선 후보");
+  });
+
+  it("15. 필수참석자 2명 이상 빠지는 후보는 '피하는 게 좋은 시간'으로 분류된다", () => {
+    const d = upcomingWeekdays(2);
+    const slots = [
+      makeSlot({ date: d[0], startHm: "10:00" }),
       makeSlot({ date: d[1], startHm: "14:00", requiredBusyNames: ["이서연", "박민준"] }),
     ];
-    expect(pickAutoConfirmSlot(buildContextualScheduleResult(slots))).toBeNull();
+    const result = buildContextualScheduleResult(slots);
+    expect(result.rankGroups.at(-1)?.label).toBe("피하는 게 좋은 시간");
   });
 
-  it("15. 미응답자가 있으면 확정하지 않는다", () => {
-    const d = upcomingWeekdays(1)[0];
-    const slots = [makeSlot({ date: d, startHm: "10:00", pendingNames: ["한예린"] })];
-    expect(pickAutoConfirmSlot(buildContextualScheduleResult(slots))).toBeNull();
-  });
-
-  it("16. 필수가 빠지는 후보가 섞여 있어도 확정 조건을 만족하는 후보를 고른다", () => {
-    const d = upcomingWeekdays(2);
+  it("16. 가장 나은 시간(recommended)과 피하는 게 좋은 날(avoid)이 calendarMarks 에 반영된다", () => {
+    const d = upcomingWeekdays(4);
     const slots = [
-      makeSlot({ date: d[0], startHm: "10:00", requiredBusyNames: ["김지훈"] }),
-      makeSlot({ date: d[1], startHm: "15:00", optionalBusyNames: ["정우진"] }),
+      makeSlot({ date: d[0], startHm: "10:00" }), // 전원 가능 → 파랑 후보
+      makeSlot({ date: d[1], startHm: "14:00", optionalBusyNames: ["정우진"] }),
+      makeSlot({ date: d[2], startHm: "10:00", requiredBusyNames: ["김지훈"] }),
+      makeSlot({ date: d[3], startHm: "15:00", requiredBusyNames: ["이서연", "박민준"] }), // hard avoid 만 있는 날
     ];
-    const picked = pickAutoConfirmSlot(buildContextualScheduleResult(slots));
-    expect(picked?.date).toBe(d[1]);
-    expect(picked?.requiredBusyCount).toBe(0);
+    const result = buildContextualScheduleResult(slots);
+    const toneOf = (date: string) => result.calendarMarks.find((m) => m.date === date)?.tone;
+    expect(toneOf(d[0])).toBe("recommended");
+    expect(toneOf(d[3])).toBe("avoid");
+    // 필수 1명만 빠지는 날은 배경을 칠하지 않는다(soft 경고는 숫자/문구로).
+    expect(toneOf(d[2])).toBe("none");
   });
 });
 

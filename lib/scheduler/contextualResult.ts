@@ -1,6 +1,8 @@
 // 맥락형 추천 해석 레이어.
 // 기존 추천 엔진(recommendSlots)은 건드리지 않고, 그 위에서 "전체 상황을 해석한 뒤
 // 사용자가 실제로 판단해야 하는 정보만 강조"하는 화면용 결과 모델을 만든다.
+// modu 는 회의 시간을 확정하지 않는다 — 이 레이어의 출력은 전부 '판단 보조' 정보이고,
+// 최종 회의 시간은 참여자들이 추천안을 보고 제품 밖에서 정한다.
 //
 //   EvaluatedSlot[] → classifyContext → groupMeaningfulRanks → pickBlueSlots
 //                   → buildCalendarMarks / buildNarrative → ContextualScheduleResult
@@ -480,25 +482,6 @@ export function buildNarrative(args: {
   }
 
   return { headline, comment };
-}
-
-// ---- 자동 확정 후보 ----
-
-/**
- * 자동 확정 후보: 필수참석자 불가 0명 + 미응답 0명 조건을 만족하는,
- * 그룹 정렬 순서상 가장 앞의 슬롯. 없으면 null(확정하지 않는다 — 화면이 기간 조정 안내를 담당).
- * 비슷한 후보가 여러 개여도 사람이 고르지 않고, compareSlots 의 일관된 규칙
- * (필수 불가 적음 → 가능 인원 많음 → 선택 불가 적음 → 이른 시간)으로 하나를 정한다.
- */
-export function pickAutoConfirmSlot(result: ContextualScheduleResult): EvaluatedSlot | null {
-  for (const group of result.rankGroups) {
-    for (const slot of group.slots) {
-      if (slot.requiredBusyCount === 0 && slot.pendingNames.length === 0) {
-        return slot;
-      }
-    }
-  }
-  return null;
 }
 
 // ---- 최종 결과 ----

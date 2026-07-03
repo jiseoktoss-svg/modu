@@ -8,20 +8,9 @@ import {
   fetchBlocksForParticipant,
   fetchMeeting,
   fetchParticipants,
-  toSchedulerInput,
   toSchedulerMeeting,
 } from "@/lib/data";
-import {
-  isSlotConfirmable,
-  MAX_MEMO_LENGTH,
-  validateSubmittedBlocks,
-} from "@/lib/scheduler";
-import {
-  buildContextualScheduleResult,
-  evaluateAllSlots,
-  pickAutoConfirmSlot,
-} from "@/lib/scheduler/contextualResult";
-import { buildShareText } from "@/lib/share";
+import { MAX_MEMO_LENGTH, validateSubmittedBlocks } from "@/lib/scheduler";
 import {
   createDemoMeetingId,
   getDemoParticipants,
@@ -44,7 +33,6 @@ import type {
   LoadCalendarSnapshotResult,
   LoadResponseArgs,
   LoadResponseResult,
-  SimpleResult,
   SubmitAvailabilityArgs,
   SubmitResult,
   VerifyParticipantIdentityArgs,
@@ -394,9 +382,8 @@ export async function submitAvailability(args: SubmitAvailabilityArgs): Promise<
     .eq("id", args.participantId);
   if (updErr) return { ok: false, error: "응답을 저장하지 못했어요." };
 
-  // 투표는 없다 — 모든 참석자가 응답을 마쳤고 확정 조건을 만족하면 modu 가 자동 확정한다.
-  const confirmResult = await autoConfirmMeetingIfReady(args.meetingId);
-  if (!confirmResult.ok) return { ok: false, error: confirmResult.error };
+  // 투표도 자동 확정도 없다 — modu 는 회의 시간을 확정하지 않는다.
+  // 응답 저장 후 추천안 화면이 전체 응답을 해석해 보여주고, 최종 결정은 참여자들이 제품 밖에서 한다.
   revalidatePath(`/m/${args.meetingId}`);
 
   return { ok: true, participantId: args.participantId, token: participant.participant_token };
@@ -510,79 +497,4 @@ async function assertParticipantToken(
   const participant = data as ParticipantRow;
   if (participant.meeting_id !== meetingId || participant.participant_token !== token) return null;
   return participant;
-}
-
-// ---- 자동 확정 ----
-// 투표는 없다. 모든 참석자가 응답을 마치면 modu 가 전체 응답을 해석해(evaluateAllSlots →
-// buildContextualScheduleResult), 확정 조건(필수참석자 불가 0명 + 미응답 0명)을 만족하는
-// 최상위 후보를 회의 시간으로 확정한다. 조건을 만족하는 후보가 없으면 확정하지 않고
-// 화면이 기간 조정 안내를 담당한다(noGoodOption 문구).
-
-async function autoConfirmMeetingIfReady(meetingId: string): Promise<SimpleResult> {
-  // 데모 회의는 저장소가 없어 확정하지 않는다.
-  if (isDemoMeetingId(meetingId)) return { ok: true };
-
-  const [meeting, participants, blocks] = await Promise.all([
-    fetchMeeting(meetingId),
-    fetchParticipants(meetingId),
-    fetchBlocks(meetingId),
-  ]);
-  if (!meeting) return { ok: false, error: "회의를 찾지 못했어요." };
-  if (meeting.confirmedSlotId) return { ok: true };
-  if (participants.length === 0) return { ok: true };
-  // 미응답자가 있으면 확정하지 않는다(화면은 잠정 결과만 보여준다).
-  if (participants.some((p) => p.responseStatus !== "submitted")) return { ok: true };
-
-  const input = toSchedulerInput(meeting, participants, blocks);
-  const contextual = buildContextualScheduleResult(evaluateAllSlots(input));
-  const candidate = pickAutoConfirmSlot(contextual);
-  if (!candidate) return { ok: true };
-
-  // 확정 직전 서버 검증(회의 길이·날짜 범위·근무시간·점심 등)을 한 번 더 통과해야 한다.
-  const confirmable = isSlotConfirmable(
-    input.meeting,
-    input.participants,
-    input.blocks,
-    candidate.startAt,
-    candidate.endAt,
-  );
-  if (!confirmable.ok) return { ok: false, error: confirmable.reason };
-
-  const summaryText = buildShareText({
-    title: meeting.title,
-    agenda: meeting.agenda,
-    location: meeting.location,
-    startAt: candidate.startAt,
-    endAt: candidate.endAt,
-    // 확정 조건이 '필수 전원 가능 + 미응답 없음'이므로 항상 참이다.
-    requiredAllAvailable: true,
-  });
-
-  const sb = getSupabaseAdmin();
-  // 경합 방지: 동시에 두 응답이 제출될 수 있어 확정 직전 최신 상태를 다시 확인한다.
-  const latestMeeting = await fetchMeeting(meetingId);
-  if (!latestMeeting) return { ok: false, error: "회의를 찾지 못했어요." };
-  if (latestMeeting.confirmedSlotId) return { ok: true };
-
-  const { data: slot, error } = await sb
-    .from("confirmed_slots")
-    .insert({
-      meeting_id: meetingId,
-      start_at: candidate.startAt,
-      end_at: candidate.endAt,
-      summary_text: summaryText,
-    })
-    .select("id")
-    .single();
-  if (error || !slot) return { ok: false, error: "회의 시간을 확정하지 못했어요." };
-
-  const { error: updateError } = await sb
-    .from("meetings")
-    .update({ confirmed_slot_id: slot.id })
-    .eq("id", meetingId);
-  if (updateError) return { ok: false, error: "회의 시간을 확정하지 못했어요." };
-
-  revalidatePath(`/m/${meetingId}`);
-  revalidatePath(`/meetings/${meetingId}/confirmed`);
-  return { ok: true };
 }

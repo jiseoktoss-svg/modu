@@ -2288,7 +2288,8 @@ function WaitingScreen({
 }
 
 // 투표 없는 결과 화면 — 후보 카드는 선택 대상이 아니라 modu 의 판단을 설명하는 카드다.
-// (색·그룹·문장은 contextualResult 가 만들고, 확정은 서버 자동 확정 흐름이 담당한다.)
+// (색·그룹·문장은 contextualResult 가 만든다. modu 는 확정하지 않는다 —
+//  최종 회의 시간은 참여자들이 추천안을 보고 제품 밖에서 정한다.)
 function ResultScreen({
   caseId,
   onSelectCase,
@@ -2371,10 +2372,14 @@ function ResultScreen({
           <CaseDescription caseId={caseId} />
         </div>
 
-        {/* 맥락형 해석 문장 — modu 가 응답 분포를 해석한 결과를 먼저 말해준다. */}
+        {/* 맥락형 해석 문장 — modu 가 응답 분포를 해석한 결과를 먼저 말해준다.
+            확정은 하지 않는다 — 최종 결정은 참여자들이 제품 밖에서 한다. */}
         <div className="space-y-1 px-1">
           <p className="break-keep text-sm font-bold text-slate-800">{contextual.headline}</p>
           <p className="break-keep text-sm text-slate-600">{contextual.comment}</p>
+          <p className="break-keep text-xs text-slate-400">
+            이 추천안을 바탕으로 참여자들과 최종 회의 시간을 정해보세요.
+          </p>
         </div>
 
         {candidates.length === 0 ? (
@@ -2858,7 +2863,8 @@ function SubmittedCalendarScreenWide({
         <CaseDescription caseId={caseId} />
       </div>
 
-      {/* 맥락형 해석 문장 — 결과 분포(대부분 가능/보통/바쁨/없음)에 따라 문구가 달라진다. */}
+      {/* 맥락형 해석 문장 — 결과 분포(대부분 가능/보통/바쁨/없음)에 따라 문구가 달라진다.
+          캘린더는 최종 확정을 유도하지 않는다 — 결정은 참여자들이 제품 밖에서 한다. */}
       <div className="space-y-1 px-1">
         <p className="break-keep text-sm font-bold text-slate-800">{contextual.headline}</p>
         <p className="break-keep text-sm text-slate-600">{contextual.comment}</p>
@@ -2874,6 +2880,9 @@ function SubmittedCalendarScreenWide({
             {warning.message}
           </p>
         ))}
+        <p className="break-keep text-xs text-slate-400">
+          이 추천안을 바탕으로 참여자들과 최종 회의 시간을 정해보세요.
+        </p>
       </div>
 
       {/* 범례 — busyPeriod 에선 차선 후보도 파랗게 칠해질 수 있어 '추천'이 아니라 '가장 나은'으로 쓴다. */}

@@ -10,7 +10,7 @@ modu의 백엔드는 로그인 없는 링크 기반 알파 서비스에 맞춰, 
 - 참석자 링크와 참석자별 수정 토큰을 생성한다.
 - 참석자는 같은 브라우저에서만 본인 응답을 수정할 수 있다.
 - 회의 생성자는 참석자 중 한 명일 뿐이며, 별도 관리자 권한을 갖지 않는다.
-- **투표는 없다.** 모든 참석자가 응답하면 modu가 전체 응답을 해석해, 확정 조건(필수참석자 불가 0명 + 미응답 0명)을 만족하는 최상위 후보를 자동으로 회의 시간으로 확정한다. 조건을 만족하는 후보가 없으면 확정하지 않는다(화면이 기간 조정을 안내).
+- **투표도 자동 확정도 없다.** modu는 회의 시간을 확정하지 않는다. 모든 참석자가 응답하면 전체 응답을 해석해 추천안과 판단 근거를 보여주고, 최종 회의 시간은 참여자들이 제품 밖에서 정한다.
 - 추천 알고리즘은 UI와 분리해 테스트 가능하게 만든다.
 
 ## 2. 기술 기준
@@ -103,7 +103,7 @@ DB 컬럼명은 Supabase/Postgres 기준으로 snake_case를 사용한다.
 
 ### meeting_votes (deprecated)
 
-투표 개념 제거(자동 확정으로 대체)로 **앱은 이 테이블을 더 이상 읽거나 쓰지 않는다.**
+투표 개념 제거로 **앱은 이 테이블을 더 이상 읽거나 쓰지 않는다.**
 기존 배포 DB 호환과 롤백 가능성을 위해 테이블 자체는 남겨 두었고, 안정화 후 drop 마이그레이션을 검토한다.
 
 | 컬럼 | 설명 |
@@ -115,7 +115,10 @@ DB 컬럼명은 Supabase/Postgres 기준으로 snake_case를 사용한다.
 | `end_at` | 후보 종료 시각 |
 | `created_at` | 생성일 |
 
-### confirmed_slots
+### confirmed_slots (legacy)
+
+**신규 추천안 플로우에서는 서버가 이 테이블을 생성하지 않는다**(`meetings.confirmed_slot_id`도 업데이트하지 않음).
+기존 데이터 호환·confirmed 화면/ICS 코드 보존·향후 확정 기능을 옵션으로 되살릴 가능성을 위해 테이블과 조회 분기는 유지한다.
 
 | 컬럼 | 설명 |
 | --- | --- |
@@ -301,7 +304,7 @@ grant all on meeting_votes to service_role;
   - 확정된 회의에서는 응답을 수정할 수 없다.
   - 해당 참석자의 기존 `availability_blocks`를 교체한다.
   - `response_status`를 `submitted`로 변경한다.
-  - 저장에 성공하면 `autoConfirmMeetingIfReady`를 호출한다.
+  - 저장까지가 책임이다 — 투표도 자동 확정도 하지 않는다(추천안 화면이 전체 응답을 해석해 보여준다).
 
 - `loadCalendarSnapshot`
   - 참석자 `participantToken`을 검증한다.
@@ -309,13 +312,10 @@ grant all on meeting_votes to service_role;
   - 참석자별 상세 메모와 블록 note 원문은 반환하지 않는다.
   - 반환 데이터는 가능/선호/불가능/미응답 집계를 만들기 위한 최소 정보로 제한한다.
 
-- `autoConfirmMeetingIfReady` (내부 함수 — 투표를 대체하는 자동 확정)
-  - 모든 참석자가 `submitted`인지 확인한다. 미응답자가 있으면 확정하지 않는다.
-  - `toSchedulerInput → evaluateAllSlots → buildContextualScheduleResult`로 전체 응답을 해석한다.
-  - `pickAutoConfirmSlot`이 확정 조건(필수참석자 불가 0명 + 미응답 0명)을 만족하는 정렬상 최상위 후보를 고른다. 비슷한 후보가 여러 개여도 사람이 고르지 않고 일관된 규칙(필수 불가 적음 → 가능 인원 많음 → 선택 불가 적음 → 이른 시간)을 따른다.
-  - 조건을 만족하는 후보가 없으면 확정하지 않고 종료한다(화면이 기간 조정 안내를 담당).
-  - 확정 직전 `isSlotConfirmable`로 서버 검증을 한 번 더 통과해야 한다.
-  - `confirmed_slots`에 저장하고 `meetings.confirmed_slot_id`를 업데이트한다. 경합 방지를 위해 확정 직전 최신 상태를 재확인한다.
+- 확정 관련 서버 로직은 없다.
+  - 신규 플로우에서 서버는 `confirmed_slots`를 생성하지 않고 `meetings.confirmed_slot_id`를 업데이트하지 않는다.
+  - 추천안 해석(`evaluateAllSlots → buildContextualScheduleResult`)은 화면(케이스 데모/향후 실데이터)이 담당한다.
+  - `confirmed_slots`/`confirmed_slot_id`는 legacy 데이터 호환용으로만 조회한다(기존 확정 회의 표시·응답 잠금).
 
 Route Handler:
 
@@ -375,13 +375,14 @@ lib/scheduler/
 
 > 현재 참석자 응답 폼은 불가 중심 입력으로 `busy` 블록만 생성한다. `avoid`/`preferred` 채점·가점 경로는 엔진과 타입에 남아 있으나 기존 데이터 호환용이며, 신규 응답에서는 이 두 상태가 더 이상 만들어지지 않는다.
 
-### 자동 확정
+### 추천안 제공 (확정 없음)
 
-- 모든 참석자가 `submitted` 상태가 되기 전에는 확정하지 않는다(화면은 잠정 결과만 보여준다).
-- 전원 응답 시 modu가 전체 응답을 해석해, 확정 조건(필수참석자 불가 0명 + 미응답 0명)을 만족하는 정렬상 최상위 후보를 회의 시간으로 확정한다.
-- 조건을 만족하는 후보가 없으면 확정하지 않고, 화면이 기간 조정을 안내한다.
-- 비슷한 후보가 여러 개여도 사람이 고르지 않고, 일관된 규칙(필수 불가 적음 → 가능 인원 많음 → 선택 불가 적음 → 이른 시간)으로 하나를 정한다.
-- 확정된 회의에서는 응답을 잠근다.
+- modu는 회의 시간을 확정하지 않는다. 전원 응답 시 전체 응답을 해석해 추천안과 판단 근거만 보여준다.
+- 미응답자가 있으면 잠정 결과로 표시한다.
+- 필수참석자가 모두 가능한 후보가 없으면 기간 조정을 안내한다.
+- 비슷한 후보는 같은 그룹으로 묶고, 화면에서는 일관된 규칙(필수 불가 적음 → 가능 인원 많음 → 선택 불가 적음 → 이른 시간)의 순서로 보여준다.
+- 최종 회의 시간은 참여자들이 제품 밖(Slack·카톡·구두 등)에서 정한다.
+- legacy 확정 회의(기존 `confirmed_slot_id` 보유)에서는 응답을 잠근다.
 
 ### 추천 설명
 
@@ -433,13 +434,12 @@ Supabase 정책:
 - 참석자 첫 제출이 저장된다.
 - 같은 `participantToken`으로 기존 응답을 수정할 수 있다.
 - 잘못된 `participantToken`으로 수정할 수 없다.
-- 모든 참석자가 응답하기 전에는 확정하지 않는다.
-- 전원 응답 시 확정 조건(필수 불가 0명 + 미응답 0명)을 만족하는 최상위 후보가 자동 확정된다.
-- 필수참석자가 모두 참석할 수 있는 후보가 없으면 확정하지 않는다.
+- 응답 제출 후에도 `confirmed_slots`가 생성되지 않고 `confirmed_slot_id`가 업데이트되지 않는다.
+- 전원 응답 시 추천안 해석(컨텍스트·그룹·신호)이 올바르게 만들어진다.
+- 미응답자가 있으면 잠정 결과로 표시된다.
 - 응답 이후 참석 유형을 임의로 변경할 수 없다.
-- 비슷한 후보가 여러 개면 일관된 규칙(이른 시간 우선)으로 하나가 확정된다.
-- 확정된 회의에서는 응답을 수정할 수 없다.
-- 확정된 회의만 `.ics` 파일을 다운로드할 수 있다.
+- legacy 확정 회의에서는 응답을 수정할 수 없다.
+- legacy 확정 회의만 `.ics` 파일을 다운로드할 수 있다.
 
 ## 10. 구현 완료 후 README 정리 항목
 
@@ -478,9 +478,8 @@ Supabase 정책:
 | --- | --- | --- |
 | `createMeeting` | 입력 검증(필수·길이·인원 2~8·회의 마감일≥오늘+2일·응답 마감일≤마감일−2일) | 회의(`response_deadline` 포함)+참석자 insert, 참석자별 `participant_token` 발급, 공유 화면 redirect. **운영+env 없음** 시 `lib/demoMeeting` 데모 ID로 우회 |
 | `verifyParticipantIdentity` | 이름+직무 명단 대조 | `participant_token` 반환(기존 제출자는 토큰 일치 시 수정 허용) |
-| `submitAvailability` | `participantId`+토큰, 미확정 | 기존 블록 교체(delete→insert), `response_status='submitted'`, 성공 시 **`autoConfirmMeetingIfReady` 호출** |
+| `submitAvailability` | `participantId`+토큰, 미확정(legacy) | 기존 블록 교체(delete→insert), `response_status='submitted'` — **저장까지만**(투표·자동 확정 없음) |
 | `loadParticipantResponse` / `loadCalendarSnapshot` | participant 토큰 | 본인 응답 / 캘린더 집계용 최소 데이터(메모 원문 제외) |
-| `autoConfirmMeetingIfReady`(내부) | 전원 응답 + 확정 조건(필수 불가 0·미응답 0) + `isSlotConfirmable` | `evaluateAllSlots → buildContextualScheduleResult → pickAutoConfirmSlot`로 최상위 후보를 골라 `confirmed_slots` insert + `confirmed_slot_id` update. 조건 미충족 시 아무것도 하지 않음 |
 
 Route Handler: `app/api/meetings/[meetingId]/ics/route.ts` — 확정 슬롯 있을 때만 `.ics`(`lib/ics.ts: buildIcs`).
 
@@ -513,7 +512,7 @@ Route Handler: `app/api/meetings/[meetingId]/ics/route.ts` — 확정 슬롯 있
 
 ### 11.5 함정 / 주의
 
-- **비원자성**: `autoConfirmMeetingIfReady`(confirmed_slots insert→meetings update)·`submitAvailability`(delete→insert)·`createMeeting`이 트랜잭션 아님 → 부분 실패·경쟁 조건 가능.
+- **비원자성**: `submitAvailability`(delete→insert)·`createMeeting`이 트랜잭션 아님 → 부분 실패·경쟁 조건 가능.
 - **권한은 평문 토큰 `===` 비교**(상수시간 아님). RLS는 service_role만 grant라 보안이 앱 내부 토큰 비교에 전적으로 의존.
 - **데모 소비 경로는 env 게이트 안 됨**: 생성은 `production && !hasSupabaseConfig()`로 막지만, 읽기/액션 단락은 `isDemoMeetingId`만으로 발동(운영에서도 `demo_` ID 위조 가능). 데모 토큰은 추측 가능·페이로드 무서명.
 - **`expires_at`은 선언만** 있고 삭제 잡 없음. 점심 비활성화는 `lunch_start='00:00'/lunch_end='00:01'` 센티넬(서버가 점심 겹침 블록 거부, DDL 기본값 `12:00/13:00`과 다름 — 코드가 insert 시 센티넬 명시).

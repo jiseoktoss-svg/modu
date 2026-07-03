@@ -66,7 +66,7 @@ export default function LandingPage() {
               </h2>
               <p className="mt-3 break-keep text-sm leading-relaxed text-slate-500 sm:text-base">
                 모두가 답하면 modu가 응답을 해석해서 가장 나은 시간을
-                알려드려요. 모두가 참석할 수 있으면 회의는 저절로 정해져요.
+                알려드려요. 추천안을 바탕으로 참여자들과 최종 시간을 정해보세요.
               </p>
             </div>
           </Reveal>
