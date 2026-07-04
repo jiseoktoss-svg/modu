@@ -65,8 +65,12 @@ import {
   DEMO_PEOPLE,
   DEMO_CASES,
   buildCaseCandidates,
+  buildCaseSnapshot,
   type CaseCandidate,
 } from "@/data/demoCases";
+import { AvailabilitySearchBox } from "@/components/scheduler/AvailabilitySearchBox";
+import { AvailabilitySearchResultPanel } from "@/components/scheduler/AvailabilitySearchResultPanel";
+import type { AvailabilityLookupResult } from "@/lib/scheduler/availabilityLookup";
 import { adaptDemoCaseToEvaluatedSlots } from "@/data/demoCaseAdapter";
 import {
   buildContextualScheduleResult,
@@ -1471,6 +1475,9 @@ export function ResponseForm(props: Props) {
           caseId={caseId}
           onSelectCase={handleSelectCase}
           dates={dates}
+          durationMinutes={durationMinutes}
+          workdayStart={workdayStart}
+          workdayEnd={workdayEnd}
           onViewCalendar={() => setStep("done")}
         />
       </>
@@ -1485,6 +1492,9 @@ export function ResponseForm(props: Props) {
           caseId={caseId}
           onSelectCase={handleSelectCase}
           dates={dates}
+          durationMinutes={durationMinutes}
+          workdayStart={workdayStart}
+          workdayEnd={workdayEnd}
           onBack={() => setStep("result")}
         />
       </>
@@ -2416,16 +2426,29 @@ function ResultScreen({
   caseId,
   onSelectCase,
   dates,
+  durationMinutes,
+  workdayStart,
+  workdayEnd,
   onViewCalendar,
 }: {
   caseId: number;
   onSelectCase: (id: number) => void;
   dates: string[];
+  durationMinutes: number;
+  workdayStart: string;
+  workdayEnd: string;
   onViewCalendar: () => void;
 }) {
   const current = DEMO_CASES.find((c) => c.id === caseId) ?? DEMO_CASES[0];
   const candidates = useMemo(() => buildCaseCandidates(current, dates), [current, dates]);
   const total = DEMO_PEOPLE.length;
+
+  // 특정 시간 검색(조회 전용) — 케이스별 더미 응답 스냅샷으로 계산한다.
+  const snapshot = useMemo(() => buildCaseSnapshot(current, dates), [current, dates]);
+  const [searchResult, setSearchResult] = useState<AvailabilityLookupResult | null>(null);
+  useEffect(() => {
+    setSearchResult(null);
+  }, [caseId]);
 
   // 같은 조건의 후보는 같은 그룹으로 — 무의미한 1·2·3순위 구분 대신 그룹 라벨로 보여준다.
   const contextual = useMemo(
@@ -2502,6 +2525,26 @@ function ResultScreen({
             이 추천안을 바탕으로 참여자들과 최종 회의 시간을 정해보세요.
           </p>
         </div>
+
+        {/* 특정 시간 검색 — 궁금한 날짜·시간의 참석 가능 여부를 바로 확인(확정/투표 아님). */}
+        <AvailabilitySearchBox
+          className="px-1"
+          dates={dates}
+          durationMinutes={durationMinutes}
+          participants={snapshot.participants}
+          blocks={snapshot.blocks}
+          workdayStart={workdayStart}
+          workdayEnd={workdayEnd}
+          onResult={setSearchResult}
+        />
+        {searchResult && (
+          <div className="rounded-2xl bg-white p-4 shadow-[0_1px_4px_rgba(15,23,42,0.12)]">
+            <AvailabilitySearchResultPanel
+              result={searchResult}
+              onClear={() => setSearchResult(null)}
+            />
+          </div>
+        )}
 
         {candidates.length === 0 ? (
           <p className="text-sm text-slate-500">표시할 추천안이 없어요.</p>
@@ -2654,17 +2697,27 @@ function SubmittedCalendarScreenWide({
   caseId,
   onSelectCase,
   dates,
+  durationMinutes,
+  workdayStart,
+  workdayEnd,
   onBack,
 }: {
   caseId: number;
   onSelectCase: (id: number) => void;
   dates: string[];
+  durationMinutes: number;
+  workdayStart: string;
+  workdayEnd: string;
   onBack: () => void;
 }) {
   // 데모 단계: 선택한 케이스의 더미 응답으로 달력을 채운다.
   const current = DEMO_CASES.find((c) => c.id === caseId) ?? DEMO_CASES[0];
   const candidates = useMemo(() => buildCaseCandidates(current, dates), [current, dates]);
   const respondedCount = DEMO_PEOPLE.length - current.pendingNames.length;
+
+  // 특정 시간 검색(조회 전용) — 케이스별 더미 응답 스냅샷으로 계산한다.
+  const snapshot = useMemo(() => buildCaseSnapshot(current, dates), [current, dates]);
+  const [searchResult, setSearchResult] = useState<AvailabilityLookupResult | null>(null);
 
   // 날짜 → 그 날의 후보들(순위 오름차순). 보통 하루에 후보 하나.
   const candidatesByDate = useMemo(() => {
@@ -2700,16 +2753,27 @@ function SubmittedCalendarScreenWide({
   const [weekIdx, setWeekIdx] = useState(() =>
     Math.max(0, candidates[0] ? weekIndexOf(candidates[0].date) : 0),
   );
-  // 케이스가 바뀌면 1순위 날짜를 다시 선택하고 그 달/주로 이동한다.
+  // 케이스가 바뀌면 1순위 날짜를 다시 선택하고 그 달/주로 이동한다(검색 결과도 초기화).
   useEffect(() => {
     const top = candidates[0]?.date ?? null;
     setSelectedDate(top);
+    setSearchResult(null);
     if (top) {
       setMonthIdx(Math.max(0, monthIndexOf(top)));
       setWeekIdx(Math.max(0, weekIndexOf(top)));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseId]);
+
+  // 검색 성공: 그 날짜가 속한 달/주로 이동하고 선택해, 우측 패널에 검색 결과를 보여준다.
+  const handleSearchResult = (result: AvailabilityLookupResult) => {
+    setSearchResult(result);
+    setSelectedDate(result.date);
+    const mIdx = monthIndexOf(result.date);
+    if (mIdx >= 0) setMonthIdx(mIdx);
+    const wIdx = weekIndexOf(result.date);
+    if (wIdx >= 0) setWeekIdx(wIdx);
+  };
 
   const safeMonthIdx = Math.min(Math.max(monthIdx, 0), Math.max(0, months.length - 1));
   const month = months[safeMonthIdx];
@@ -2738,6 +2802,8 @@ function SubmittedCalendarScreenWide({
     contextual.calendarMarks.forEach((mark) => map.set(mark.date, mark));
     return map;
   }, [contextual]);
+  // 선택한 날짜가 빨간 날이면 왜 피하는 게 좋은지(mark.reason)를 패널 상단에서 바로 알려준다.
+  const selectedMark = selectedDate ? markByDate.get(selectedDate) : undefined;
   // 날짜 셀 공통 계산 — 톤을 정한 대표 슬롯(representativeSlot)을 표시에도 그대로 써서,
   // 하루에 슬롯이 여러 개여도 톤과 숫자/시간이 서로 다른 슬롯에서 오지 않게 한다.
   const cellInfo = (dateStr: string) => {
@@ -2779,7 +2845,10 @@ function SubmittedCalendarScreenWide({
                 key={cell.key}
                 type="button"
                 disabled={!info}
-                onClick={() => setSelectedDate(cell.date)}
+                onClick={() => {
+                  setSelectedDate(cell.date);
+                  setSearchResult(null); // 날짜를 직접 고르면 검색 결과 대신 그날 명단을 보여준다.
+                }}
                 aria-pressed={isSelected}
                 aria-label={`${month.m}월 ${cell.day}일${
                   info
@@ -2871,7 +2940,10 @@ function SubmittedCalendarScreenWide({
               key={dateStr}
               type="button"
               disabled={!info}
-              onClick={() => setSelectedDate(dateStr)}
+              onClick={() => {
+                setSelectedDate(dateStr);
+                setSearchResult(null); // 날짜를 직접 고르면 검색 결과 대신 그날 명단을 보여준다.
+              }}
               aria-pressed={isSelected}
               aria-label={`${m}월 ${d}일${
                 info
@@ -3004,6 +3076,18 @@ function SubmittedCalendarScreenWide({
         </p>
       </div>
 
+      {/* 특정 시간 검색 — 성공하면 그 날짜로 이동·선택되고 우측 패널에 결과가 보인다. */}
+      <AvailabilitySearchBox
+        className="px-1 sm:max-w-sm"
+        dates={dates}
+        durationMinutes={durationMinutes}
+        participants={snapshot.participants}
+        blocks={snapshot.blocks}
+        workdayStart={workdayStart}
+        workdayEnd={workdayEnd}
+        onResult={handleSearchResult}
+      />
+
       {/* 범례 — busyPeriod 에선 차선 후보도 파랗게 칠해질 수 있어 '추천'이 아니라 '가장 나은'으로 쓴다. */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-slate-500">
         <LegendDot className="bg-brand-500" label="가장 나은 시간" />
@@ -3026,15 +3110,26 @@ function SubmittedCalendarScreenWide({
           )}
         </div>
 
-        {/* 선택한 날짜의 참석 명단 패널 */}
+        {/* 선택한 날짜의 참석 명단 패널 — 검색 직후에는 검색한 시간 기준 결과를 우선 보여준다. */}
         <Card className="space-y-3">
           {selectedDate === null ? (
             <p className="text-sm text-slate-500">날짜를 누르면 참석자별 가능 여부를 볼 수 있어요.</p>
+          ) : searchResult && searchResult.date === selectedDate ? (
+            <AvailabilitySearchResultPanel
+              result={searchResult}
+              onClear={() => setSearchResult(null)}
+            />
           ) : (
             <>
               <p className="text-base font-bold text-slate-900">
                 {formatKoreanDateLabel(selectedDate)}
               </p>
+              {/* 빨간 날짜를 눌렀을 때 왜 피하는 게 좋은지 명시(상대적 인원 부족 포함) */}
+              {selectedMark?.tone === "avoid" && selectedMark.reason && (
+                <p className="break-keep rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-600">
+                  {selectedMark.reason}
+                </p>
+              )}
               {selectedCandidates.length === 0 ? (
                 <>
                   <p className="break-keep text-sm text-slate-600">

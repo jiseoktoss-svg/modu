@@ -329,7 +329,8 @@ function limitRedSlots(slots: EvaluatedSlot[], totalCount: number): EvaluatedSlo
 
 export function pickRedSlots(
   context: ScheduleContext,
-  groups: EvaluatedSlot[][],
+  // pickBlueSlots 와 시그니처를 맞추기 위한 자리 — 현재 로직은 그룹을 쓰지 않는다.
+  _groups: EvaluatedSlot[][],
   allSlots: EvaluatedSlot[],
 ): EvaluatedSlot[] {
   if (allSlots.length === 0) return [];
@@ -559,8 +560,12 @@ export function buildNarrative(args: {
       blueSlots.length > 0
         ? "파란색으로 표시된 시간 중에서 고르면 무난해요."
         : "후보 대부분이 비슷하게 좋아요. 어느 시간을 골라도 무난해요.";
+    // 필수 경고가 없어도 상대적 빨강(인원 부족)이 있으면 빨간색의 의미를 설명해 준다.
+    const hasRelativeRed = redSlots.some((slot) => slot.requiredBusyCount === 0);
     if (warnings.length > 0) {
       comment += " 빨간색으로 표시된 시간은 필수참석자가 참석하기 어려워 피하는 게 좋아요.";
+    } else if (hasRelativeRed) {
+      comment += " 빨간색으로 표시된 시간은 다른 후보보다 참석할 수 있는 인원이 적어요.";
     }
   } else if (context === "busyPeriod") {
     headline = "이번 기간은 다들 바빠서 모든 인원이 맞는 시간이 많지 않아요.";

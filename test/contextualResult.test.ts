@@ -329,6 +329,34 @@ describe("pickRedSlots(상대적 빨강)", () => {
     expect(mark?.tone).toBe("avoid");
     expect(mark?.reason).toContain("참석할 수 있는 인원이 적어요");
     expect(mark?.reason).not.toContain("필수참석자");
+    // normal 에서 필수 경고 없이 상대적 빨강만 있으면 상단 코멘트도 인원 부족을 설명한다.
+    expect(result.comment).toContain("다른 후보보다 참석할 수 있는 인원이 적어요");
+  });
+
+  it("20. 필수참석자 1명이 빠져 빨간 날짜의 reason 은 '필수참석자 1명'을 말한다", () => {
+    const d = upcomingWeekdays(2);
+    const slots = [
+      makeSlot({ date: d[0], startHm: "10:00" }),
+      makeSlot({ date: d[1], startHm: "10:00", requiredBusyNames: ["김지훈"] }),
+    ];
+    const result = buildContextualScheduleResult(slots);
+    const mark = result.calendarMarks.find((m) => m.date === d[1]);
+
+    expect(mark?.tone).toBe("avoid");
+    expect(mark?.reason).toBe("필수참석자 1명이 참석하기 어려워요.");
+  });
+
+  it("21. 필수참석자 여러 명이 빠져 빨간 날짜의 reason 은 '필수참석자 여러 명'을 말한다", () => {
+    const d = upcomingWeekdays(2);
+    const slots = [
+      makeSlot({ date: d[0], startHm: "10:00" }),
+      makeSlot({ date: d[1], startHm: "10:00", requiredBusyNames: ["김지훈", "이서연"] }),
+    ];
+    const result = buildContextualScheduleResult(slots);
+    const mark = result.calendarMarks.find((m) => m.date === d[1]);
+
+    expect(mark?.tone).toBe("avoid");
+    expect(mark?.reason).toBe("필수참석자 여러 명이 참석하기 어려워요.");
   });
 });
 
