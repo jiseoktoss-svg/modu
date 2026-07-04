@@ -1,5 +1,6 @@
 "use client";
 
+import { RoleTag } from "@/components/scheduler/AttendeeNameBadge";
 import { Emoji } from "@/components/ui/Emoji";
 import { cn } from "@/lib/cn";
 import { formatKoreanTimeRange } from "@/lib/time";
@@ -51,13 +52,12 @@ export function NameGroup({
           <span
             key={name}
             className={cn(
-              "inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold shadow-sm",
+              "inline-flex items-center gap-1 rounded-full bg-white px-1.5 py-0.5 text-[11px] font-semibold shadow-sm",
               styles.chip,
             )}
           >
-            {requiredNames.has(name) && (
-              <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" aria-hidden="true" />
-            )}
+            {/* 필수/선택 참석 유형을 이름 벳지 안에 태그로 노출(점 표시 대신). */}
+            <RoleTag attendanceType={requiredNames.has(name) ? "required" : "optional"} />
             {name}
           </span>
         ))}
@@ -159,7 +159,7 @@ export function AvailabilitySearchResultPanel({
       <NameGroup tone="slate" label="미응답" names={result.pendingNames} requiredNames={requiredNames} />
 
       <p className="px-0.5 text-[11px] text-slate-400">
-        이름 앞 점(•)은 필수인원이에요. 검색 결과는 참고용이에요.
+        이름 옆 &lsquo;필수/선택&rsquo;은 참석 유형이에요. 검색 결과는 참고용이에요.
       </p>
     </div>
   );

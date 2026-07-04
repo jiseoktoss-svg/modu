@@ -26,12 +26,10 @@ import { MeetingSummarySentence } from "@/components/meeting/MeetingSummarySente
 import { CharFillSentence } from "@/components/ui/CharFillSentence";
 import { charFillTiming, type CharFillSegment } from "@/lib/charFill";
 import { CalendarModal } from "@/components/scheduler/CalendarModal";
-import { CalendarChevron, CalendarGrid } from "@/components/ui/CalendarGrid";
+import { CalendarGrid } from "@/components/ui/CalendarGrid";
 import {
-  CALENDAR_WEEKDAYS,
   formatKoreanDateLabel,
   getCalendarMonthsWithDates,
-  parseDateStr,
 } from "@/components/ui/calendarUtils";
 import {
   clearResponseDraft,
@@ -45,12 +43,7 @@ import { cn } from "@/lib/cn";
 import { hasBatchim } from "@/lib/korean";
 import { useScrollLock } from "@/lib/useScrollLock";
 import { cellKey, cellsToBlocks, GRID_STEP_MINUTES } from "@/lib/grid";
-import {
-  addDaysToDateStr,
-  formatKoreanTimeRange,
-  kstWallToIso,
-  parseHm,
-} from "@/lib/time";
+import { formatKoreanTimeRange, kstWallToIso, parseHm } from "@/lib/time";
 import { MOCK_EMPLOYEES } from "@/data/mockEmployees";
 import type { PublicParticipant } from "@/lib/data";
 import type {
@@ -65,7 +58,6 @@ import {
   buildCaseSnapshot,
 } from "@/data/demoCases";
 import { AvailabilityDateTimeLookup } from "@/components/scheduler/AvailabilityDateTimeLookup";
-import { AvailabilitySearchBox } from "@/components/scheduler/AvailabilitySearchBox";
 import { AvailabilitySearchResultPanel } from "@/components/scheduler/AvailabilitySearchResultPanel";
 import { DateAvailabilitySummaryPanel } from "@/components/scheduler/DateAvailabilitySummaryPanel";
 import { RecommendationBriefSentence } from "@/components/scheduler/RecommendationBriefSentence";
@@ -2579,9 +2571,6 @@ function ResultScreen({
         {/* ① 문장형 추천 요약 — 후보 카드/필터 대신 modu 가 먼저 판단을 정리해주는 답변.
             확정은 하지 않는다 — 최종 결정은 참여자들이 제품 밖에서 한다. */}
         <RecommendationBriefSentence key={`brief-${caseId}`} brief={brief} />
-        <p className="break-keep px-1 text-xs text-slate-400">
-          이 추천을 바탕으로 참여자들과 최종 회의 시간을 정해보세요.
-        </p>
 
         {/* ② 날짜·시간 확인 결과 — 입력 모듈은 하단 고정 영역에 있고, 결과 카드는 본문에 노출한다.
             key 로 새 결과마다 다시 마운트해 페이드인(fade-up-blur)을 재생한다. */}
@@ -2649,31 +2638,15 @@ function LegendDot({ className, label }: { className: string; label: string }) {
 const TONE_CELL: Record<CalendarTone, string> = {
   recommended: "bg-brand-500 font-bold text-white shadow-sm shadow-brand-500/20",
   avoid: "bg-red-100 font-semibold text-red-700",
-  none: "text-slate-700 hover:bg-slate-100",
+  none: "bg-slate-50 text-slate-700 hover:bg-slate-100",
 };
 
 // (참석 명단 칩 UI 는 AvailabilitySearchResultPanel 의 NameGroup 으로 통합 —
 //  날짜 패널은 DateAvailabilitySummaryPanel 이 담당한다.)
 
-// 주간 보기용: 날짜 범위 전체를 일요일 시작 7일 단위 주(week)로 자른다.
-function buildWeeksFromDates(dates: string[]): string[][] {
-  if (dates.length === 0) return [];
-  const sorted = [...dates].sort();
-  const first = sorted[0];
-  const last = sorted[sorted.length - 1];
-  const { y, m, d } = parseDateStr(first);
-  let cursor = addDaysToDateStr(first, -new Date(Date.UTC(y, m - 1, d)).getUTCDay());
-  const weeks: string[][] = [];
-  while (cursor <= last) {
-    weeks.push(Array.from({ length: 7 }, (_, i) => addDaysToDateStr(cursor, i)));
-    cursor = addDaysToDateStr(cursor, 7);
-  }
-  return weeks;
-}
-
 // 회의 캘린더(done) 화면. (순위 농도 방식의 구버전 SubmittedCalendarScreen 은 삭제 — git 히스토리 참고)
-// PC 전용: ① 주간/월간 전환 토글 ② 이 화면만 페이지 폭을 넓게 씀(뷰포트 기준 브레이크아웃)
-// ③ 달력 + 명단 패널 2열 배치. 색은 맥락형 해석(contextualResult)의 신호 3톤(파랑/빨강/중립)만 쓴다.
+// PC 전용: ① 이 화면만 페이지 폭을 넓게 씀(뷰포트 기준 브레이크아웃)
+// ② 월간 달력 + 명단 패널 2열 배치. 색은 맥락형 해석(contextualResult)의 신호 3톤(파랑/빨강/중립)만 쓴다.
 function SubmittedCalendarScreenWide({
   caseId,
   onSelectCase,
@@ -2700,9 +2673,8 @@ function SubmittedCalendarScreenWide({
   const candidates = useMemo(() => buildCaseCandidates(current, dates), [current, dates]);
   const respondedCount = DEMO_PEOPLE.length - current.pendingNames.length;
 
-  // 특정 시간 검색(조회 전용) — 케이스별 더미 응답 스냅샷으로 계산한다.
+  // 날짜 요약(조회 전용) — 케이스별 더미 응답 스냅샷으로 계산한다.
   const snapshot = useMemo(() => buildCaseSnapshot(current, dates), [current, dates]);
-  const [searchResult, setSearchResult] = useState<AvailabilityLookupResult | null>(null);
 
   const months = useMemo(
     () => getCalendarMonthsWithDates([...dates, ...candidates.map((c) => c.date)]),
@@ -2712,54 +2684,21 @@ function SubmittedCalendarScreenWide({
     const [y, m] = dateStr.split("-").map(Number);
     return months.findIndex((mm) => mm.y === y && mm.m === m);
   };
-  // 주간 보기: 전체 날짜 범위를 일요일 시작 7일 단위로 자른다.
-  const weeks = useMemo(
-    () => buildWeeksFromDates([...dates, ...candidates.map((c) => c.date)]),
-    [dates, candidates],
-  );
-  const weekIndexOf = (dateStr: string) => weeks.findIndex((week) => week.includes(dateStr));
 
-  const [viewMode, setViewMode] = useState<"month" | "week">("month");
   const [selectedDate, setSelectedDate] = useState<string | null>(candidates[0]?.date ?? null);
   const [monthIdx, setMonthIdx] = useState(() =>
     Math.max(0, candidates[0] ? monthIndexOf(candidates[0].date) : 0),
   );
-  const [weekIdx, setWeekIdx] = useState(() =>
-    Math.max(0, candidates[0] ? weekIndexOf(candidates[0].date) : 0),
-  );
-  // 케이스가 바뀌면 1순위 날짜를 다시 선택하고 그 달/주로 이동한다(검색 결과도 초기화).
+  // 케이스가 바뀌면 1순위 날짜를 다시 선택하고 그 달로 이동한다.
   useEffect(() => {
     const top = candidates[0]?.date ?? null;
     setSelectedDate(top);
-    setSearchResult(null);
-    if (top) {
-      setMonthIdx(Math.max(0, monthIndexOf(top)));
-      setWeekIdx(Math.max(0, weekIndexOf(top)));
-    }
+    if (top) setMonthIdx(Math.max(0, monthIndexOf(top)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseId]);
 
-  // 검색 성공: 그 날짜가 속한 달/주로 이동하고 선택해, 우측 패널에 검색 결과를 보여준다.
-  const handleSearchResult = (result: AvailabilityLookupResult) => {
-    setSearchResult(result);
-    setSelectedDate(result.date);
-    const mIdx = monthIndexOf(result.date);
-    if (mIdx >= 0) setMonthIdx(mIdx);
-    const wIdx = weekIndexOf(result.date);
-    if (wIdx >= 0) setWeekIdx(wIdx);
-  };
-  // 모바일은 검색 입력이 하단 고정 바에 있어, 결과 패널이 화면 밖일 수 있으므로 스크롤로 시선을 옮긴다.
-  const panelRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (searchResult && window.matchMedia("(max-width: 639px)").matches) {
-      panelRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-  }, [searchResult]);
-
   const safeMonthIdx = Math.min(Math.max(monthIdx, 0), Math.max(0, months.length - 1));
   const month = months[safeMonthIdx];
-  const safeWeekIdx = Math.min(Math.max(weekIdx, 0), Math.max(0, weeks.length - 1));
-  const week = weeks[safeWeekIdx];
   // 선택한 날짜 '전체'의 가능 상태 요약 — 대표 후보 시간 하나만 보여주면
   // "이 날은 그 시간만 가능한가?"로 오해할 수 있어 하루 단위로 평가한다.
   const dateSummary = useMemo(
@@ -2778,16 +2717,6 @@ function SubmittedCalendarScreenWide({
         : null,
     [selectedDate, durationMinutes, workdayStart, workdayEnd, lunchStart, lunchEnd, snapshot],
   );
-
-  // 주간 전환: 선택된 날짜(없으면 1순위)가 속한 주로 이동한다.
-  const switchToWeek = () => {
-    setViewMode("week");
-    const anchor = selectedDate ?? candidates[0]?.date ?? null;
-    if (anchor) {
-      const idx = weekIndexOf(anchor);
-      if (idx >= 0) setWeekIdx(idx);
-    }
-  };
 
   const totalPeople = DEMO_PEOPLE.length;
   // 맥락형 해석 — 후보 전체를 평가해 컨텍스트·해석 문장·날짜 톤(신호)을 만든다.
@@ -2819,15 +2748,10 @@ function SubmittedCalendarScreenWide({
     };
   };
 
-  const fmtKoMonthDay = (dateStr: string) => {
-    const { m, d } = parseDateStr(dateStr);
-    return `${m}월 ${d}일`;
-  };
-
   // 월간 달력 카드. 모바일 셀은 원본과 동일한 정사각 숫자, PC 셀은 높이를 키워 순위·시간 요약을 함께 보여준다.
-  const monthCard = (extraClassName?: string) =>
+  const monthCard = () =>
     month && (
-      <Card className={cn("border-none px-2 sm:px-3", extraClassName)}>
+      <Card className="border-none px-2 sm:px-3">
         <CalendarGrid
           month={month}
           canPrev={safeMonthIdx > 0}
@@ -2843,10 +2767,7 @@ function SubmittedCalendarScreenWide({
                 key={cell.key}
                 type="button"
                 disabled={!info}
-                onClick={() => {
-                  setSelectedDate(cell.date);
-                  setSearchResult(null); // 날짜를 직접 고르면 검색 결과 대신 그날 명단을 보여준다.
-                }}
+                onClick={() => setSelectedDate(cell.date)}
                 aria-pressed={isSelected}
                 aria-label={`${month.m}월 ${cell.day}일${
                   info
@@ -2891,100 +2812,6 @@ function SubmittedCalendarScreenWide({
       </Card>
     );
 
-  // 주간 달력 카드(PC 전용) — 하루가 한 칸을 넓게 써서 시간대와 가능 인원을 함께 보여준다.
-  const weekCard = week && (
-    <Card className="hidden border-none px-2 sm:block sm:px-3">
-      <div className="mb-3 flex items-center justify-between sm:mb-4">
-        <button
-          type="button"
-          onClick={() => setWeekIdx(safeWeekIdx - 1)}
-          disabled={safeWeekIdx <= 0}
-          aria-label="이전 주"
-          className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30"
-        >
-          <CalendarChevron dir="left" />
-        </button>
-        <span className="text-sm font-bold text-slate-800">
-          {fmtKoMonthDay(week[0])} ~ {fmtKoMonthDay(week[6])}
-        </span>
-        <button
-          type="button"
-          onClick={() => setWeekIdx(safeWeekIdx + 1)}
-          disabled={safeWeekIdx >= weeks.length - 1}
-          aria-label="다음 주"
-          className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30"
-        >
-          <CalendarChevron dir="right" />
-        </button>
-      </div>
-      <div className="grid grid-cols-7 gap-1.5 text-center">
-        {CALENDAR_WEEKDAYS.map((weekday, i) => (
-          <div
-            key={weekday}
-            className={cn(
-              "py-1 text-xs font-semibold",
-              i === 0 ? "text-red-400" : i === 6 ? "text-blue-400" : "text-slate-400",
-            )}
-          >
-            {weekday}
-          </div>
-        ))}
-        {week.map((dateStr) => {
-          const info = cellInfo(dateStr);
-          const isSelected = selectedDate === dateStr;
-          const { m, d } = parseDateStr(dateStr);
-          return (
-            <button
-              key={dateStr}
-              type="button"
-              disabled={!info}
-              onClick={() => {
-                setSelectedDate(dateStr);
-                setSearchResult(null); // 날짜를 직접 고르면 검색 결과 대신 그날 명단을 보여준다.
-              }}
-              aria-pressed={isSelected}
-              aria-label={`${m}월 ${d}일${
-                info
-                  ? `${
-                      info.tone === "recommended"
-                        ? " — 가장 나은 시간"
-                        : info.tone === "avoid"
-                          ? " — 피하는 게 좋은 날"
-                          : ""
-                    }, ${info.availCount}/${totalPeople}명 가능`
-                  : ""
-              }`}
-              className={cn(
-                "relative flex h-32 flex-col items-start gap-1.5 rounded-lg p-2.5 text-left text-sm leading-tight transition motion-reduce:transition-none",
-                !info ? "cursor-default text-slate-300" : info.cellClass,
-                isSelected && "modu-cell-pop z-10",
-              )}
-            >
-              <span className="text-sm font-bold leading-none">{d}</span>
-              {info && (
-                <>
-                  <span className="text-xs font-semibold">
-                    {formatKoreanTimeRange(info.startAt, info.endAt)}
-                  </span>
-                  <span
-                    className={cn(
-                      "text-[11px] font-semibold",
-                      info.warn
-                        ? "rounded-full bg-white/85 px-1.5 py-0.5 text-red-600"
-                        : "opacity-80",
-                    )}
-                  >
-                    {info.availCount}/{totalPeople} 가능
-                  </span>
-                </>
-              )}
-            </button>
-          );
-        })}
-      </div>
-    </Card>
-  );
-
   return (
     // 이 화면만 특별히 넓게: 부모(max-w-2xl)를 뷰포트 기준으로 벗어나 가운데 정렬(PC 전용).
     <div className="space-y-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-2 sm:relative sm:left-1/2 sm:w-[min(80rem,calc(100vw-4rem))] sm:-translate-x-1/2 sm:pb-8">
@@ -2996,39 +2823,6 @@ function SubmittedCalendarScreenWide({
           <h2 className="text-xl font-extrabold text-slate-900">회의 캘린더</h2>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          {/* 주간/월간 전환 — PC 전용(모바일은 월간 고정) */}
-          <div
-            role="group"
-            aria-label="달력 보기 방식"
-            className="hidden items-center rounded-full bg-slate-100 p-0.5 sm:flex"
-          >
-            <button
-              type="button"
-              onClick={() => setViewMode("month")}
-              aria-pressed={viewMode === "month"}
-              className={cn(
-                "rounded-full px-3 py-1 text-xs font-bold transition-colors",
-                viewMode === "month"
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700",
-              )}
-            >
-              월간
-            </button>
-            <button
-              type="button"
-              onClick={switchToWeek}
-              aria-pressed={viewMode === "week"}
-              className={cn(
-                "rounded-full px-3 py-1 text-xs font-bold transition-colors",
-                viewMode === "week"
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700",
-              )}
-            >
-              주간
-            </button>
-          </div>
           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
             {DEMO_PEOPLE.length}명 중 {respondedCount}명 응답
           </span>
@@ -3074,21 +2868,6 @@ function SubmittedCalendarScreenWide({
         </p>
       </div>
 
-      {/* 특정 시간 검색(데스크톱) — 성공하면 그 날짜로 이동·선택되고 우측 패널에 결과가 보인다.
-          모바일은 아래 하단 고정 바로 대체한다. */}
-      <div className="hidden sm:block">
-        <AvailabilitySearchBox
-          className="px-1 sm:max-w-sm"
-          dates={dates}
-          durationMinutes={durationMinutes}
-          participants={snapshot.participants}
-          blocks={snapshot.blocks}
-          workdayStart={workdayStart}
-          workdayEnd={workdayEnd}
-          onResult={handleSearchResult}
-        />
-      </div>
-
       {/* 범례 — busyPeriod 에선 차선 후보도 파랗게 칠해질 수 있어 '추천'이 아니라 '가장 나은'으로 쓴다. */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-slate-500">
         <LegendDot className="bg-brand-500" label="가장 나은 시간" />
@@ -3099,35 +2878,12 @@ function SubmittedCalendarScreenWide({
 
       {/* PC: 달력(좌) + 참석 명단(우) 2열. 모바일: 원본과 동일한 세로 스택. */}
       <div className="space-y-4 sm:grid sm:grid-cols-[minmax(0,1fr)_24rem] sm:items-start sm:gap-5 sm:space-y-0">
-        <div className="space-y-4">
-          {viewMode === "week" ? (
-            <>
-              {weekCard}
-              {/* 주간 모드에서도 모바일은 월간 고정 */}
-              {monthCard("sm:hidden")}
-            </>
-          ) : (
-            monthCard()
-          )}
-        </div>
+        <div className="space-y-4">{monthCard()}</div>
 
-        {/* 선택한 날짜의 참석 명단 패널 — 검색 직후에는 검색한 시간 기준 결과를 우선 보여준다.
-            (모바일 하단 고정 검색 후 이 패널로 스크롤하기 위해 ref 래퍼로 감싼다.) */}
-        <div ref={panelRef} className="scroll-mt-4">
+        {/* 선택한 날짜의 참석 명단 패널 — 날짜 전체 요약을 보여준다. */}
         <Card className="space-y-3">
           {selectedDate === null ? (
             <p className="text-sm text-slate-500">날짜를 누르면 참석자별 가능 여부를 볼 수 있어요.</p>
-          ) : searchResult && searchResult.date === selectedDate ? (
-            <div
-              key={`${searchResult.startAt}-${searchResult.endAt}`}
-              style={{ animationDuration: "0.6s" }}
-              className="relative animate-fade-up-blur motion-reduce:animate-none"
-            >
-              <AvailabilitySearchResultPanel
-                result={searchResult}
-                onClear={() => setSearchResult(null)}
-              />
-            </div>
           ) : (
             <>
               <p className="text-base font-bold text-slate-900">
@@ -3144,23 +2900,9 @@ function SubmittedCalendarScreenWide({
             </>
           )}
         </Card>
-        </div>
       </div>
 
-      {/* 모바일: 특정 시간 검색을 하단 고정 바로 (데스크톱은 위에 인라인). */}
-      <MobileStickyAction className="sm:hidden" innerClassName="sm:max-w-2xl">
-        <AvailabilitySearchBox
-          dates={dates}
-          durationMinutes={durationMinutes}
-          participants={snapshot.participants}
-          blocks={snapshot.blocks}
-          workdayStart={workdayStart}
-          workdayEnd={workdayEnd}
-          onResult={handleSearchResult}
-        />
-      </MobileStickyAction>
-
-      <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} aboveCta />
+      <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} />
     </div>
   );
 }

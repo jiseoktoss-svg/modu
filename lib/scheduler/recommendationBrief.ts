@@ -15,6 +15,12 @@ export type RecommendationBriefItem = {
   tone: "good" | "neutral" | "avoid";
 };
 
+/** 문장에 등장하는 참석자 이름 — 화면에서 '필수/선택 + 이름' 벳지로 렌더한다. */
+export type RecommendationNameBadge = {
+  name: string;
+  attendanceType: "required" | "optional";
+};
+
 export type RecommendationBrief = {
   headline: string;
   primarySentence: string;
@@ -25,6 +31,8 @@ export type RecommendationBrief = {
    *  초기 선택 날짜로도 쓰인다(brief.primaryItems[0]?.date). */
   primaryItems: RecommendationBriefItem[];
   avoidItems: RecommendationBriefItem[];
+  /** primary/avoid 문장에 이름이 등장하는 참석자(벳지 렌더용). "{name}님" 형태로 등장한다. */
+  nameBadges: RecommendationNameBadge[];
 };
 
 function dateLabel(date: string): string {
@@ -89,12 +97,22 @@ export function buildRecommendationBrief(args: {
     contextual.calendarMarks.filter((m) => m.tone === "avoid").map((m) => m.date),
   );
 
+  // 문장에 등장하는 이름을 필수/선택으로 모아 둔다(화면에서 벳지로 렌더). 이름 → 유형.
+  const nameBadgeMap = new Map<string, "required" | "optional">();
+  const recordNames = (names: string[], requiredNames: string[]) => {
+    const requiredSet = new Set(requiredNames);
+    for (const name of names) {
+      nameBadgeMap.set(name, requiredSet.has(name) ? "required" : "optional");
+    }
+  };
+
   if (summaries.length === 0) {
     return {
       headline: "아직 보여줄 추천이 없어요.",
       primarySentence: "회의 기간 안에 고를 수 있는 시간이 없어요. 기간을 확인해 주세요.",
       primaryItems: [],
       avoidItems: [],
+      nameBadges: [],
     };
   }
 
@@ -216,10 +234,12 @@ export function buildRecommendationBrief(args: {
           tone: "neutral" as const,
         },
       ];
-      primarySentence =
-        slot.requiredBusyNames.length > 0
-          ? `굳이 고르면 ${timeLabel}이 가장 덜 어려운 후보예요. 다만 필수참석자인 ${formatNameList(slot.requiredBusyNames)}이 참석하기 어려워요.`
-          : `그래도 ${timeLabel}이 가장 나은 후보예요. 전체 ${slot.totalParticipants}명 중 ${slot.totalAvailable}명이 참석할 수 있어요.`;
+      if (slot.requiredBusyNames.length > 0) {
+        recordNames(slot.requiredBusyNames, slot.requiredBusyNames); // 모두 필수참석자
+        primarySentence = `굳이 고르면 ${timeLabel}이 가장 덜 어려운 후보예요. 다만 필수참석자인 ${formatNameList(slot.requiredBusyNames)}이 참석하기 어려워요.`;
+      } else {
+        primarySentence = `그래도 ${timeLabel}이 가장 나은 후보예요. 전체 ${slot.totalParticipants}명 중 ${slot.totalAvailable}명이 참석할 수 있어요.`;
+      }
     } else {
       primaryItems = [];
       primarySentence = "회의 기간 안에 고를 수 있는 시간이 없어요. 기간을 확인해 주세요.";
@@ -243,6 +263,7 @@ export function buildRecommendationBrief(args: {
 
     if (narrowException) {
       const exception = worstSummary.exceptionRanges[0];
+      recordNames(exception.names, exception.requiredNames);
       // 예외 범위는 busy 시각이 아니라 '겹치는 후보 슬롯의 병합'이라 실제보다 넓게 보일 수 있다
       // — "겹치는 회의는"으로 회의 기준임을 분명히 한다.
       avoidSentence = `다만 ${worstAvoid.label} ${formatKoreanTimeRange(
@@ -263,6 +284,7 @@ export function buildRecommendationBrief(args: {
     );
     const exception = withException?.exceptionRanges[0];
     if (withException && exception) {
+      recordNames(exception.names, exception.requiredNames);
       avoidSentence = `다만 ${dateLabel(withException.date)} ${formatKoreanTimeRange(
         exception.startAt,
         exception.endAt,
@@ -288,7 +310,7 @@ export function buildRecommendationBrief(args: {
     ? "미응답자가 있어 결과가 바뀔 수 있어요."
     : contextual.context === "noGoodOption"
       ? "가능하면 회의 기간을 조금 넓혀보는 게 좋아요."
-      : "궁금한 날짜와 시간이 있으면 아래에서 바로 확인할 수 있어요.";
+      : undefined;
 
   return {
     headline,
@@ -297,5 +319,6 @@ export function buildRecommendationBrief(args: {
     helperSentence,
     primaryItems,
     avoidItems,
+    nameBadges: [...nameBadgeMap].map(([name, attendanceType]) => ({ name, attendanceType })),
   };
 }

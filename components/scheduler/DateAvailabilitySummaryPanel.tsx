@@ -1,7 +1,7 @@
 "use client";
 
+import { AttendeeNameBadge } from "@/components/scheduler/AttendeeNameBadge";
 import { NameGroup } from "@/components/scheduler/AvailabilitySearchResultPanel";
-import { cn } from "@/lib/cn";
 import { formatKoreanTimeRange } from "@/lib/time";
 import type { DateAvailabilitySummary } from "@/lib/scheduler/dateAvailabilitySummary";
 
@@ -12,14 +12,6 @@ import type { DateAvailabilitySummary } from "@/lib/scheduler/dateAvailabilitySu
 type DateAvailabilitySummaryPanelProps = {
   summary: DateAvailabilitySummary;
 };
-
-/** "김지훈님" / "김지훈님과 이서연님" / 3명 이상은 쉼표 나열. */
-function formatNameList(names: string[]): string {
-  const honored = names.map((n) => `${n}님`);
-  if (honored.length <= 1) return honored.join("");
-  if (honored.length === 2) return `${honored[0]}과 ${honored[1]}`;
-  return honored.join(", ");
-}
 
 export function DateAvailabilitySummaryPanel({ summary }: DateAvailabilitySummaryPanelProps) {
   // 명단·필수 표시는 대표 슬롯 기준(참석자 구성은 시간과 무관하게 동일하다).
@@ -49,20 +41,31 @@ export function DateAvailabilitySummaryPanel({ summary }: DateAvailabilitySummar
               ? "피하면 좋은 시간"
               : "일부 인원이 어려운 시간"}
           </p>
-          <ul className="space-y-1 px-0.5">
+          <ul className="space-y-1.5 px-0.5">
             {summary.exceptionRanges.map((exception) => (
               <li
                 key={`${exception.startAt}-${exception.reason}`}
-                className={cn(
-                  "break-keep text-xs",
-                  exception.reason === "requiredBusy"
-                    ? "font-bold text-red-600"
-                    : "font-medium text-red-500",
-                )}
+                className="flex flex-wrap items-center gap-1 break-keep text-xs"
               >
-                {formatKoreanTimeRange(exception.startAt, exception.endAt)} ·{" "}
-                {formatNameList(exception.names)}
-                {exception.reason === "requiredBusy" && " (필수참석자)"}
+                <span
+                  className={
+                    exception.reason === "requiredBusy"
+                      ? "font-bold text-red-600"
+                      : "font-medium text-red-500"
+                  }
+                >
+                  {formatKoreanTimeRange(exception.startAt, exception.endAt)} ·
+                </span>
+                {/* 이름은 '필수/선택' 벳지로 노출한다. */}
+                {exception.names.map((name) => (
+                  <AttendeeNameBadge
+                    key={name}
+                    name={name}
+                    attendanceType={
+                      exception.requiredNames.includes(name) ? "required" : "optional"
+                    }
+                  />
+                ))}
               </li>
             ))}
           </ul>
@@ -87,7 +90,9 @@ export function DateAvailabilitySummaryPanel({ summary }: DateAvailabilitySummar
       )}
 
       {(showAvailableChips || (rep && rep.pendingNames.length > 0)) && (
-        <p className="px-0.5 text-[11px] text-slate-400">이름 앞 점(•)은 필수인원이에요.</p>
+        <p className="px-0.5 text-[11px] text-slate-400">
+          이름 옆 &lsquo;필수/선택&rsquo;은 참석 유형이에요.
+        </p>
       )}
     </div>
   );

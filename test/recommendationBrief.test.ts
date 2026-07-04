@@ -75,6 +75,17 @@ describe("buildRecommendationBrief", () => {
     expect(brief.avoidSentence).toContain("겹치는 회의는");
   });
 
+  it("2-1b. 문장에 등장하는 참석자 이름은 필수/선택 유형과 함께 nameBadges 로 수집된다 (시나리오 1)", () => {
+    const brief = briefForCase(1, 8);
+
+    // 점심 직후 예외 시간의 선택참석자 이름이 벳지 정보로 수집된다(화면에서 '선택 정우진' 형태).
+    expect(brief.nameBadges.length).toBeGreaterThanOrEqual(1);
+    const jungwoojin = brief.nameBadges.find((b) => b.name === "정우진");
+    expect(jungwoojin?.attendanceType).toBe("optional");
+    // 벳지로 나오는 이름은 문장에도 "{이름}님" 형태로 실제 등장한다.
+    expect(brief.avoidSentence).toContain("정우진님");
+  });
+
   it("2-2. 하루 전체가 어려운 예외 날짜는 '~만 제외하면'으로 말한다 (시나리오 4, 외근)", () => {
     const brief = briefForCase(4, 6);
 

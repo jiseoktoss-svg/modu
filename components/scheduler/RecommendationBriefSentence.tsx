@@ -1,39 +1,36 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { AttendeeNameBadge } from "@/components/scheduler/AttendeeNameBadge";
 import { cn } from "@/lib/cn";
 import type { RecommendationBrief } from "@/lib/scheduler/recommendationBrief";
 
 // 추천안 화면의 문장형 추천 요약 — 회의 만들기/응답 입력의 문장 빌더 톤을 잇는다.
 // modu 가 먼저 판단(headline)을 정리해주고 이유를 덧붙이는 답변처럼 읽히게 한다.
-// 날짜 키워드는 파랑(먼저 볼 날짜)/빨강(피하면 좋은 날짜)으로 강조한다.
+// 날짜 키워드는 파랑(먼저 볼 날짜)/빨강(피하면 좋은 날짜)으로, 참석자 이름은 '필수/선택' 벳지로 노출한다.
 
 type RecommendationBriefSentenceProps = {
   brief: RecommendationBrief;
 };
 
-/** 문장 안의 날짜 라벨을 색 키워드로 감싼다(먼저 나온 키워드부터 순차 분해). */
-function highlightKeywords(
-  sentence: string,
-  keywords: { text: string; className: string }[],
-): ReactNode[] {
+// 문장 안의 특정 토큰(날짜 라벨·이름)을 노드로 치환한다. 긴 토큰부터 처리해 부분 매칭을 막는다.
+type SentenceToken = { text: string; render: (matched: string, key: string) => ReactNode };
+
+function replaceTokens(sentence: string, tokens: SentenceToken[]): ReactNode[] {
+  const sorted = [...tokens].sort((a, b) => b.text.length - a.text.length);
   let parts: ReactNode[] = [sentence];
-  keywords.forEach((keyword, ki) => {
+  sorted.forEach((token, ti) => {
     const next: ReactNode[] = [];
     for (const part of parts) {
-      if (typeof part !== "string" || !part.includes(keyword.text)) {
+      if (typeof part !== "string" || !part.includes(token.text)) {
         next.push(part);
         continue;
       }
-      const pieces = part.split(keyword.text);
+      const pieces = part.split(token.text);
       pieces.forEach((piece, i) => {
         if (piece) next.push(piece);
         if (i < pieces.length - 1) {
-          next.push(
-            <span key={`${ki}-${i}-${keyword.text}`} className={keyword.className}>
-              {keyword.text}
-            </span>,
-          );
+          next.push(token.render(token.text, `${ti}-${i}-${token.text}`));
         }
       });
     }
@@ -43,17 +40,27 @@ function highlightKeywords(
 }
 
 export function RecommendationBriefSentence({ brief }: RecommendationBriefSentenceProps) {
-  const primaryKeywords = brief.primaryItems.map((item) => ({
-    text: item.label,
-    className: "font-bold text-brand-600",
+  const colorToken = (text: string, className: string): SentenceToken => ({
+    text,
+    render: (matched, key) => (
+      <span key={key} className={className}>
+        {matched}
+      </span>
+    ),
+  });
+  // 날짜 라벨: 먼저 볼 날짜(파랑)/피하면 좋은 날짜(빨강). 서로 겹치지 않아 어느 문장에 나오든 각자 색.
+  const dateTokens: SentenceToken[] = [
+    ...brief.primaryItems.map((item) => colorToken(item.label, "font-bold text-brand-600")),
+    ...brief.avoidItems.map((item) => colorToken(item.label, "font-bold text-red-500")),
+  ];
+  // 참석자 이름은 "{name}님" 형태로 등장 — '필수/선택' 벳지로 치환한다.
+  const nameTokens: SentenceToken[] = brief.nameBadges.map((badge) => ({
+    text: `${badge.name}님`,
+    render: (_, key) => (
+      <AttendeeNameBadge key={key} name={badge.name} attendanceType={badge.attendanceType} />
+    ),
   }));
-  const avoidKeywords = brief.avoidItems.map((item) => ({
-    text: item.label,
-    className: "font-bold text-red-500",
-  }));
-  // 두 색을 모든 문장에 적용한다 — 먼저 볼 날짜(파랑)/피하면 좋은 날짜(빨강)는 서로 겹치지
-  // 않아, 어느 문장에 나오든 각자 색으로 칠해진다(예: '제외하면' 예외 날짜도 빨강).
-  const allKeywords = [...primaryKeywords, ...avoidKeywords];
+  const tokens = [...nameTokens, ...dateTokens];
 
   // 문장 줄들: 등장 순서대로 살짝 시차를 두고 떠오른다(문장 빌더 톤).
   // 판단(headline)부터 바로 말하고, 근거 문장을 이어 붙인다.
@@ -63,13 +70,13 @@ export function RecommendationBriefSentence({ brief }: RecommendationBriefSenten
       className: "text-xl font-extrabold leading-snug text-slate-900 sm:text-2xl",
     },
     {
-      node: highlightKeywords(brief.primarySentence, allKeywords),
+      node: replaceTokens(brief.primarySentence, tokens),
       className: "break-keep text-base leading-relaxed text-slate-700",
     },
   ];
   if (brief.avoidSentence) {
     lines.push({
-      node: highlightKeywords(brief.avoidSentence, allKeywords),
+      node: replaceTokens(brief.avoidSentence, tokens),
       className: "break-keep text-base leading-relaxed text-slate-700",
     });
   }
