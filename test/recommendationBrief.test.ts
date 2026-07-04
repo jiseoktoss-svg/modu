@@ -64,15 +64,25 @@ describe("buildRecommendationBrief", () => {
     expect(brief.primaryItems.length).toBeLessThanOrEqual(3);
   });
 
-  it("2-1. 전원 가능 날짜가 많으면 3개만 나열하지 않고 예외 중심으로 말한다 (시나리오 1, 넓은 기간)", () => {
+  it("2-1. 전원 가능 날짜가 많고 특정 시간만 어려운 날은 개수 중심으로 말한다 (시나리오 1, 넓은 기간)", () => {
     const brief = briefForCase(1, 8);
 
-    // 예외 중심 문구 — "N월 N일만 제외하면, 대부분 날짜에 모든 인원이 참석할 수 있어요".
-    expect(brief.primarySentence).toContain("제외하면");
-    expect(brief.primarySentence).toContain("대부분 날짜에 모든 인원이 참석할 수 있어요");
+    // 3개만 나열하거나(오해) 특정 시간만 어려운 날을 '날짜 전체 제외'로 말하지 않는다.
+    expect(brief.primarySentence).toMatch(/전원이 참석할 수 있는 날짜가 \d+개 있어요/);
+    expect(brief.primarySentence).not.toContain("제외하면");
+    expect(brief.primarySentence).not.toContain("먼저 확인해보세요");
+    // 그 시간대는 avoid 문장에서 '겹치는 회의는'으로 짚는다.
+    expect(brief.avoidSentence).toContain("겹치는 회의는");
+  });
+
+  it("2-2. 하루 전체가 어려운 예외 날짜는 '~만 제외하면'으로 말한다 (시나리오 4, 외근)", () => {
+    const brief = briefForCase(4, 6);
+
     expect(brief.primarySentence).toMatch(/7월 \d+일만 제외하면/);
-    // 3개 날짜만 '먼저 확인'하라고 말하지 않는다(나머지가 왜 빠졌는지 오해 방지).
-    expect(brief.primarySentence).not.toContain("을 먼저 확인해보세요. 회의 가능 시간대 전체");
+    expect(brief.primarySentence).toContain("대부분 날짜에 모든 인원이 참석할 수 있어요");
+    expect(brief.primarySentence).not.toContain("먼저 확인해보세요");
+    // '제외하면' 문장과 짝이 되는 avoid 는 특정 시간이 아니라 날짜 기준으로 말한다.
+    expect(brief.avoidSentence).toContain("다른 날짜를 먼저 보는 게 좋아요");
   });
 
   it("3. 피하면 좋은 날짜가 있으면 avoidSentence 에 나온다 (시나리오 2)", () => {
@@ -99,15 +109,8 @@ describe("buildRecommendationBrief", () => {
   it("5. 미응답이 있으면 잠정 결과 문구와 응답 기준 안내가 나온다 (시나리오 8)", () => {
     const brief = briefForCase(8, 3);
 
-    // 도입부도 "모두의 응답"이 아니라 "지금까지의 응답"으로 바뀐다(의미 충돌 방지).
-    expect(brief.introSentence).toBe("지금까지의 응답을 보니,");
     expect(brief.headline).toContain("잠정 결과");
     expect(brief.primarySentence).toContain("지금까지의 응답 기준");
     expect(brief.helperSentence).toContain("결과가 바뀔 수 있어요");
-  });
-
-  it("6. 전원 응답 상태의 도입부는 '모두의 응답을 보니,'다 (시나리오 1)", () => {
-    const brief = briefForCase(1, 3);
-    expect(brief.introSentence).toBe("모두의 응답을 보니,");
   });
 });

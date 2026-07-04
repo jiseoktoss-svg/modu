@@ -16,13 +16,13 @@ export type RecommendationBriefItem = {
 };
 
 export type RecommendationBrief = {
-  /** 첫 줄 도입부 — 미응답이 있으면 "지금까지의 응답을 보니,"로 바뀐다("모두의"와 충돌 방지). */
-  introSentence: string;
   headline: string;
   primarySentence: string;
   avoidSentence?: string;
   helperSentence?: string;
 
+  /** 먼저 볼 날짜(문장 강조용). 첫 항목의 date 는 추천안 화면의 날짜·시간 확인 모듈
+   *  초기 선택 날짜로도 쓰인다(brief.primaryItems[0]?.date). */
   primaryItems: RecommendationBriefItem[];
   avoidItems: RecommendationBriefItem[];
 };
@@ -89,11 +89,8 @@ export function buildRecommendationBrief(args: {
     contextual.calendarMarks.filter((m) => m.tone === "avoid").map((m) => m.date),
   );
 
-  const introSentence = hasPending ? "지금까지의 응답을 보니," : "모두의 응답을 보니,";
-
   if (summaries.length === 0) {
     return {
-      introSentence,
       headline: "아직 보여줄 추천이 없어요.",
       primarySentence: "회의 기간 안에 고를 수 있는 시간이 없어요. 기간을 확인해 주세요.",
       primaryItems: [],
@@ -159,16 +156,22 @@ export function buildRecommendationBrief(args: {
     if (tier1.length >= MANY_AVAILABLE_THRESHOLD) {
       // 전원 가능한 날짜가 많다 — 앞 3개만 나열하면 "나머지 날짜는 왜 빠졌지?"라는 오해를 준다.
       // '어디가 좋은지'를 나열하는 대신 '어디만 피하면 되는지'(예외)를 말해 전체 상황을 알려준다.
+      // primaryItems: 문장에는 안 나오지만 첫 항목 date 를 날짜·시간 확인 모듈 초기 날짜로 쓴다.
       primaryItems = tier1.slice(0, MAX_PRIMARY).map((s) => ({
         date: s.date,
         label: dateLabel(s.date),
         detail: "회의 가능 시간대 전체에 모든 인원이 참석할 수 있어요.",
         tone: "good" as const,
       }));
-      // 예외 = 전원 가능이 아닌 날짜(꼭 불가란 뜻은 아니고, 먼저 볼 필요가 낮은 날짜).
-      const exceptionLabels = summaries
-        .filter((s) => !s.allSlotsAllAvailable)
-        .map((s) => dateLabel(s.date));
+      // 예외 = 하루 전체를 피하는 게 나은 날짜만. 점심 직후처럼 '특정 시간만' 어려운 날은
+      // (하루 중 전원 가능한 슬롯이 있고 필수 이슈도 없음) 날짜 전체 제외로 말하지 않고,
+      // 아래 avoid 문장에서 그 시간대만 짚는다.
+      const fullDayExceptions = summaries.filter(
+        (s) =>
+          !s.allSlotsAllAvailable &&
+          (s.allAvailableSlots.length === 0 || s.requiredIssueSlots.length > 0),
+      );
+      const exceptionLabels = fullDayExceptions.map((s) => dateLabel(s.date));
       if (exceptionLabels.length >= 1 && exceptionLabels.length <= EXCEPTION_LIST_MAX) {
         const joinedEx = joinDateLabels(exceptionLabels);
         primarySentence =
@@ -177,7 +180,7 @@ export function buildRecommendationBrief(args: {
             : `${lead}${joinedEx}을 제외하면 대부분 날짜에 모든 인원이 참석할 수 있어요.`;
         exceptionCentricPrimary = true;
       } else {
-        // 예외가 없거나(전부 가능) 너무 많으면 개수 중심으로 — 편한 날을 고르라고 안내한다.
+        // 전체 제외로 말할 예외가 없거나 너무 많으면 개수 중심으로 — 편한 날을 고르라고 안내한다.
         primarySentence = `${lead}전원이 참석할 수 있는 날짜가 ${tier1.length}개 있어요. 편한 날짜를 골라도 괜찮아요.`;
       }
     } else {
@@ -288,7 +291,6 @@ export function buildRecommendationBrief(args: {
       : "궁금한 날짜와 시간이 있으면 아래에서 바로 확인할 수 있어요.";
 
   return {
-    introSentence,
     headline,
     primarySentence,
     avoidSentence,

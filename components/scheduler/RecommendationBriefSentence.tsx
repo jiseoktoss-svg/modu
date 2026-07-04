@@ -5,7 +5,7 @@ import { cn } from "@/lib/cn";
 import type { RecommendationBrief } from "@/lib/scheduler/recommendationBrief";
 
 // 추천안 화면의 문장형 추천 요약 — 회의 만들기/응답 입력의 문장 빌더 톤을 잇는다.
-// "모두의 응답을 보니," 로 시작해 modu 가 먼저 판단을 정리해주는 답변처럼 읽히게 한다.
+// modu 가 먼저 판단(headline)을 정리해주고 이유를 덧붙이는 답변처럼 읽히게 한다.
 // 날짜 키워드는 파랑(먼저 볼 날짜)/빨강(피하면 좋은 날짜)으로 강조한다.
 
 type RecommendationBriefSentenceProps = {
@@ -56,7 +56,7 @@ export function RecommendationBriefSentence({ brief }: RecommendationBriefSenten
   const allKeywords = [...primaryKeywords, ...avoidKeywords];
 
   // 문장 줄들: 등장 순서대로 살짝 시차를 두고 떠오른다(문장 빌더 톤).
-  // 도입부("모두의 응답을 보니,")는 두지 않는다 — 판단(headline)부터 바로 말한다.
+  // 판단(headline)부터 바로 말하고, 근거 문장을 이어 붙인다.
   const lines: { node: ReactNode; className: string }[] = [
     {
       node: brief.headline,
