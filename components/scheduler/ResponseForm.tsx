@@ -47,8 +47,6 @@ import { useScrollLock } from "@/lib/useScrollLock";
 import { cellKey, cellsToBlocks, GRID_STEP_MINUTES } from "@/lib/grid";
 import {
   addDaysToDateStr,
-  formatKoreanDateTimeRange,
-  formatKoreanTime,
   formatKoreanTimeRange,
   kstWallToIso,
   parseHm,
@@ -60,24 +58,20 @@ import type {
   CalendarSnapshotParticipant,
 } from "@/lib/actionTypes";
 import type { AttendanceType, AvailabilityStatus, CellStatus } from "@/lib/types";
-import { recommendSlots, GRADE_LABELS, type SlotCandidate } from "@/lib/scheduler";
 import {
   DEMO_PEOPLE,
   DEMO_CASES,
   buildCaseCandidates,
   buildCaseSnapshot,
 } from "@/data/demoCases";
+import { AvailabilityDateTimeLookup } from "@/components/scheduler/AvailabilityDateTimeLookup";
 import { AvailabilitySearchBox } from "@/components/scheduler/AvailabilitySearchBox";
 import { AvailabilitySearchResultPanel } from "@/components/scheduler/AvailabilitySearchResultPanel";
-import { CandidateFilterChips } from "@/components/scheduler/CandidateFilterChips";
 import { DateAvailabilitySummaryPanel } from "@/components/scheduler/DateAvailabilitySummaryPanel";
+import { RecommendationBriefSentence } from "@/components/scheduler/RecommendationBriefSentence";
 import type { AvailabilityLookupResult } from "@/lib/scheduler/availabilityLookup";
-import {
-  CANDIDATE_FILTER_OPTIONS,
-  rankGroupKindMatchesFilter,
-  type CandidateFilter,
-} from "@/lib/scheduler/candidateFilters";
 import { summarizeDateAvailability } from "@/lib/scheduler/dateAvailabilitySummary";
+import { buildRecommendationBrief } from "@/lib/scheduler/recommendationBrief";
 import { adaptDemoCaseToEvaluatedSlots } from "@/data/demoCaseAdapter";
 import {
   buildContextualScheduleResult,
@@ -1489,6 +1483,8 @@ export function ResponseForm(props: Props) {
           durationMinutes={durationMinutes}
           workdayStart={workdayStart}
           workdayEnd={workdayEnd}
+          lunchStart={lunchStart}
+          lunchEnd={lunchEnd}
           onViewCalendar={() => setStep("done")}
         />
       </>
@@ -1908,11 +1904,11 @@ function CaseSelector({ caseId, onSelect }: { caseId: number; onSelect: (id: num
   return (
     <div className="select-none">
       <div className="relative flex items-center gap-1.5">
-        <p className="text-xs font-bold text-slate-400">평가용 시나리오</p>
+        <p className="text-xs font-bold text-slate-400">상황 예시</p>
         {/* 평가용 탐색 장치라는 점을 ? 아이콘 툴팁으로 알린다(디버그 도구가 아님). */}
         <button
           type="button"
-          aria-label="평가용 시나리오 안내"
+          aria-label="상황 예시 안내"
           className="peer flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 text-[10px] font-bold leading-none text-slate-400 transition-colors hover:border-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
         >
           ?
@@ -1943,7 +1939,7 @@ function CaseSelector({ caseId, onSelect }: { caseId: number; onSelect: (id: num
               type="button"
               onClick={() => onSelect(c.id)}
               aria-pressed={isSelected}
-              aria-label={`시나리오 ${c.id} ${c.title}`}
+              aria-label={`상황 ${c.id} ${c.title}`}
               style={{
                 transform: `translateX(${hovered ? index * GAP : 0}px)`,
                 opacity: visible ? 1 : 0,
@@ -1971,7 +1967,7 @@ function CaseDescription({ caseId }: { caseId: number }) {
   return (
     <div className="rounded-2xl bg-slate-50 p-3.5">
       <p className="text-sm font-extrabold text-slate-900">
-        시나리오 {current.id}. {current.title}
+        상황 {current.id}. {current.title}
       </p>
       <div className="mt-2 space-y-1.5">
         <p className="flex gap-1.5 break-keep text-sm text-slate-600">
@@ -2039,7 +2035,7 @@ function FloatingCaseSelector({
           type="button"
           onClick={() => setOpen(true)}
           aria-haspopup="dialog"
-          aria-label={`평가용 시나리오 열기 (현재 시나리오 ${caseId})`}
+          aria-label={`상황 예시 열기 (현재 ${caseId}번 상황)`}
           className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-sm font-bold text-white shadow-md shadow-brand-500/30 transition-transform active:scale-95"
         >
           {caseId}
@@ -2053,12 +2049,12 @@ function FloatingCaseSelector({
             <div
               role="dialog"
               aria-modal="true"
-              aria-label="평가용 시나리오"
+              aria-label="상황 예시"
               className="absolute left-0 top-10 z-50 w-[calc(100vw-2rem)] max-w-[22rem] rounded-2xl bg-white p-4 shadow-2xl animate-fade-up motion-reduce:animate-none"
             >
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <p className="text-sm font-bold text-slate-900">평가용 시나리오</p>
+                  <p className="text-sm font-bold text-slate-900">상황 예시</p>
                   <p className="mt-0.5 break-keep text-xs text-slate-400">
                     회의 조율에서 자주 생기는 상황을 빠르게 확인해보세요. 실제 사용 화면에는 보이지 않아요.
                   </p>
@@ -2066,7 +2062,7 @@ function FloatingCaseSelector({
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
-                  aria-label="평가용 시나리오 닫기"
+                  aria-label="상황 예시 닫기"
                   className="-mr-1 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
                 >
                   <Emoji symbol="✕" size={16} />
@@ -2081,7 +2077,7 @@ function FloatingCaseSelector({
                       type="button"
                       onClick={() => onSelect(c.id)}
                       aria-pressed={isSelected}
-                      aria-label={`시나리오 ${c.id} ${c.title}`}
+                      aria-label={`상황 ${c.id} ${c.title}`}
                       className={cn(
                         "flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold transition-colors",
                         isSelected
@@ -2115,7 +2111,7 @@ function FloatingCaseSelector({
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="평가용 시나리오"
+            aria-label="상황 예시"
             className={cn(
               "fixed right-4 z-40 w-[calc(100vw-2rem)] max-w-[22rem] rounded-2xl bg-white p-4 shadow-2xl animate-fade-up motion-reduce:animate-none",
               bottomClass,
@@ -2123,7 +2119,7 @@ function FloatingCaseSelector({
           >
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="text-sm font-bold text-slate-900">평가용 시나리오</p>
+                <p className="text-sm font-bold text-slate-900">상황 예시</p>
                 <p className="mt-0.5 break-keep text-xs text-slate-400">
                   회의 조율에서 자주 생기는 상황을 빠르게 확인해보세요. 실제 사용 화면에는 보이지 않아요.
                 </p>
@@ -2131,7 +2127,7 @@ function FloatingCaseSelector({
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                aria-label="평가용 시나리오 닫기"
+                aria-label="상황 예시 닫기"
                 className="-mr-1 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
               >
                 <Emoji symbol="✕" size={16} />
@@ -2146,7 +2142,7 @@ function FloatingCaseSelector({
                     type="button"
                     onClick={() => onSelect(c.id)}
                     aria-pressed={isSelected}
-                    aria-label={`시나리오 ${c.id} ${c.title}`}
+                    aria-label={`상황 ${c.id} ${c.title}`}
                     className={cn(
                       "flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold transition-colors",
                       isSelected
@@ -2169,7 +2165,7 @@ function FloatingCaseSelector({
           type="button"
           onClick={() => setOpen(true)}
           aria-haspopup="dialog"
-          aria-label={`평가용 시나리오 열기 (현재 시나리오 ${caseId})`}
+          aria-label={`상황 예시 열기 (현재 ${caseId}번 상황)`}
           className={cn(
             "fixed right-4 z-40 flex h-11 w-11 items-center justify-center rounded-full bg-brand-500 text-base font-bold text-white shadow-lg shadow-brand-500/30 transition-transform active:scale-95",
             bottomClass,
@@ -2445,6 +2441,8 @@ function ResultScreen({
   durationMinutes,
   workdayStart,
   workdayEnd,
+  lunchStart,
+  lunchEnd,
   onViewCalendar,
 }: {
   caseId: number;
@@ -2453,62 +2451,44 @@ function ResultScreen({
   durationMinutes: number;
   workdayStart: string;
   workdayEnd: string;
+  lunchStart: string;
+  lunchEnd: string;
   onViewCalendar: () => void;
 }) {
   const current = DEMO_CASES.find((c) => c.id === caseId) ?? DEMO_CASES[0];
   const candidates = useMemo(() => buildCaseCandidates(current, dates), [current, dates]);
   const total = DEMO_PEOPLE.length;
 
-  // 특정 시간 검색(조회 전용) — 케이스별 더미 응답 스냅샷으로 계산한다.
+  // 상황별 더미 응답 스냅샷 — 날짜 요약과 날짜·시간 확인 모듈의 계산 재료.
   const snapshot = useMemo(() => buildCaseSnapshot(current, dates), [current, dates]);
-  const [searchResult, setSearchResult] = useState<AvailabilityLookupResult | null>(null);
-  // 후보 필터 — 그룹별로 나눠 보는 탐색 보조(투표/확정 아님).
-  const [candidateFilter, setCandidateFilter] = useState<CandidateFilter>("all");
-  useEffect(() => {
-    setSearchResult(null);
-    setCandidateFilter("all");
-  }, [caseId]);
 
-  // 같은 조건의 후보는 같은 그룹으로 — 무의미한 1·2·3순위 구분 대신 그룹 라벨로 보여준다.
+  // 전체 응답 해석 — 문장형 추천 요약(브리프)의 재료.
+  // rankGroups/필터는 내부 로직·테스트로만 유지하고, 화면은 후보 카드 대신 브리프가 담당한다.
   const contextual = useMemo(
     () => buildContextualScheduleResult(adaptDemoCaseToEvaluatedSlots(current, dates)),
     [current, dates],
   );
-  const candidateGroups = useMemo(() => {
-    const indexByKey = new Map<string, number>();
-    candidates.forEach((c, i) => indexByKey.set(`${c.startAt}|${c.endAt}`, i));
-    return contextual.rankGroups
-      .map((group) => ({
-        kind: group.kind,
-        label: group.label,
-        indexes: group.slots
-          .map((slot) => indexByKey.get(`${slot.startAt}|${slot.endAt}`))
-          .filter((i): i is number => i != null),
-      }))
-      .filter((group) => group.indexes.length > 0);
-  }, [contextual, candidates]);
-  // 필터 적용 — kind 기준(label 문자열에 의존하지 않는다).
-  const visibleCandidateGroups = useMemo(
-    () => candidateGroups.filter((group) => rankGroupKindMatchesFilter(group.kind, candidateFilter)),
-    [candidateGroups, candidateFilter],
+  // 날짜별 하루 요약 → "modu가 먼저 판단을 정리해주는" 문장형 브리프.
+  // 대표 슬롯(10:00~11:00)이 아니라 날짜 전체 상태로 말한다.
+  const summaries = useMemo(() => {
+    const summaryDates = [...new Set(candidates.map((c) => c.date))].sort();
+    return summaryDates.map((date) =>
+      summarizeDateAvailability({
+        date,
+        durationMinutes,
+        workdayStart,
+        workdayEnd,
+        lunchStart,
+        lunchEnd,
+        participants: snapshot.participants,
+        blocks: snapshot.blocks,
+      }),
+    );
+  }, [candidates, durationMinutes, workdayStart, workdayEnd, lunchStart, lunchEnd, snapshot]);
+  const brief = useMemo(
+    () => buildRecommendationBrief({ contextual, summaries }),
+    [contextual, summaries],
   );
-  const filterCounts = useMemo(() => {
-    const counts = {} as Record<CandidateFilter, number>;
-    for (const option of CANDIDATE_FILTER_OPTIONS) {
-      counts[option.value] = candidateGroups
-        .filter((group) => rankGroupKindMatchesFilter(group.kind, option.value))
-        .reduce((sum, group) => sum + group.indexes.length, 0);
-    }
-    return counts;
-  }, [candidateGroups]);
-  // 그룹 순서대로 하나씩 페이드인시키기 위한 표시 순번(필터 적용 후 기준).
-  const cardOrder = useMemo(() => {
-    const order = new Map<number, number>();
-    visibleCandidateGroups.forEach((group) => {
-      group.indexes.forEach((i) => order.set(i, order.size));
-    });
-    return order;
-  }, [visibleCandidateGroups]);
 
   return (
     <div
@@ -2550,92 +2530,29 @@ function ResultScreen({
           <CaseDescription caseId={caseId} />
         </div>
 
-        {/* 맥락형 해석 문장 — modu 가 응답 분포를 해석한 결과를 먼저 말해준다.
+        {/* ① 문장형 추천 요약 — 후보 카드/필터 대신 modu 가 먼저 판단을 정리해주는 답변.
             확정은 하지 않는다 — 최종 결정은 참여자들이 제품 밖에서 한다. */}
-        <div className="space-y-1 px-1">
-          <p className="break-keep text-sm font-bold text-slate-800">{contextual.headline}</p>
-          <p className="break-keep text-sm text-slate-600">{contextual.comment}</p>
-          <p className="break-keep text-xs text-slate-400">
-            이 추천안을 바탕으로 참여자들과 최종 회의 시간을 정해보세요.
-          </p>
+        <RecommendationBriefSentence key={`brief-${caseId}`} brief={brief} />
+        <p className="break-keep px-1 text-xs text-slate-400">
+          이 추천을 바탕으로 참여자들과 최종 회의 시간을 정해보세요.
+        </p>
+
+        {/* ② 원하는 날짜·시간 확인 — 텍스트 검색 대신 picker 형(조회 전용, 확정/투표 아님).
+            key 로 상황 전환 시 선택·결과를 초기화한다. */}
+        <div className="px-1 pt-3">
+          <AvailabilityDateTimeLookup
+            key={`lookup-${caseId}`}
+            dates={dates}
+            durationMinutes={durationMinutes}
+            participants={snapshot.participants}
+            blocks={snapshot.blocks}
+            workdayStart={workdayStart}
+            workdayEnd={workdayEnd}
+            lunchStart={lunchStart}
+            lunchEnd={lunchEnd}
+            initialDate={brief.primaryItems[0]?.date ?? null}
+          />
         </div>
-
-        {/* 특정 시간 검색 — 궁금한 날짜·시간의 참석 가능 여부를 바로 확인(확정/투표 아님). */}
-        <AvailabilitySearchBox
-          className="px-1"
-          dates={dates}
-          durationMinutes={durationMinutes}
-          participants={snapshot.participants}
-          blocks={snapshot.blocks}
-          workdayStart={workdayStart}
-          workdayEnd={workdayEnd}
-          onResult={setSearchResult}
-        />
-        {searchResult && (
-          <div className="rounded-2xl bg-white p-4 shadow-[0_1px_4px_rgba(15,23,42,0.12)]">
-            <AvailabilitySearchResultPanel
-              result={searchResult}
-              onClear={() => setSearchResult(null)}
-            />
-          </div>
-        )}
-
-        {candidates.length === 0 ? (
-          <p className="text-sm text-slate-500">표시할 추천안이 없어요.</p>
-        ) : (
-          // 후보 카드는 선택/투표 대상이 아니라 설명 카드 — 왜 이 시간이 좋은지(등급·참석 요약)를 보여준다.
-          <div className="space-y-4 py-1">
-            {/* 후보 필터 — 그룹별로 나눠 보기(개수 0인 필터는 disabled) */}
-            <CandidateFilterChips
-              value={candidateFilter}
-              counts={filterCounts}
-              onChange={setCandidateFilter}
-            />
-            {visibleCandidateGroups.length === 0 && (
-              <p className="px-1 text-sm text-slate-500">이 조건에 해당하는 후보가 없어요.</p>
-            )}
-            {visibleCandidateGroups.map((group) => (
-              <section key={`${caseId}-${group.label}-${group.indexes.join(",")}`}>
-                <h2 className="px-1 pb-2 text-xs font-bold text-slate-500">{group.label}</h2>
-                <ol className="space-y-2">
-                  {group.indexes.map((i) => {
-                    const c = candidates[i];
-                    return (
-                      <li
-                        key={`${caseId}-${c.startAt}-${c.endAt}-${i}`}
-                        // 위 그룹부터 순서대로 하나씩 페이드인.
-                        style={{ animationDelay: `${(cardOrder.get(i) ?? 0) * 120}ms` }}
-                        className="relative animate-fade-in rounded-2xl bg-white p-4 shadow-[0_1px_4px_rgba(15,23,42,0.12)] motion-reduce:animate-none"
-                      >
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                            <p className="font-bold text-slate-900">
-                              {formatKoreanDateTimeRange(c.startAt, c.endAt)}
-                            </p>
-                            <span
-                              className={cn(
-                                // 2색 체계: 파랑 = 추천, 빨강 = 주의. 앰버는 쓰지 않는다.
-                                "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold",
-                                c.grade === "best"
-                                  ? "bg-brand-50 text-brand-700"
-                                  : c.grade === "caution"
-                                    ? "bg-red-50 text-red-600"
-                                    : "bg-slate-100 text-slate-600",
-                              )}
-                            >
-                              {GRADE_LABELS[c.grade]}
-                            </span>
-                          </div>
-                          <p className="mt-1 break-keep text-sm text-slate-500">{c.reason}</p>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ol>
-              </section>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* PC 에서도 하단 고정 — 고정 바 안에서 버튼 폭은 본문 컬럼(랜딩 CTA와 동일)과 맞춘다.
