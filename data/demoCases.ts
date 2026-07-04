@@ -1,6 +1,7 @@
-// 제품 흐름 데모용 케이스 데이터. docs/cases.md 의 8개 필수 케이스를 화면에 보여주기 위한 더미.
-// 실제 입력과 무관하게, 케이스를 고르면 그 케이스에 맞는 후보 순위/캘린더를 보여준다.
-// (현재 추천 엔진은 §8 차선후보/우선순위 규칙을 구현하지 않아, 의도한 결과를 손으로 정의한다.)
+// 평가용 시나리오 데이터. docs/cases.md 의 8개 대표 회의 조율 상황을 화면에서
+// 빠르게 전환해 보기 위한 장치다(가짜 데이터가 아니라 설계 가설을 검증하는 시나리오).
+// 평가자가 6명의 역할을 나눠 직접 재현하기에는 시간이 많이 들어, 시나리오를 고르면
+// 그 상황에 맞는 후보/캘린더/날짜 요약을 바로 보여준다. 배경은 docs/case-study.md 참고.
 
 import { addDaysToDateStr, kstWallToIso, todayDateStrKst } from "@/lib/time";
 import type { RecommendationGrade } from "@/lib/scheduler";
@@ -29,8 +30,8 @@ const OPTIONAL_TOTAL = DEMO_PEOPLE.length - REQUIRED_TOTAL; // 2
 type DemoSlot = {
   dateIndex: number;
   startMin: number; // 자정 이후 분 (KST)
-  busy: number[]; // 이 시간에 불가능한 사람 인덱스(DEMO_PEOPLE)
-  // 등급/순위는 buildCaseCandidates 가 §8.5 로직으로 도출한다(하드코딩 안 함).
+  busy: number[]; // 이 시간에 회의가 어려운 사람 인덱스(DEMO_PEOPLE)
+  // 등급/그룹은 buildCaseCandidates 가 우선순위 로직으로 도출한다(하드코딩 안 함).
 };
 
 export type DemoCase = {
@@ -42,6 +43,9 @@ export type DemoCase = {
   submitted: number; // 응답 완료 인원 (총 6명 중)
   pendingNames: string[];
   slots: DemoSlot[];
+  /** 후보 리스트와 별개로 스냅샷(날짜 요약·특정 시간 검색)에만 추가되는 busy 블록.
+   *  외근처럼 하루 전체가 어려운 상황은 후보 슬롯 하나로 표현할 수 없어 여기에 둔다. */
+  extraBusy?: { dateIndex: number; startMin: number; endMin: number; who: number[] }[];
 };
 
 const H = (h: number) => h * 60;
@@ -49,23 +53,29 @@ const H = (h: number) => h * 60;
 export const DEMO_CASES: DemoCase[] = [
   {
     id: 1,
-    title: "모두 되는 시간이 있음",
-    situation: "필수인원 4명과 선택인원 2명이 전부 가능한 날이 있고, 일부 날짜만 한두 명이 빠져요.",
-    judgment: "전원이 가능한 날을 1순위로 추천해요. 전원 가능한 날이 여러 개면 더 빠른 날짜가 위예요.",
+    title: "전원이 가능한 후보가 여러 개 있음",
+    situation: "모든 인원이 참석할 수 있는 후보가 여러 개 있어요.",
+    judgment:
+      "억지로 순위를 나누지 않고 '모두 참석할 수 있는 후보'로 묶어 먼저 보여줘요. 캘린더에서 날짜를 누르면 그 날 전체의 가능 상태를 보여줘요.",
+    banner: {
+      tone: "info",
+      text: "비슷하게 좋은 후보는 한 그룹으로 묶어 보여줘요. 더 이른 시간이 먼저예요.",
+    },
     submitted: 6,
     pendingNames: [],
     slots: [
+      // 전원 가능한 후보 여러 개(같은 그룹) + 선택 두 명이 어려운 아래 그룹 하나
       { dateIndex: 1, startMin: H(14), busy: [] },
-      { dateIndex: 2, startMin: H(10), busy: [4] },
-      { dateIndex: 0, startMin: H(15), busy: [5] },
-      { dateIndex: 3, startMin: H(11), busy: [4, 5] },
+      { dateIndex: 2, startMin: H(10), busy: [] },
+      { dateIndex: 0, startMin: H(15), busy: [4, 5] },
     ],
   },
   {
     id: 2,
-    title: "선택인원만 일부 빠지는 날",
-    situation: "며칠은 필수인원 4명이 다 되지만 선택인원이 1~2명 빠져요.",
-    judgment: "필수인원이 다 되면 정상 후보로 유지해요. 다만 전원이 가능한 날이 있으면 그날이 먼저예요.",
+    title: "일부 선택참석자만 어려운 날이 있음",
+    situation: "대부분 날짜는 전원이 참석할 수 있지만, 몇몇 날짜는 선택참석자 1~2명이 참석하기 어려워요.",
+    judgment:
+      "전원이 가능한 날이 충분히 많으면 일부 인원이 빠지는 날은 피하면 좋은 날로 표시해요. 필수참석자는 모두 가능하다는 점도 함께 보여줘요.",
     submitted: 6,
     pendingNames: [],
     slots: [
@@ -76,47 +86,63 @@ export const DEMO_CASES: DemoCase[] = [
   },
   {
     id: 3,
-    title: "필수 우선 vs 선택 우선 충돌",
+    title: "필수참석자 가능 vs 선택참석자 가능 충돌",
     situation:
-      "필수인원은 다 되지만 선택인원이 빠지는 날과, 선택인원은 다 되지만 필수인원 1명이 빠지는 날이 같이 있어요.",
+      "필수참석자는 다 되지만 선택참석자가 빠지는 날과, 선택참석자는 다 되지만 필수참석자 1명이 어려운 날이 같이 있어요.",
     judgment:
-      "빠지는 사람이 있는 날끼리는 필수인원이 다 되는 날을 위에 둬요. 선택인원이 더 많이 돼도 필수인원이 빠지면 뒤로 밀려요.",
+      "선택참석자가 더 많이 가능해도 필수참석자가 어려운 후보는 뒤로 보내요. 필수참석자가 모두 가능한 후보를 먼저 보여줘요.",
     submitted: 6,
     pendingNames: [],
     slots: [
-      // 필수 전원 가능, 선택 둘 다 빠짐 → 그래도 필수 빠지는 후보들보다 위
+      // 필수 전원 가능, 선택 둘 다 어려움 → 그래도 필수가 어려운 후보들보다 먼저
       { dateIndex: 1, startMin: H(14), busy: [4, 5] },
-      // 선택 전원 가능, 필수 1명(김지훈) 빠짐
+      // 선택 전원 가능, 필수 1명(김지훈) 어려움
       { dateIndex: 2, startMin: H(10), busy: [0] },
-      // 필수 2명(이서연·박민준) 빠짐 → 더 아래
+      // 필수 2명(이서연·박민준) 어려움 → 피하면 좋은 시간
       { dateIndex: 0, startMin: H(15), busy: [1, 2] },
     ],
   },
   {
     id: 4,
-    title: "필수인원이 빠지는 날들",
-    situation: "며칠은 어느 시간을 골라도 필수인원 중 1명이 빠져요.",
-    judgment: "그런 날은 차선 후보로 순위 아래쪽에 둬요. 필수인원이 가장 적게 빠지는 날이 차선 중 먼저예요.",
+    title: "특정 요일 외근으로 날짜 전체가 어려움",
+    situation:
+      "정우진님이 외근이 많은 요일이라 그 날은 근무시간 내내 회의가 어려워요. 사유는 따로 입력하지 않고 '회의가 어려운 날짜'로만 표시했어요.",
+    judgment:
+      "그 날짜는 참석 가능 인원이 적은 날로 해석해요. 캘린더에서 날짜를 누르면 하루 전체 상태와 어려운 시간대로 이유를 설명해요.",
     banner: {
-      tone: "caution",
-      text: "필수인원이 빠지는 날은 차선 후보예요. 달력의 앰버색 날짜를 확인해 보세요.",
+      tone: "info",
+      text: "외근·집중 업무 같은 사유는 입력받지 않아요. 회의가 어려운 날짜로만 표시하면 modu가 결과에서 해석해요.",
     },
     submitted: 6,
     pendingNames: [],
-    slots: [
-      { dateIndex: 1, startMin: H(14), busy: [3] },
-      { dateIndex: 2, startMin: H(10), busy: [1] },
-      { dateIndex: 0, startMin: H(15), busy: [2, 4] },
-    ],
+    slots: [{ dateIndex: 1, startMin: H(10), busy: [4] }],
+    // 외근: 근무시간 전체가 어려움 — 날짜 요약·검색에서 하루 전체 busy 로 보이게 한다.
+    extraBusy: [{ dateIndex: 1, startMin: H(9), endMin: H(18), who: [4] }],
   },
   {
     id: 5,
-    title: "차선 후보가 비슷비슷함",
-    situation: "필수인원이 1명씩 빠지는 날이 여러 개라 우열을 가리기 애매해요.",
-    judgment: "차선끼리는 선택인원이 더 많이 되는 날을 먼저, 그래도 같으면 더 이른 날을 먼저 보여줘요.",
+    title: "점심 직후처럼 특정 시간대만 어려움",
+    situation:
+      "한예린님이 점심 직후 13:00~14:00에는 회의가 어렵다고 표시했어요. '피하고 싶은 시간' 입력을 따로 두지 않고 같은 방식으로 표시해요.",
+    judgment:
+      "그 시간과 겹치는 후보만 빼면 대부분 시간에 전원이 참석할 수 있어요. 캘린더 날짜 요약에서 어려운 시간대를 함께 보여줘요.",
+    banner: {
+      tone: "info",
+      text: "점심 직후 회피 같은 선호도 별도 입력 없이 '이 날 이 시간엔 어려움'으로 표시하면 돼요.",
+    },
+    submitted: 6,
+    pendingNames: [],
+    slots: [{ dateIndex: 2, startMin: H(13), busy: [5] }],
+  },
+  {
+    id: 6,
+    title: "필수참석자 1명이 어려운 후보들",
+    situation: "몇몇 날짜는 어느 시간을 골라도 필수참석자 1명이 참석하기 어려워요.",
+    judgment:
+      "그런 후보는 '필수 1명 어려움' 그룹으로 분리해 보여주고, 파란색 추천으로 강조하지 않아요. 누가 어려운지 이름과 함께 설명해요.",
     banner: {
       tone: "caution",
-      text: "필수인원 1명씩 빠지는 차선 후보들은 선택인원 수와 빠른 날짜 순으로 정렬했어요.",
+      text: "필수참석자가 어려운 날짜는 피하면 좋은 날짜로 표시돼요.",
     },
     submitted: 6,
     pendingNames: [],
@@ -127,13 +153,14 @@ export const DEMO_CASES: DemoCase[] = [
     ],
   },
   {
-    id: 6,
-    title: "필수인원이 2명 이상 빠지는 날",
-    situation: "며칠은 필수인원이 2명 이상 빠져요.",
-    judgment: "그런 날은 회의를 잡기 어려워요. 순위 맨 아래로 내리고 빨간색으로 강하게 경고해요.",
+    id: 7,
+    title: "필수참석자 2명 이상이 어려움",
+    situation: "후보 대부분에서 필수참석자 2명 이상이 참석하기 어려워요.",
+    judgment:
+      "그런 날짜는 피하면 좋은 시간으로 강하게 표시하고, 회의 기간을 조금 넓히는 게 좋다고 안내해요.",
     banner: {
       tone: "danger",
-      text: "빨간 날짜는 필수인원이 2명 이상 빠져요. 이 날로는 회의를 잡지 않는 걸 권해요.",
+      text: "빨간 날짜는 필수참석자 여러 명이 참석하기 어려워요. 기간을 조금 넓히는 게 좋아요.",
     },
     submitted: 6,
     pendingNames: [],
@@ -144,11 +171,11 @@ export const DEMO_CASES: DemoCase[] = [
     ],
   },
   {
-    id: 7,
-    title: "아직 응답 안 한 사람 있음",
-    situation: "참석자 6명 중 2명이 아직 불가능 시간을 입력하지 않았어요. (필수인원 1명 포함)",
+    id: 8,
+    title: "미응답자가 있어 잠정 결과만 보여줌",
+    situation: "참석자 6명 중 2명이 아직 응답하지 않았어요. 그중 1명(최수아)은 필수참석자예요.",
     judgment:
-      "전원이 응답하기 전엔 잠정 결과만 보여줘요. 미응답자는 가능 인원으로 세지 않아요.",
+      "확정하지 않고 잠정 결과로만 보여줘요. 미응답자는 가능 인원으로 세지 않고, '필수참석자가 모두 가능'이라고 과장하지 않아요.",
     banner: {
       tone: "caution",
       text: "아직 응답하지 않은 사람이 있어 잠정 결과만 보여줘요. 모두 응답하면 modu가 가장 나은 시간을 찾아드려요.",
@@ -159,25 +186,6 @@ export const DEMO_CASES: DemoCase[] = [
       { dateIndex: 2, startMin: H(10), busy: [] },
       { dateIndex: 1, startMin: H(14), busy: [4] },
       { dateIndex: 0, startMin: H(15), busy: [1] },
-    ],
-  },
-  {
-    id: 8,
-    title: "비슷한 후보가 여러 개 있음",
-    situation: "전원 또는 대부분이 참석할 수 있는 후보가 여러 개 있어요.",
-    judgment:
-      "억지로 순위를 나누지 않고 같은 그룹으로 묶어 보여줘요. 화면에서는 더 이른 날짜와 시간을 먼저 보여줘요.",
-    banner: {
-      tone: "info",
-      text: "비슷하게 좋은 후보는 한 그룹으로 묶어 보여줘요. 더 이른 시간이 먼저예요.",
-    },
-    submitted: 6,
-    pendingNames: [],
-    slots: [
-      // 전원 가능한 후보가 여러 개(같은 그룹) + 두 명 빠지는 아래 그룹 하나
-      { dateIndex: 1, startMin: H(14), busy: [] },
-      { dateIndex: 2, startMin: H(10), busy: [] },
-      { dateIndex: 0, startMin: H(15), busy: [4, 5] },
     ],
   },
 ];
@@ -369,6 +377,21 @@ export function buildCaseSnapshot(c: DemoCase, dates: string[]): CaseSnapshot {
         const p = DEMO_PEOPLE[i];
         if (!p) continue;
         const key = `${p.id}|${startAt}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        blocks.push({ participantId: p.id, startAt, endAt, status: "busy" });
+      }
+    }
+    // 후보 슬롯으로 표현할 수 없는 추가 busy(외근 등 하루 전체) — 날짜 요약·검색용.
+    for (const extra of c.extraBusy ?? []) {
+      const di = Math.max(0, Math.min(extra.dateIndex, demoDates.length - 1));
+      const date = demoDates[di] ?? demoDates[0];
+      const startAt = kstWallToIso(date, extra.startMin);
+      const endAt = kstWallToIso(date, extra.endMin);
+      for (const i of extra.who) {
+        const p = DEMO_PEOPLE[i];
+        if (!p) continue;
+        const key = `${p.id}|${startAt}|${endAt}`;
         if (seen.has(key)) continue;
         seen.add(key);
         blocks.push({ participantId: p.id, startAt, endAt, status: "busy" });

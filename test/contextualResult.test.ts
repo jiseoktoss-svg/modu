@@ -76,8 +76,8 @@ function makeSlot(over: {
 // ---- 테스트 ----
 
 describe("contextualResult", () => {
-  it("1. pending 은 context 가 아니라 잠정 결과 수식어로 처리된다 (케이스 7)", () => {
-    const slots = adaptDemoCaseToEvaluatedSlots(caseById(7), upcomingWeekdays(3));
+  it("1. pending 은 context 가 아니라 잠정 결과 수식어로 처리된다 (시나리오 8)", () => {
+    const slots = adaptDemoCaseToEvaluatedSlots(caseById(8), upcomingWeekdays(3));
     const result = buildContextualScheduleResult(slots);
 
     expect(result.hasPending).toBe(true);
@@ -104,7 +104,7 @@ describe("contextualResult", () => {
     expect(result.rankGroups[1].slots).toHaveLength(1);
   });
 
-  it("3. mostlyAvailable 에서는 파란색이 남발되지 않는다 (케이스 1)", () => {
+  it("3. mostlyAvailable 에서는 파란색이 남발되지 않는다 (시나리오 1)", () => {
     const slots = adaptDemoCaseToEvaluatedSlots(caseById(1), upcomingWeekdays(8));
     const result = buildContextualScheduleResult(slots);
 
@@ -112,24 +112,24 @@ describe("contextualResult", () => {
     expect(result.calendarMarks.filter((m) => m.tone === "recommended")).toHaveLength(0);
   });
 
-  it("4. mostlyAvailable 에서 필수참석자 불가 예외는 코멘트로 노출된다 (케이스 4 + 넓은 기간)", () => {
-    const slots = adaptDemoCaseToEvaluatedSlots(caseById(4), upcomingWeekdays(8));
+  it("4. mostlyAvailable 에서 필수참석자 불가 예외는 코멘트로 노출된다 (시나리오 6 + 넓은 기간)", () => {
+    const slots = adaptDemoCaseToEvaluatedSlots(caseById(6), upcomingWeekdays(8));
     const result = buildContextualScheduleResult(slots);
 
     expect(result.context).toBe("mostlyAvailable");
     expect(result.comment).toContain("피해주세요");
-    // 케이스 4의 필수 불가 인원 중 한 명이 문구에 나와야 한다.
+    // 시나리오 6의 필수 어려움 인원 중 한 명이 문구에 나와야 한다.
     expect(
-      ["최수아", "이서연", "박민준"].some((name) => result.comment.includes(`${name}님`)),
+      ["김지훈", "이서연", "박민준"].some((name) => result.comment.includes(`${name}님`)),
     ).toBe(true);
   });
 
-  it("5. busyPeriod 에서 필수참석자가 빠지는 최상위 후보는 파란색으로 칠하지 않는다 (케이스 5)", () => {
-    const slots = adaptDemoCaseToEvaluatedSlots(caseById(5), upcomingWeekdays(3));
+  it("5. busyPeriod 에서 필수참석자가 빠지는 최상위 후보는 파란색으로 칠하지 않는다 (시나리오 6)", () => {
+    const slots = adaptDemoCaseToEvaluatedSlots(caseById(6), upcomingWeekdays(3));
     const result = buildContextualScheduleResult(slots);
 
     expect(result.context).toBe("busyPeriod");
-    // 케이스 5는 모든 후보가 필수 1명씩 빠진다 — 파랑은 필수 전원 가능 후보에만 쓴다.
+    // 시나리오 6은 모든 후보가 필수 1명씩 빠진다 — 파랑은 필수 전원 가능 후보에만 쓴다.
     expect(result.calendarMarks.filter((m) => m.tone === "recommended")).toHaveLength(0);
     // 바쁜 기간에 비슷한 차선 후보들을 빨강으로 도배하지도 않는다.
     expect(result.calendarMarks.filter((m) => m.tone === "avoid")).toHaveLength(0);
@@ -158,8 +158,8 @@ describe("contextualResult", () => {
     expect(recommended[0].date).toBe(d[0]);
   });
 
-  it("6. noGoodOption 에서는 파란색 없이 기간을 넓히는 문구가 나온다 (케이스 6)", () => {
-    const slots = adaptDemoCaseToEvaluatedSlots(caseById(6), upcomingWeekdays(3));
+  it("6. noGoodOption 에서는 파란색 없이 기간을 넓히는 문구가 나온다 (시나리오 7)", () => {
+    const slots = adaptDemoCaseToEvaluatedSlots(caseById(7), upcomingWeekdays(3));
     const result = buildContextualScheduleResult(slots);
 
     expect(result.context).toBe("noGoodOption");
@@ -197,11 +197,11 @@ describe("contextualResult", () => {
     expect(marks[0].tone).toBe("avoid");
   });
 
-  it("10. 케이스 8의 동점/유사 후보는 과도하게 순위가 갈리지 않고 그룹화된다", () => {
-    const slots = adaptDemoCaseToEvaluatedSlots(caseById(8), upcomingWeekdays(5));
+  it("10. 시나리오 1의 동점/유사 후보는 과도하게 순위가 갈리지 않고 그룹화된다", () => {
+    const slots = adaptDemoCaseToEvaluatedSlots(caseById(1), upcomingWeekdays(5));
     const result = buildContextualScheduleResult(slots);
 
-    // 전원 참석 가능한 후보들(케이스 슬롯 1개 + 빈 평일 채움 2개)이 한 그룹으로 묶인다.
+    // 전원 참석 가능한 후보들(시나리오 슬롯 2개 + 빈 평일 채움 2개)이 한 그룹으로 묶인다.
     expect(result.rankGroups[0].slots.length).toBeGreaterThanOrEqual(2);
     expect(result.rankGroups[0].label).toBe("모두 참석할 수 있는 후보");
     const signatures = new Set(

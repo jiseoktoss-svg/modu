@@ -1,5 +1,6 @@
-// 디버그용 페이지 번호 뱃지. 어떤 화면을 말하는지 소통하기 위한 임시 표시로,
-// 릴리스 전에 통째로 삭제한다(이 파일 + 각 화면의 <DebugPageTag> 호출).
+// 디버그용 페이지 번호 뱃지. 어떤 화면을 말하는지 소통하기 위한 개발 편의 표시.
+// 기본은 숨김 — .env.local 에 NEXT_PUBLIC_SHOW_DEBUG_TAG=1 을 넣은 환경에서만 보인다
+// (제출/배포 빌드에는 절대 노출되지 않는다).
 //
 // 번호 지도:
 //  1 랜딩(/)                     2 회의 만들기(/meetings/new)
@@ -10,6 +11,7 @@
 // 10 회의 캘린더(done)          11 확정된 회의(/meetings/[id]/confirmed)
 // 12 확정 안내(/m/[id] — 이미 확정된 회의로 진입했을 때)
 export function DebugPageTag({ no, label }: { no: number; label: string }) {
+  if (process.env.NEXT_PUBLIC_SHOW_DEBUG_TAG !== "1") return null;
   return (
     <div
       aria-hidden="true"

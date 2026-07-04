@@ -751,10 +751,14 @@ export function ResponseForm(props: Props) {
   const AVAIL_LAST_STEP = 1;
   const availClauseVisible = (i: number) => i <= maxAvailStep;
   const personName = selected?.name ?? identityName;
+  // '불가능' 대신 '어려움' — 외근·점심 직후·집중 업무처럼 완전히 불가능하진 않지만
+  // 회의가 부담스러운 시간까지 한 입력으로 자연스럽게 흡수한다(별도 '피하고 싶은 시간' 없음).
   const AVAIL_QUESTIONS = [
-    `${personName}님, 회의가 불가능한 날짜가 있나요?`,
-    "특별히 이 날 이 시간엔 안 되는 경우가 있나요?",
+    `${personName}님, 회의가 어려운 날짜가 있나요?`,
+    "특별히 이 날 이 시간엔 회의가 어려운 경우가 있나요?",
   ];
+  const AVAIL_HELP_TEXT =
+    "외근, 점심 직후, 집중 업무처럼 회의가 부담스러운 시간도 함께 표시해 주세요.";
 
   useEffect(() => {
     const draft = readResponseDraft(window.sessionStorage, meetingId);
@@ -1303,17 +1307,17 @@ export function ResponseForm(props: Props) {
     [`${personName}님은`],
     busyDatesText
       ? [
-          reviewValue(busyDatesText, "불가능한 날짜", goBusyDatesEdit),
-          "에는 회의가 불가능하고,",
+          reviewValue(busyDatesText, "회의가 어려운 날짜", goBusyDatesEdit),
+          "에는 회의가 어렵고,",
         ]
-      : [reviewValue("불가능한 날짜는 없고,", "불가능한 날짜", goBusyDatesEdit)],
+      : [reviewValue("회의가 어려운 날짜는 없고,", "회의가 어려운 날짜", goBusyDatesEdit)],
     dtText
       ? [
           "특별히 ",
           reviewValue(dtText, "특정 날짜 시간", goDateTimesEdit),
-          "에는 안 돼요.",
+          "에는 회의가 어려워요.",
         ]
-      : [reviewValue("특정 시간에 안 되는 날은 없어요.", "특정 날짜 시간", goDateTimesEdit)],
+      : [reviewValue("특정 시간에 어려운 날은 없어요.", "특정 날짜 시간", goDateTimesEdit)],
   ];
   // 채움 종료 시각 → 안내 문구·CTA 등장 지연(글자 수 비례).
   const { fillEndMs: reviewFillEndMs } = charFillTiming(reviewClauses);
@@ -1659,19 +1663,19 @@ export function ResponseForm(props: Props) {
               저는{" "}
               {!availDetermined(0) ? (
                 <>
-                  {availDots("불가능한 날짜", () => editAvailStep(0))}
-                  에는 회의가 불가능하고,{" "}
+                  {availDots("회의가 어려운 날짜", () => editAvailStep(0))}
+                  에는 회의가 어렵고,{" "}
                 </>
               ) : busyDates.size > 0 ? (
                 <>
-                  <EditValue fieldLabel="불가능한 날짜" tone="negative" onEdit={() => editAvailStep(0)}>
+                  <EditValue fieldLabel="회의가 어려운 날짜" tone="negative" onEdit={() => editAvailStep(0)}>
                     {[...busyDates].sort().map(fmtMD).join(", ")}
                   </EditValue>
-                  에는 회의가 불가능하고,{" "}
+                  에는 회의가 어렵고,{" "}
                 </>
               ) : (
-                <EditValue fieldLabel="불가능한 날짜" tone="negative" onEdit={() => editAvailStep(0)}>
-                  불가능한 날짜는 없고,
+                <EditValue fieldLabel="회의가 어려운 날짜" tone="negative" onEdit={() => editAvailStep(0)}>
+                  회의가 어려운 날짜는 없고,
                 </EditValue>
               )}{" "}
             </span>
@@ -1681,7 +1685,7 @@ export function ResponseForm(props: Props) {
               {!availDetermined(1) ? (
                 <>
                   특별히 {availDots("특정 날짜 시간", () => editAvailStep(1))}
-                  에는 안 돼요.
+                  에는 회의가 어려워요.
                 </>
               ) : Object.keys(dateTimeBusy).length > 0 ? (
                 <>
@@ -1692,11 +1696,11 @@ export function ResponseForm(props: Props) {
                       .map(([ds, rs]) => `${fmtMD(ds)} ${rs.map(fmtRange).join("·")}`)
                       .join(", ")}
                   </EditValue>
-                  에는 안 돼요.
+                  에는 회의가 어려워요.
                 </>
               ) : (
                 <EditValue fieldLabel="특정 날짜 시간" tone="negative" onEdit={() => editAvailStep(1)}>
-                  특정 시간에 안 되는 날은 없어요.
+                  특정 시간에 어려운 날은 없어요.
                 </EditValue>
               )}
             </span>
@@ -1706,13 +1710,14 @@ export function ResponseForm(props: Props) {
         {/* 질문 + 단계별 입력 — 페이지 하단으로 내려 배치(mt-auto) */}
         <div key={availStep} className="mt-auto pt-6">
           {/* 하단 입력 타이틀: 회의 만들기(2번) 하단 Label 과 동일 서식(text-lg + mb-1.5). */}
-          <p className="mb-1.5 text-lg font-semibold text-slate-700">
-            {AVAIL_QUESTIONS[availStep]}
-          </p>
+          <div className="mb-1.5 flex items-center gap-1.5">
+            <p className="text-lg font-semibold text-slate-700">{AVAIL_QUESTIONS[availStep]}</p>
+            <HelpTooltip text={AVAIL_HELP_TEXT} />
+          </div>
           <div>
             {availStep === 0 && (
               <CalendarModalField
-                title="불가능한 날짜"
+                title="회의가 어려운 날짜"
                 placeholder="날짜 선택"
                 dates={dates}
                 selected={busyDates}
@@ -1742,11 +1747,13 @@ export function ResponseForm(props: Props) {
                   <Emoji symbol="📅" size={16} />
                 </button>
 
-                {/* 데스크톱: 날짜 모달을 닫은 뒤 페이지에서 그 날의 안 되는 시간을 입력(이전 방식).
+                {/* 데스크톱: 날짜 모달을 닫은 뒤 페이지에서 그 날의 어려운 시간을 입력(이전 방식).
                     카드 내부 시간 벳지(showChips)는 끄고, 아래 요약 벳지로만 노출한다. */}
                 {!isMobile && dtDate && (
                   <div className="rounded-2xl bg-slate-50 p-3">
-                    <p className="text-sm font-bold text-slate-700">{fmtMD(dtDate)} 안 되는 시간</p>
+                    <p className="text-sm font-bold text-slate-700">
+                      {fmtMD(dtDate)} 회의가 어려운 시간
+                    </p>
                     <div className="mt-2">
                       {renderTimeAdder(dateTimeBusy[dtDate] ?? [], (i) => removeRange(i, dtDate), false)}
                     </div>
@@ -1790,13 +1797,13 @@ export function ResponseForm(props: Props) {
                 {dtModalOpen && (
                   <CalendarModal
                     open={dtModalOpen}
-                    title="특정 시간이 안 되는 날"
+                    title="특정 시간이 어려운 날"
                     subtitle={
                       isMobile
                         ? dtDate
-                          ? `${fmtMD(dtDate)}에 안 되는 시간을 추가하세요`
+                          ? `${fmtMD(dtDate)}에 어려운 시간을 추가하세요`
                           : "날짜를 고르면 시간을 추가할 수 있어요"
-                        : "안 되는 날짜를 골라주세요"
+                        : "회의가 어려운 날짜를 골라주세요"
                     }
                     isMobile={isMobile}
                     dates={dates}
@@ -1815,7 +1822,7 @@ export function ResponseForm(props: Props) {
                           {dtDate ? (
                             <div className="rounded-2xl bg-slate-50 p-3">
                               <p className="text-sm font-bold text-slate-700">
-                                {fmtMD(dtDate)} 안 되는 시간
+                                {fmtMD(dtDate)} 회의가 어려운 시간
                               </p>
                               <div className="mt-2">
                                 {renderTimeAdder(dateTimeBusy[dtDate] ?? [], (i) => removeRange(i, dtDate), false)}
@@ -1823,7 +1830,7 @@ export function ResponseForm(props: Props) {
                             </div>
                           ) : (
                             <p className="text-center text-xs text-slate-400">
-                              날짜를 고르면 안 되는 시간을 추가할 수 있어요.
+                              날짜를 고르면 어려운 시간을 추가할 수 있어요.
                             </p>
                           )}
 
@@ -1901,11 +1908,11 @@ function CaseSelector({ caseId, onSelect }: { caseId: number; onSelect: (id: num
   return (
     <div className="select-none">
       <div className="relative flex items-center gap-1.5">
-        <p className="text-xs font-bold text-slate-400">케이스 선택</p>
-        {/* 데모 안내: 케이스 선택은 흐름 파악용 임시 영역이라는 점을 ? 아이콘 툴팁으로 알린다. */}
+        <p className="text-xs font-bold text-slate-400">평가용 시나리오</p>
+        {/* 평가용 탐색 장치라는 점을 ? 아이콘 툴팁으로 알린다(디버그 도구가 아님). */}
         <button
           type="button"
-          aria-label="케이스 선택 영역 안내"
+          aria-label="평가용 시나리오 안내"
           className="peer flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 text-[10px] font-bold leading-none text-slate-400 transition-colors hover:border-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
         >
           ?
@@ -1915,7 +1922,7 @@ function CaseSelector({ caseId, onSelect }: { caseId: number; onSelect: (id: num
           role="tooltip"
           className="pointer-events-none absolute left-0 top-7 z-30 w-[22rem] max-w-[calc(100vw-2rem)] rounded-lg bg-slate-800 px-3 py-2 text-xs font-medium leading-relaxed text-white opacity-0 shadow-lg transition-opacity duration-150 peer-hover:opacity-100 peer-focus:opacity-100"
         >
-          지금 보이는 케이스 선택은 사용 흐름을 파악하기 위해 임의로 노출한 영역이에요. 실제 사용 시에는 보이지 않아요.
+          회의 조율에서 자주 생기는 상황을 빠르게 확인해보세요. 평가를 위해 노출한 영역이라 실제 사용 화면에는 보이지 않아요.
         </span>
       </div>
       {/* 호버 시 너비가 늘며 마우스 인식 영역을 제어. 안의 칩들은 절대배치로 펼쳐진다. */}
@@ -1936,7 +1943,7 @@ function CaseSelector({ caseId, onSelect }: { caseId: number; onSelect: (id: num
               type="button"
               onClick={() => onSelect(c.id)}
               aria-pressed={isSelected}
-              aria-label={`케이스 ${c.id} ${c.title}`}
+              aria-label={`시나리오 ${c.id} ${c.title}`}
               style={{
                 transform: `translateX(${hovered ? index * GAP : 0}px)`,
                 opacity: visible ? 1 : 0,
@@ -1964,7 +1971,7 @@ function CaseDescription({ caseId }: { caseId: number }) {
   return (
     <div className="rounded-2xl bg-slate-50 p-3.5">
       <p className="text-sm font-extrabold text-slate-900">
-        케이스 {current.id}. {current.title}
+        시나리오 {current.id}. {current.title}
       </p>
       <div className="mt-2 space-y-1.5">
         <p className="flex gap-1.5 break-keep text-sm text-slate-600">
@@ -2032,7 +2039,7 @@ function FloatingCaseSelector({
           type="button"
           onClick={() => setOpen(true)}
           aria-haspopup="dialog"
-          aria-label={`케이스 선택 열기 (현재 케이스 ${caseId})`}
+          aria-label={`평가용 시나리오 열기 (현재 시나리오 ${caseId})`}
           className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-sm font-bold text-white shadow-md shadow-brand-500/30 transition-transform active:scale-95"
         >
           {caseId}
@@ -2046,20 +2053,20 @@ function FloatingCaseSelector({
             <div
               role="dialog"
               aria-modal="true"
-              aria-label="케이스 선택"
+              aria-label="평가용 시나리오"
               className="absolute left-0 top-10 z-50 w-[calc(100vw-2rem)] max-w-[22rem] rounded-2xl bg-white p-4 shadow-2xl animate-fade-up motion-reduce:animate-none"
             >
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <p className="text-sm font-bold text-slate-900">케이스 선택</p>
+                  <p className="text-sm font-bold text-slate-900">평가용 시나리오</p>
                   <p className="mt-0.5 break-keep text-xs text-slate-400">
-                    사용 흐름을 보여주기 위한 데모 영역이에요. 실제 사용 화면에는 보이지 않아요.
+                    회의 조율에서 자주 생기는 상황을 빠르게 확인해보세요. 실제 사용 화면에는 보이지 않아요.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
-                  aria-label="케이스 선택 닫기"
+                  aria-label="평가용 시나리오 닫기"
                   className="-mr-1 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
                 >
                   <Emoji symbol="✕" size={16} />
@@ -2074,7 +2081,7 @@ function FloatingCaseSelector({
                       type="button"
                       onClick={() => onSelect(c.id)}
                       aria-pressed={isSelected}
-                      aria-label={`케이스 ${c.id} ${c.title}`}
+                      aria-label={`시나리오 ${c.id} ${c.title}`}
                       className={cn(
                         "flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold transition-colors",
                         isSelected
@@ -2108,7 +2115,7 @@ function FloatingCaseSelector({
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="케이스 선택"
+            aria-label="평가용 시나리오"
             className={cn(
               "fixed right-4 z-40 w-[calc(100vw-2rem)] max-w-[22rem] rounded-2xl bg-white p-4 shadow-2xl animate-fade-up motion-reduce:animate-none",
               bottomClass,
@@ -2116,15 +2123,15 @@ function FloatingCaseSelector({
           >
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="text-sm font-bold text-slate-900">케이스 선택</p>
+                <p className="text-sm font-bold text-slate-900">평가용 시나리오</p>
                 <p className="mt-0.5 break-keep text-xs text-slate-400">
-                  사용 흐름을 보여주기 위한 데모 영역이에요. 실제 사용 화면에는 보이지 않아요.
+                  회의 조율에서 자주 생기는 상황을 빠르게 확인해보세요. 실제 사용 화면에는 보이지 않아요.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                aria-label="케이스 선택 닫기"
+                aria-label="평가용 시나리오 닫기"
                 className="-mr-1 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
               >
                 <Emoji symbol="✕" size={16} />
@@ -2139,7 +2146,7 @@ function FloatingCaseSelector({
                     type="button"
                     onClick={() => onSelect(c.id)}
                     aria-pressed={isSelected}
-                    aria-label={`케이스 ${c.id} ${c.title}`}
+                    aria-label={`시나리오 ${c.id} ${c.title}`}
                     className={cn(
                       "flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold transition-colors",
                       isSelected
@@ -2162,7 +2169,7 @@ function FloatingCaseSelector({
           type="button"
           onClick={() => setOpen(true)}
           aria-haspopup="dialog"
-          aria-label={`케이스 선택 열기 (현재 케이스 ${caseId})`}
+          aria-label={`평가용 시나리오 열기 (현재 시나리오 ${caseId})`}
           className={cn(
             "fixed right-4 z-40 flex h-11 w-11 items-center justify-center rounded-full bg-brand-500 text-base font-bold text-white shadow-lg shadow-brand-500/30 transition-transform active:scale-95",
             bottomClass,

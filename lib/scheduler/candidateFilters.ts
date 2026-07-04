@@ -18,26 +18,26 @@ export const CANDIDATE_FILTER_OPTIONS: {
   /** 칩 title/aria-label 로 노출하는 설명. */
   description: string;
 }[] = [
-  { value: "all", label: "전체", description: "모든 후보를 봐요." },
+  { value: "all", label: "전체", description: "모든 후보를 보여줘요." },
   {
     value: "allAvailable",
     label: "모두 참석 가능",
-    description: "모든 인원이 참석할 수 있는 후보만 봐요.",
+    description: "모든 인원이 참석할 수 있는 후보예요.",
   },
   {
     value: "requiredAvailable",
     label: "필수참석자 가능",
-    description: "필수참석자가 모두 참석할 수 있는 후보를 봐요. 전원 가능 후보도 포함돼요.",
+    description: "필수참석자는 모두 참석할 수 있는 후보예요.",
   },
   {
     value: "secondary",
     label: "필수 1명 어려움",
-    description: "필수참석자 1명이 참석하기 어려운 차선 후보를 봐요.",
+    description: "필수참석자 1명이 참석하기 어려운 후보예요.",
   },
   {
     value: "avoid",
     label: "피하면 좋음",
-    description: "필수참석자 여러 명이 어려워 피하는 게 좋은 후보를 봐요.",
+    description: "이 후보군 안에서는 고르지 않는 게 좋은 시간이에요.",
   },
 ];
 
