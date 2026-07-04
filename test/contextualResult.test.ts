@@ -124,14 +124,38 @@ describe("contextualResult", () => {
     ).toBe(true);
   });
 
-  it("5. busyPeriod 에서는 최선 후보 1~2개만 recommended 로 표시된다 (케이스 5)", () => {
+  it("5. busyPeriod 에서 필수참석자가 빠지는 최상위 후보는 파란색으로 칠하지 않는다 (케이스 5)", () => {
     const slots = adaptDemoCaseToEvaluatedSlots(caseById(5), upcomingWeekdays(3));
+    const result = buildContextualScheduleResult(slots);
+
+    expect(result.context).toBe("busyPeriod");
+    // 케이스 5는 모든 후보가 필수 1명씩 빠진다 — 파랑은 필수 전원 가능 후보에만 쓴다.
+    expect(result.calendarMarks.filter((m) => m.tone === "recommended")).toHaveLength(0);
+    // 바쁜 기간에 비슷한 차선 후보들을 빨강으로 도배하지도 않는다.
+    expect(result.calendarMarks.filter((m) => m.tone === "avoid")).toHaveLength(0);
+  });
+
+  it("5-1. busyPeriod 에서 필수 전원 가능한 최선 후보는 1~2개만 recommended 가 된다", () => {
+    const d = upcomingWeekdays(7);
+    const slots = [
+      // 필수는 다 되지만 선택 2명이 빠지는 유일한 후보 — 이 기간의 최선.
+      makeSlot({ date: d[0], startHm: "10:00", optionalBusyNames: ["정우진", "한예린"] }),
+      // 나머지는 전부 필수참석자가 빠진다(requiredSafeRatio 1/7 ≤ 0.15 → busyPeriod).
+      makeSlot({ date: d[1], startHm: "10:00", requiredBusyNames: ["김지훈"] }),
+      makeSlot({ date: d[2], startHm: "10:00", requiredBusyNames: ["이서연"] }),
+      makeSlot({ date: d[3], startHm: "10:00", requiredBusyNames: ["박민준"] }),
+      makeSlot({ date: d[4], startHm: "10:00", requiredBusyNames: ["최수아"] }),
+      makeSlot({ date: d[5], startHm: "10:00", requiredBusyNames: ["김지훈"] }),
+      makeSlot({ date: d[6], startHm: "10:00", requiredBusyNames: ["이서연"] }),
+    ];
     const result = buildContextualScheduleResult(slots);
 
     expect(result.context).toBe("busyPeriod");
     const recommended = result.calendarMarks.filter((m) => m.tone === "recommended");
     expect(recommended.length).toBeGreaterThanOrEqual(1);
     expect(recommended.length).toBeLessThanOrEqual(2);
+    // 파랑은 필수 전원 가능 후보(d[0])에만.
+    expect(recommended[0].date).toBe(d[0]);
   });
 
   it("6. noGoodOption 에서는 파란색 없이 기간을 넓히는 문구가 나온다 (케이스 6)", () => {
@@ -148,7 +172,7 @@ describe("contextualResult", () => {
     const d = upcomingWeekdays(1)[0];
     const good = makeSlot({ date: d, startHm: "14:00" });
     const bad = makeSlot({ date: d, startHm: "10:00", requiredBusyNames: ["김지훈", "이서연"] });
-    const marks = buildCalendarMarks([bad, good], [good]);
+    const marks = buildCalendarMarks([bad, good], [good], []);
 
     expect(marks).toHaveLength(1);
     expect(marks[0].tone).toBe("recommended");
@@ -159,7 +183,7 @@ describe("contextualResult", () => {
     const d = upcomingWeekdays(1)[0];
     const good = makeSlot({ date: d, startHm: "14:00" });
     const bad = makeSlot({ date: d, startHm: "10:00", requiredBusyNames: ["김지훈", "이서연"] });
-    const marks = buildCalendarMarks([bad, good], []);
+    const marks = buildCalendarMarks([bad, good], [], []);
 
     expect(marks[0].tone).toBe("none");
   });
@@ -168,7 +192,7 @@ describe("contextualResult", () => {
     const d = upcomingWeekdays(1)[0];
     const bad1 = makeSlot({ date: d, startHm: "10:00", requiredBusyNames: ["김지훈", "이서연"] });
     const bad2 = makeSlot({ date: d, startHm: "14:00", requiredBusyNames: ["박민준", "최수아"] });
-    const marks = buildCalendarMarks([bad1, bad2], []);
+    const marks = buildCalendarMarks([bad1, bad2], [], []);
 
     expect(marks[0].tone).toBe("avoid");
   });
@@ -237,8 +261,74 @@ describe("추천안 해석(rankGroups)", () => {
     const toneOf = (date: string) => result.calendarMarks.find((m) => m.date === date)?.tone;
     expect(toneOf(d[0])).toBe("recommended");
     expect(toneOf(d[3])).toBe("avoid");
-    // 필수 1명만 빠지는 날은 배경을 칠하지 않는다(soft 경고는 숫자/문구로).
-    expect(toneOf(d[2])).toBe("none");
+    // 필수 1명이 빠지는 날도 이 후보군에서는 피하는 게 좋은 날이다(빨강 의미 확장).
+    expect(toneOf(d[2])).toBe("avoid");
+    // 선택 1명 차이(최상위 대비 1명)는 중립으로 남는다.
+    expect(toneOf(d[1])).toBe("none");
+  });
+});
+
+// 빨간색 의미 확장 — 빨강은 "회의 불가능"이 아니라 "이 후보군 안에서는 피하는 게 좋은 시간"이다.
+// 절대 기준(필수참석자 불가)과 상대 기준(후보군 대비 참석 인원 부족)을 함께 본다.
+describe("pickRedSlots(상대적 빨강)", () => {
+  it("17. mostlyAvailable 에서는 전원 가능 후보가 많을 때 일부 선택참석자가 빠지는 날짜를 피하는 날로 표시한다", () => {
+    const d = upcomingWeekdays(10);
+    const slots = [
+      makeSlot({ date: d[0], startHm: "10:00", optionalBusyNames: ["정우진"] }),
+      makeSlot({ date: d[1], startHm: "10:00" }),
+      makeSlot({ date: d[2], startHm: "10:00", optionalBusyNames: ["정우진"] }),
+      makeSlot({ date: d[3], startHm: "10:00", optionalBusyNames: ["정우진", "한예린"] }),
+      makeSlot({ date: d[4], startHm: "10:00" }),
+      makeSlot({ date: d[5], startHm: "10:00" }),
+      makeSlot({ date: d[6], startHm: "10:00" }),
+      makeSlot({ date: d[7], startHm: "10:00" }),
+      makeSlot({ date: d[8], startHm: "10:00" }),
+      makeSlot({ date: d[9], startHm: "10:00" }),
+    ];
+    const result = buildContextualScheduleResult(slots);
+
+    expect(result.context).toBe("mostlyAvailable");
+
+    const toneOf = (date: string) => result.calendarMarks.find((m) => m.date === date)?.tone;
+    // 전원이 되는 날이 충분하므로 인원이 빠지는 날은 굳이 고를 이유가 없다 → 빨강.
+    expect(toneOf(d[0])).toBe("avoid");
+    expect(toneOf(d[2])).toBe("avoid");
+    expect(toneOf(d[3])).toBe("avoid");
+    // 전원 가능한 날은 중립.
+    expect(toneOf(d[1])).toBe("none");
+    expect(toneOf(d[4])).toBe("none");
+    // 상단 문구도 상대적 빨강을 설명한다(필수 경고가 없는 경우).
+    expect(result.comment).toContain("전원이 가능한 다른 날짜");
+  });
+
+  it("18. 후보가 전반적으로 빡빡하면 선택참석자 일부 불가만으로 빨강을 남발하지 않는다", () => {
+    const d = upcomingWeekdays(3);
+    const slots = [
+      makeSlot({ date: d[0], startHm: "10:00", optionalBusyNames: ["정우진"] }), // 가장 나은 후보
+      makeSlot({ date: d[1], startHm: "10:00", optionalBusyNames: ["정우진", "한예린"] }),
+      makeSlot({ date: d[2], startHm: "10:00", requiredBusyNames: ["김지훈"] }),
+    ];
+    const result = buildContextualScheduleResult(slots);
+
+    const toneOf = (date: string) => result.calendarMarks.find((m) => m.date === date)?.tone;
+    // 전체적으로 빡빡한 상황에서는 가장 나은 후보를 빨강으로 만들지 않는다.
+    expect(toneOf(d[0])).not.toBe("avoid");
+    // 최상위 대비 1명 차이(선택 1명 추가 불가)도 중립으로 남는다.
+    expect(toneOf(d[1])).not.toBe("avoid");
+  });
+
+  it("19. 선택참석자만 빠지는 상대적 빨강은 필수참석자 경고 문구를 쓰지 않는다", () => {
+    const d = upcomingWeekdays(2);
+    const slots = [
+      makeSlot({ date: d[0], startHm: "10:00" }),
+      makeSlot({ date: d[1], startHm: "10:00", optionalBusyNames: ["정우진", "한예린"] }),
+    ];
+    const result = buildContextualScheduleResult(slots);
+    const mark = result.calendarMarks.find((m) => m.date === d[1]);
+
+    expect(mark?.tone).toBe("avoid");
+    expect(mark?.reason).toContain("참석할 수 있는 인원이 적어요");
+    expect(mark?.reason).not.toContain("필수참석자");
   });
 });
 

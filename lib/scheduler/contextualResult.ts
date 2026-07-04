@@ -8,7 +8,10 @@
 //                   → buildCalendarMarks / buildNarrative → ContextualScheduleResult
 //
 // 원칙:
-// - 색은 순위가 아니라 신호다. 파랑 = 정말 추천할 시간, 빨강 = 정말 피해야 할 시간, 나머지 중립.
+// - 색은 순위가 아니라 신호다. 파랑 = 이 후보군에서 가장 나은 시간,
+//   빨강 = 이 후보군에서 피하는 게 좋은 시간(필수참석자 불가 같은 절대적 위험 +
+//   전원 가능한 날이 충분한데 굳이 인원이 빠지는 날을 고를 이유가 없는 상대적 비추천),
+//   나머지 중립.
 // - 같은 조건의 후보는 같은 그룹으로 묶어 무의미한 1·2·3순위 구분을 없앤다.
 // - 미응답(pending)은 컨텍스트가 아니라 문구 수식어로만 다룬다.
 // - 필수참석자가 빠지는 슬롯도 버리지 않고 평가에 남긴다(경고 문구의 재료).
@@ -101,6 +104,13 @@ export const MOSTLY_AVAILABLE_RATIO = 0.6;
 export const SPARSE_RECOMMENDABLE_RATIO = 0.15;
 /** 최고 그룹이 이 비율 이상으로 흔하면 파랑을 칠하지 않는다(특별한 신호가 아님). */
 export const TOP_GROUP_TOO_COMMON_RATIO = 0.5;
+/** normal: 최상위 후보보다 참석 가능 인원이 이만큼 적으면 상대적으로 피하는 후보다.
+ *  (선택참석자 1명 차이 정도는 중립으로 둔다 — 항상 빨갛게 칠하면 과하다.) */
+export const RELATIVE_AVOID_GAP_NORMAL = 2;
+/** busyPeriod: 상대적 빨강 기준(보수적으로 normal 과 같은 값에서 시작해 조정). */
+export const RELATIVE_AVOID_GAP_BUSY = 2;
+/** busyPeriod: 빨강이 전체 후보에서 차지할 수 있는 최대 비율(화면 도배 방지). */
+export const MAX_RELATIVE_RED_RATIO = 0.35;
 
 // ---- 평가: 실제 엔진 입력 → 전체 슬롯 평가 ----
 // recommendSlots 와 달리 필수참석자가 빠지는 슬롯도 버리지 않고 남긴다.
@@ -293,13 +303,70 @@ export function pickBlueSlots(
   // 좋은 후보가 아예 없으면 '추천'이 아니라 '차선/기간 조정' 문구가 중심이다.
   if (context === "noGoodOption") return [];
 
-  // 바쁜 기간에는 최선 후보 1~2개만 강조한다.
-  if (context === "busyPeriod") return topGroup.slice(0, 2);
+  // 바쁜 기간에는 최선 후보 1~2개만 강조한다 — 단, 파랑은 필수참석자가 모두 가능한
+  // 후보에만 쓴다. 필수가 빠지는 차선 후보는 파랑 대신 문구(차선/경고)로 설명한다.
+  if (context === "busyPeriod") {
+    return topGroup.filter((slot) => slot.requiredBusyCount === 0).slice(0, 2);
+  }
 
   // 최고 그룹이 너무 흔하면 특별한 추천 신호가 아니므로 칠하지 않는다.
   if (topGroup.length / allSlots.length >= TOP_GROUP_TOO_COMMON_RATIO) return [];
 
   return topGroup;
+}
+
+// ---- 빨간색(피하는 게 좋은 신호) 선택 ----
+// 빨강 = "이 후보군 안에서는 굳이 고르지 않는 게 좋은 시간".
+// 절대 기준(필수참석자 불가)과 상대 기준(후보군 대비 참석 인원 부족)을 함께 본다.
+// 단, 후보가 전반적으로 나쁜 상황에서는 가장 나은 후보를 빨갛게 칠하지 않도록
+// 컨텍스트별로 기준을 달리한다.
+
+/** busyPeriod 에서 빨강이 화면을 도배하지 않도록 심각한 순서로 상한을 건다. */
+function limitRedSlots(slots: EvaluatedSlot[], totalCount: number): EvaluatedSlot[] {
+  const maxCount = Math.max(1, Math.floor(totalCount * MAX_RELATIVE_RED_RATIO));
+  return [...slots].sort(compareAvoidSlots).slice(0, maxCount);
+}
+
+export function pickRedSlots(
+  context: ScheduleContext,
+  groups: EvaluatedSlot[][],
+  allSlots: EvaluatedSlot[],
+): EvaluatedSlot[] {
+  if (allSlots.length === 0) return [];
+
+  const best = [...allSlots].sort(compareSlots)[0];
+  const bestAvailable = best.totalAvailable;
+
+  // 전원 가능한 날이 충분히 많다: 인원이 빠지는 날은 굳이 고를 이유가 없다 → 전부 빨강.
+  if (context === "mostlyAvailable") {
+    return allSlots.filter((slot) => {
+      if (slot.requiredBusyCount >= 1) return true;
+      return slot.totalAvailable < slot.totalParticipants;
+    });
+  }
+
+  // 좋은 후보와 덜 좋은 후보가 섞여 있다: 필수 불가는 빨강, 상대 기준은
+  // 최상위 대비 참석 인원 차이가 일정 이상일 때만(선택 1명 차이는 중립).
+  if (context === "normal") {
+    return allSlots.filter((slot) => {
+      if (slot.requiredBusyCount >= 1) return true;
+      return bestAvailable - slot.totalAvailable >= RELATIVE_AVOID_GAP_NORMAL;
+    });
+  }
+
+  // 다들 바쁜 기간: 빨강을 보수적으로 — 필수 리스크가 크거나 차이가 큰 후보만,
+  // 그마저도 전체의 일정 비율을 넘지 않게 제한한다.
+  if (context === "busyPeriod") {
+    const redCandidates = allSlots.filter((slot) => {
+      if (slot.requiredBusyCount >= 2) return true;
+      return bestAvailable - slot.totalAvailable >= RELATIVE_AVOID_GAP_BUSY;
+    });
+    return limitRedSlots(redCandidates, allSlots.length);
+  }
+
+  // 좋은 후보가 없는 기간: 캘린더를 빨갛게 도배하기보다 문구(기간 조정)가 중심 —
+  // hard avoid 만 빨강으로 남긴다.
+  return allSlots.filter((slot) => slot.requiredBusyCount >= 2);
 }
 
 // ---- 슬롯 → 날짜 집계 ----
@@ -309,9 +376,24 @@ export function shouldMarkDateAvoid(daySlots: EvaluatedSlot[]): boolean {
   return daySlots.length > 0 && daySlots.every((slot) => slot.isHardAvoid);
 }
 
+/** avoid 톤의 이유 — 절대적 위험(필수 불가)과 상대적 비추천(인원 부족)을 구분해 말한다. */
+function buildAvoidReason(slot: EvaluatedSlot): string {
+  if (slot.requiredBusyCount >= 2) {
+    return "필수참석자 여러 명이 참석하기 어려워요.";
+  }
+  if (slot.requiredBusyCount === 1) {
+    return "필수참석자 1명이 참석하기 어려워요.";
+  }
+  if (slot.totalAvailable < slot.totalParticipants) {
+    return "다른 후보보다 참석할 수 있는 인원이 적어요.";
+  }
+  return "이번 후보군에서는 우선순위가 낮은 시간이에요.";
+}
+
 export function buildCalendarMarks(
   slots: EvaluatedSlot[],
   blueSlots: EvaluatedSlot[],
+  redSlots: EvaluatedSlot[],
 ): CalendarMark[] {
   const byDate = new Map<string, EvaluatedSlot[]>();
   for (const slot of slots) {
@@ -323,7 +405,7 @@ export function buildCalendarMarks(
   return [...byDate.entries()]
     .sort(([a], [b]) => (a < b ? -1 : 1))
     .map(([date, daySlots]) => {
-      // 날짜 톤은 그날의 최선 슬롯 기준으로 정한다.
+      // 날짜 톤은 그날의 최선 슬롯 기준으로 정한다. 파랑(추천)이 빨강보다 우선.
       const bestSlotOfDay = [...daySlots].sort(compareSlots)[0];
 
       const isRecommendedDate = blueSlots.some(
@@ -338,12 +420,17 @@ export function buildCalendarMarks(
         };
       }
 
-      if (shouldMarkDateAvoid(daySlots)) {
+      // 그날의 최선 슬롯이 빨강 후보이거나(상대적 비추천 포함),
+      // 그날 모든 슬롯이 hard avoid 면 피하는 날이다.
+      const isRelativeAvoidDate = redSlots.some(
+        (slot) => slot.startAt === bestSlotOfDay.startAt && slot.endAt === bestSlotOfDay.endAt,
+      );
+      if (isRelativeAvoidDate || shouldMarkDateAvoid(daySlots)) {
         return {
           date,
           tone: "avoid" as const,
           representativeSlot: bestSlotOfDay,
-          reason: "이 날은 어느 시간을 골라도 필수참석자가 참석하기 어려워요.",
+          reason: buildAvoidReason(bestSlotOfDay),
         };
       }
 
@@ -429,11 +516,12 @@ export function buildNarrative(args: {
   context: ScheduleContext;
   slots: EvaluatedSlot[];
   blueSlots: EvaluatedSlot[];
+  redSlots: EvaluatedSlot[];
   warnings: ContextualWarning[];
   hasPending: boolean;
   pendingNames: string[];
 }): { headline: string; comment: string } {
-  const { context, slots, blueSlots, warnings, hasPending, pendingNames } = args;
+  const { context, slots, blueSlots, redSlots, warnings, hasPending, pendingNames } = args;
 
   if (slots.length === 0) {
     return {
@@ -452,6 +540,16 @@ export function buildNarrative(args: {
     if (worst) {
       const [, m, d] = worst.date.split("-").map(Number);
       comment = `단, ${m}월 ${d}일 ${formatKoreanTime(worst.startAt)}에는 필수참석자인 ${formatNameList(worst.names)}이 참석하기 어려우니 이 시간은 피해주세요.`;
+    } else if (redSlots.length > 0) {
+      // 필수 경고는 없지만 상대적 빨강(일부 인원이 빠지는 날)이 있는 경우 —
+      // 날짜는 최대 3개까지만 언급하고 나머지는 캘린더가 보여준다.
+      const redDates = [...new Set(redSlots.map((slot) => slot.date))].sort();
+      const labels = redDates.slice(0, 3).map((date) => {
+        const [, m, d] = date.split("-").map(Number);
+        return `${m}월 ${d}일`;
+      });
+      const suffix = redDates.length > 3 ? " 등" : "";
+      comment = `${labels.join(", ")}${suffix}은 일부 인원이 참석하기 어려워요. 전원이 가능한 다른 날짜를 먼저 보는 게 좋아요.`;
     } else {
       comment = "특별히 피해야 할 시간은 많지 않아요. 편한 시간을 골라도 괜찮아요.";
     }
@@ -490,7 +588,8 @@ export function buildContextualScheduleResult(slots: EvaluatedSlot[]): Contextua
   const context = classifyContext(slots);
   const groups = groupMeaningfulRanks(slots);
   const blueSlots = pickBlueSlots(context, groups, slots);
-  const calendarMarks = buildCalendarMarks(slots, blueSlots);
+  const redSlots = pickRedSlots(context, groups, slots);
+  const calendarMarks = buildCalendarMarks(slots, blueSlots, redSlots);
   const warnings = buildWarnings(slots);
 
   const pendingNames = [...new Set(slots.flatMap((s) => s.pendingNames))];
@@ -500,6 +599,7 @@ export function buildContextualScheduleResult(slots: EvaluatedSlot[]): Contextua
     context,
     slots,
     blueSlots,
+    redSlots,
     warnings,
     hasPending,
     pendingNames,

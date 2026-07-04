@@ -2577,9 +2577,9 @@ function LegendDot({ className, label }: { className: string; label: string }) {
 }
 
 // 추천결과 캘린더(와이드) 셀 톤: 색은 순위가 아니라 신호다.
-// 파랑 = 가장 나은 시간이 있는 날(범례와 동일 표현 — busyPeriod 에선 차선 후보일 수 있음),
-// 옅은 빨강 = 피하는 게 좋은 날(그날 모든 슬롯이 hard avoid), 나머지는 중립.
-// 톤 판정은 lib/scheduler/contextualResult 의 calendarMarks 가 한다.
+// 파랑 = 이 후보군에서 가장 나은 시간이 있는 날(필수참석자 전원 가능 후보에만),
+// 옅은 빨강 = 이 후보군에서 피하는 게 좋은 날(필수참석자 불가 + 상대적으로 참석 인원이 적은 날),
+// 나머지는 중립. 톤 판정은 lib/scheduler/contextualResult 의 calendarMarks 가 한다.
 const TONE_CELL: Record<CalendarTone, string> = {
   recommended: "bg-brand-500 font-bold text-white shadow-sm shadow-brand-500/20",
   avoid: "bg-red-100 font-semibold text-red-700",

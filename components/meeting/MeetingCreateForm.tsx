@@ -1066,10 +1066,13 @@ export function MeetingCreateForm({
             <MobileHeaderTitle title="회의 확인" onBack={() => setConfirming(false)} />
             <p className="hidden text-sm font-medium text-slate-400 sm:block">회의 확인</p>
             {/* 글자가 읽는 순서대로 좌→우 잉크처럼 칠해지는 등장(공용 CharFillSentence).
-                채움이 끝나기 전에는 키워드 호버·클릭을 막는다. */}
+                채움이 끝나기 전에는 키워드 호버·클릭을 막는다.
+                retainCharSpans: 문장이 길어(7절) 완료 순간 DOM 교체 번쩍임이 보여서
+                이 화면만 span 유지 방식을 쓴다(회의 안내·입력 확인은 종전 그대로). */}
             <div className={cn(!confirmFillDone && "pointer-events-none")}>
               <CharFillSentence
                 className="text-left sm:mt-3"
+                retainCharSpans
                 paragraphs={[
                   { clauses: confirmClauses.slice(0, 6) },
                   { clauses: [confirmClauses[6]], className: "mt-4" },

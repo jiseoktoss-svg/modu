@@ -27,10 +27,19 @@ interface CharFillSentenceProps {
   paragraphs: CharFillParagraph[];
   /** 채움 완료 시점(mask 해제·shine 점등)에 한 번 호출. CTA 게이팅 등에 쓴다. */
   onFillDone?: () => void;
+  /** 채움 완료 후에도 글자 span 구조를 유지하고 mask 클래스만 걷는다.
+   *  완료 순간 span→일반 텍스트 DOM 교체가 사라져, 긴 문장(회의 확인)에서 보이는
+   *  한 번의 번쩍임을 막는다. 기본값 false — 기존 화면들은 종전 동작 그대로다. */
+  retainCharSpans?: boolean;
   className?: string;
 }
 
-export function CharFillSentence({ paragraphs, onFillDone, className }: CharFillSentenceProps) {
+export function CharFillSentence({
+  paragraphs,
+  onFillDone,
+  retainCharSpans = false,
+  className,
+}: CharFillSentenceProps) {
   const clauses = paragraphs.flatMap((p) => p.clauses);
   const { clauseStartsMs, fillEndMs } = charFillTiming(clauses);
 
@@ -50,18 +59,22 @@ export function CharFillSentence({ paragraphs, onFillDone, className }: CharFill
 
   // 절 안 글자들을 읽는 순서대로 칠하는 렌더러.
   // animate=false 면 마스크 없이 렌더한다(투명 밑글 레이어·채움 완료 후 공용).
+  // keepSpans=true 면 완료 후에도 글자 span 을 유지한 채 클래스만 걷는다 — React 가
+  // DOM 교체 없이 속성만 지워 리페인트가 최소화된다(같은 key 로 자리 유지).
   const renderClause = (
     segments: CharFillSegment[],
     clauseIndex: number,
     animate: boolean,
     shine: boolean,
+    keepSpans: boolean,
   ) => {
     let slot = 0;
     const renderChars = (text: string): ReactNode => {
-      if (!animate) return text;
+      if (!animate && !keepSpans) return text;
       return splitGraphemes(text).map((ch, i) => {
         // 공백은 슬롯을 쓰지 않고 그대로 렌더한다(칠하는 동안 멈칫하는 구간 제거).
         if (ch === " ") return " ";
+        if (!animate) return <span key={i}>{ch}</span>;
         const delay = clauseStartsMs[clauseIndex] + slot * CHAR_FILL_STEP_MS;
         slot += charFillSlot(ch);
         return (
@@ -91,14 +104,14 @@ export function CharFillSentence({ paragraphs, onFillDone, className }: CharFill
     );
   };
 
-  const renderLayer = (animate: boolean, shine: boolean) => {
+  const renderLayer = (animate: boolean, shine: boolean, keepSpans: boolean) => {
     let clauseIndex = 0;
     return paragraphs.map((paragraph, pi) => (
       <p key={pi} className={paragraph.className}>
         {paragraph.clauses.map((clause) => {
           const i = clauseIndex;
           clauseIndex += 1;
-          return <span key={i}>{renderClause(clause, i, animate, shine)}</span>;
+          return <span key={i}>{renderClause(clause, i, animate, shine, keepSpans)}</span>;
         })}
       </p>
     ));
@@ -111,12 +124,17 @@ export function CharFillSentence({ paragraphs, onFillDone, className }: CharFill
         className,
       )}
     >
-      {/* 투명 밑글 — 레이아웃(높이)만 담당. 채워지기 전 텍스트는 보이지 않는다. */}
+      {/* 투명 밑글 — 레이아웃(높이)만 담당. 채워지기 전 텍스트는 보이지 않는다.
+          retainCharSpans 면 밑글도 같은 span 구조로 렌더한다 — 글자별 span 은 일반
+          텍스트와 줄바꿈 지점이 달라질 수 있어, 구조가 다르면 실제 문장(절대배치)이
+          밑글이 잡은 높이를 넘쳐 아래 요소를 덮는다. */}
       <div aria-hidden="true" inert className="pointer-events-none select-none opacity-0">
-        {renderLayer(false, false)}
+        {renderLayer(false, false, retainCharSpans)}
       </div>
       {/* 실제 문장 — 글자 단위 잉크 채움. 완료 후엔 mask 를 걷고 값에 shine 을 켠다. */}
-      <div className="absolute inset-0">{renderLayer(!fillDone, fillDone)}</div>
+      <div className="absolute inset-0">
+        {renderLayer(!fillDone, fillDone, fillDone && retainCharSpans)}
+      </div>
     </div>
   );
 }
