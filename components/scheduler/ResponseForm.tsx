@@ -1318,6 +1318,22 @@ export function ResponseForm(props: Props) {
     return () => window.clearTimeout(timer);
   }, [step, reviewCtaDelayMs]);
 
+  // 입력 확인: 글자 채움이 끝나기 전에는 문장 속 키워드의 호버·클릭을 막는다.
+  const [reviewFillDone, setReviewFillDone] = useState(false);
+  useEffect(() => {
+    if (step !== "review") {
+      setReviewFillDone(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setReviewFillDone(true), reviewFillEndMs);
+    return () => window.clearTimeout(timer);
+  }, [step, reviewFillEndMs]);
+
+  // 단계 화면이 바뀌면 스크롤을 맨 위로 되돌린다(이전 화면의 스크롤 위치가 이어지는 문제).
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [step]);
+
   // 회의 안내(intro)를 벗어나면 CTA 준비 상태를 되돌린다(재진입 시 채움부터 다시).
   useEffect(() => {
     if (step !== "intro") setIntroCtaReady(false);
@@ -1336,7 +1352,8 @@ export function ResponseForm(props: Props) {
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
         <DebugPageTag no={4} label="회의 안내" />
         <div className="flex-1">
-          <MobileHeaderTitle title="회의 안내" />
+          {/* 응답 플로우의 첫 화면이라 뒤로 갈 곳이 없다 — 뒤로가기 버튼 없이 타이틀만. */}
+          <MobileHeaderTitle title="회의 안내" hideBack />
           <p className="hidden text-sm font-medium text-slate-400 sm:block">회의 안내</p>
           <MeetingSummarySentence
             className="sm:mt-3"
@@ -1385,11 +1402,14 @@ export function ResponseForm(props: Props) {
             {/* 뒤로가기: 가능 시간 입력(마지막 단계)으로 복귀 */}
             <MobileHeaderTitle title="입력 확인" onBack={() => setStep("availability")} />
             <p className="hidden text-sm font-medium text-slate-400 sm:block">입력 확인</p>
-            {/* 글자가 읽는 순서대로 좌→우 잉크처럼 칠해지는 등장(공용 CharFillSentence). */}
-            <CharFillSentence
-              className="text-left sm:mt-3"
-              paragraphs={[{ clauses: reviewClauses }]}
-            />
+            {/* 글자가 읽는 순서대로 좌→우 잉크처럼 칠해지는 등장(공용 CharFillSentence).
+                채움이 끝나기 전에는 키워드 호버·클릭을 막는다. */}
+            <div className={cn(!reviewFillDone && "pointer-events-none")}>
+              <CharFillSentence
+                className="text-left sm:mt-3"
+                paragraphs={[{ clauses: reviewClauses }]}
+              />
+            </div>
             <p
               className="mt-5 animate-fade-up-blur text-sm text-slate-500 motion-reduce:animate-none"
               style={{
@@ -1452,7 +1472,6 @@ export function ResponseForm(props: Props) {
           onSelectCase={handleSelectCase}
           dates={dates}
           onViewCalendar={() => setStep("done")}
-          onBack={() => setStep("waiting")}
         />
       </>
     );
@@ -1484,10 +1503,13 @@ export function ResponseForm(props: Props) {
             <MobileHeaderTitle
               title="본인 확인"
               onBack={() => {
+                // 뒤로가기 = 방금 입력하던 단계의 값 되돌리기(모바일 전용 동선).
                 if (formStep > 0) {
                   skipNextAutoFocus.current = true;
+                  setIdentityRole("");
                   setFormStep(formStep - 1);
                 } else {
+                  setIdentityName("");
                   setStep("intro");
                 }
               }}
@@ -1597,8 +1619,15 @@ export function ResponseForm(props: Props) {
         <MobileHeaderTitle
           title="가능 시간"
           onBack={() => {
-            if (availStep > 0) editAvailStep(availStep - 1);
-            else setStep("identity");
+            // 뒤로가기 = 방금 입력하던 단계의 값 되돌리기(모바일 전용 동선).
+            if (availStep > 0) {
+              setDateTimeBusy({});
+              setDtDate(null);
+              editAvailStep(availStep - 1);
+            } else {
+              setBusyDates(new Set());
+              setStep("identity");
+            }
           }}
         />
         <p className="hidden text-sm font-medium text-slate-400 sm:block">가능 시간</p>
@@ -1657,8 +1686,11 @@ export function ResponseForm(props: Props) {
 
         {/* 질문 + 단계별 입력 — 페이지 하단으로 내려 배치(mt-auto) */}
         <div key={availStep} className="mt-auto pt-6">
-          <p className="text-lg font-semibold text-slate-700">{AVAIL_QUESTIONS[availStep]}</p>
-          <div className="mt-3">
+          {/* 하단 입력 타이틀: 회의 만들기(2번) 하단 Label 과 동일 서식(text-lg + mb-1.5). */}
+          <p className="mb-1.5 text-lg font-semibold text-slate-700">
+            {AVAIL_QUESTIONS[availStep]}
+          </p>
+          <div>
             {availStep === 0 && (
               <CalendarModalField
                 title="불가능한 날짜"
@@ -1944,17 +1976,20 @@ function CaseDescription({ caseId }: { caseId: number }) {
   );
 }
 
-// 모바일 전용: 케이스 선택을 우하단 플로팅 버튼으로 접어둔다(데모 컨트롤이 화면을 차지하지 않게).
+// 모바일 전용: 케이스 선택을 플로팅 버튼으로 접어둔다(데모 컨트롤이 화면을 차지하지 않게).
 // 현재 케이스 번호 버튼을 탭하면 케이스 칩 8개 + 설명 패널이 열리고, 바깥 탭/✕/Esc 로 닫힌다.
+// inline: 우하단 고정 대신 본문 상단 행(응답 칩과 같은 줄)에 작은 버튼으로 배치한다(추천 시간 화면).
 function FloatingCaseSelector({
   caseId,
   onSelect,
   aboveCta = false,
+  inline = false,
 }: {
   caseId: number;
   onSelect: (id: number) => void;
   // 하단 고정 CTA(MobileStickyAction)가 있는 화면에서는 그 위로 띄운다.
   aboveCta?: boolean;
+  inline?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -1970,6 +2005,78 @@ function FloatingCaseSelector({
   const bottomClass = aboveCta
     ? "bottom-[calc(7rem+env(safe-area-inset-bottom))]"
     : "bottom-[calc(1.25rem+env(safe-area-inset-bottom))]";
+
+  if (inline) {
+    return (
+      <div className="relative sm:hidden" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-haspopup="dialog"
+          aria-label={`케이스 선택 열기 (현재 케이스 ${caseId})`}
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-sm font-bold text-white shadow-md shadow-brand-500/30 transition-transform active:scale-95"
+        >
+          {caseId}
+        </button>
+        {open && (
+          <>
+            <div
+              className="fixed inset-0 z-40 bg-slate-900/30 animate-fade-in motion-reduce:animate-none"
+              onClick={() => setOpen(false)}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="케이스 선택"
+              className="absolute left-0 top-10 z-50 w-[calc(100vw-2rem)] max-w-[22rem] rounded-2xl bg-white p-4 shadow-2xl animate-fade-up motion-reduce:animate-none"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-bold text-slate-900">케이스 선택</p>
+                  <p className="mt-0.5 break-keep text-xs text-slate-400">
+                    사용 흐름을 보여주기 위한 데모 영역이에요. 실제 사용 화면에는 보이지 않아요.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  aria-label="케이스 선택 닫기"
+                  className="-mr-1 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                >
+                  <Emoji symbol="✕" size={16} />
+                </button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {DEMO_CASES.map((c) => {
+                  const isSelected = c.id === caseId;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => onSelect(c.id)}
+                      aria-pressed={isSelected}
+                      aria-label={`케이스 ${c.id} ${c.title}`}
+                      className={cn(
+                        "flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold transition-colors",
+                        isSelected
+                          ? "bg-brand-500 text-white shadow-md"
+                          : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                      )}
+                    >
+                      {c.id}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-3">
+                <CaseDescription caseId={caseId} />
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="sm:hidden" onClick={(e) => e.stopPropagation()}>
@@ -2159,7 +2266,8 @@ function WaitingScreen({
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col pt-2">
       <div className="flex-1">
         <div className="relative animate-fade-up-blur" style={{ animationDuration: "0.6s" }}>
-          <MobileHeaderTitle title="응답 완료" />
+          {/* 응답 제출을 마친 화면 — 뒤로가기 없이 타이틀만(수정은 '내 응답 수정하기'로). */}
+          <MobileHeaderTitle title="응답 완료" hideBack />
           <p className="hidden text-sm font-medium text-slate-400 sm:block">응답 완료</p>
           <h1 className="break-keep text-2xl font-extrabold leading-snug tracking-tight text-slate-900 sm:mt-3 sm:text-3xl sm:leading-snug">
             이제 모두가 응답하면
@@ -2309,14 +2417,11 @@ function ResultScreen({
   onSelectCase,
   dates,
   onViewCalendar,
-  onBack,
 }: {
   caseId: number;
   onSelectCase: (id: number) => void;
   dates: string[];
   onViewCalendar: () => void;
-  // 모바일 헤더 뒤로가기 — 응답 완료(대기) 화면으로 복귀.
-  onBack: () => void;
 }) {
   const current = DEMO_CASES.find((c) => c.id === caseId) ?? DEMO_CASES[0];
   const candidates = useMemo(() => buildCaseCandidates(current, dates), [current, dates]);
@@ -2357,9 +2462,11 @@ function ResultScreen({
       className="-mt-4 mx-auto flex w-full max-w-2xl flex-1 flex-col sm:-mt-8"
     >
       <div className="flex flex-1 flex-col gap-3 pt-4 sm:pt-8">
-        {/* 뒤로가기: 응답 완료(대기) 화면으로 */}
-        <MobileHeaderTitle title="추천 시간" onBack={onBack} />
+        {/* 결과 화면 — 뒤로가기 버튼 없이 타이틀만. */}
+        <MobileHeaderTitle title="추천 시간" hideBack />
         <div className="flex items-start justify-between gap-2">
+          {/* 모바일: 케이스 선택 버튼을 응답 칩과 같은 줄 좌측에 배치(데모 컨트롤). */}
+          <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} inline />
           <h1 className="hidden text-sm font-medium text-slate-400 sm:block">추천 시간</h1>
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
@@ -2444,8 +2551,6 @@ function ResultScreen({
           </div>
         )}
       </div>
-
-      <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} aboveCta />
 
       {/* PC 에서도 하단 고정 — 고정 바 안에서 버튼 폭은 본문 컬럼(랜딩 CTA와 동일)과 맞춘다.
           투표 CTA 는 제거 — 캘린더에서 분포와 판단 근거를 확인하는 흐름으로 잇는다. */}

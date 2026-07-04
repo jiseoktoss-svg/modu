@@ -6,12 +6,19 @@ interface SiteHeaderProps {
   // 모바일에서도 로고를 유지할지(랜딩 전용).
   // 기본은 로고를 숨기고 뒤로가기+타이틀 슬롯을 둔다(MobileHeaderTitle 이 포털로 채움).
   mobileLogo?: boolean;
+  // 모바일에서 헤더를 아예 숨긴다(링크 공유처럼 이탈 동선이 없는 완료 화면용). 데스크톱은 유지.
+  mobileHidden?: boolean;
 }
 
-export function SiteHeader({ mobileLogo = false }: SiteHeaderProps) {
+export function SiteHeader({ mobileLogo = false, mobileHidden = false }: SiteHeaderProps) {
   return (
     <>
-      <header className="modu-mobile-header fixed inset-x-0 top-0 z-30 bg-white sm:static sm:z-auto sm:bg-white/95">
+      <header
+        className={cn(
+          "modu-mobile-header fixed inset-x-0 top-0 z-30 bg-white sm:static sm:z-auto sm:bg-white/95",
+          mobileHidden && "hidden sm:block",
+        )}
+      >
         <Container className="flex h-14 items-center">
           <Link
             href="/"
@@ -31,7 +38,10 @@ export function SiteHeader({ mobileLogo = false }: SiteHeaderProps) {
           )}
         </Container>
       </header>
-      <div aria-hidden="true" className="h-14 shrink-0 sm:hidden" />
+      <div
+        aria-hidden="true"
+        className={cn("h-14 shrink-0 sm:hidden", mobileHidden && "hidden")}
+      />
     </>
   );
 }

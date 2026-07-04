@@ -268,8 +268,9 @@ export function CalendarModal({
               <div
                 aria-hidden="true"
                 className={cn(
-                  "modu-cta-glow pointer-events-none absolute inset-x-0 -top-3.5 h-4 blur-[12px]",
-                  tone === "busy" ? "bg-red-400" : "bg-brand-400",
+                  // 얇고 옅은 경계선 느낌 — 두껍고 진하면 경고처럼 읽혀서 높이·채도를 낮게 유지한다.
+                  "modu-cta-glow pointer-events-none absolute inset-x-0 -top-2 h-2 blur-[8px]",
+                  tone === "busy" ? "bg-red-300" : "bg-brand-300",
                 )}
               />
             )}

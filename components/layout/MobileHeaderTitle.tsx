@@ -22,12 +22,15 @@ function BackIcon() {
 // 화면(단계)마다 하나만 렌더한다 — 단계가 바뀌면 헤더 타이틀도 함께 바뀐다.
 // 데스크톱(sm+)에서는 슬롯 자체가 숨겨져 아무것도 보이지 않는다.
 // onBack: 화면 안 단계를 되돌리는 커스텀 동작. 없으면 브라우저 히스토리 뒤로.
+// hideBack: 뒤로 갈 곳이 없는 화면(회의 안내·응답 완료 등)은 버튼 없이 타이틀만 보여준다.
 export function MobileHeaderTitle({
   title,
   onBack,
+  hideBack = false,
 }: {
   title: string;
   onBack?: () => void;
+  hideBack?: boolean;
 }) {
   const router = useRouter();
   const [slot, setSlot] = useState<HTMLElement | null>(null);
@@ -40,15 +43,25 @@ export function MobileHeaderTitle({
 
   return createPortal(
     <>
-      <button
-        type="button"
-        onClick={() => (onBack ? onBack() : router.back())}
-        aria-label="뒤로 가기"
-        className="-ml-2 mr-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+      {!hideBack && (
+        <button
+          type="button"
+          onClick={() => (onBack ? onBack() : router.back())}
+          aria-label="뒤로 가기"
+          className="-ml-2 mr-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+        >
+          <BackIcon />
+        </button>
+      )}
+      <span
+        className={
+          hideBack
+            ? "ml-0 truncate text-sm font-medium text-slate-400"
+            : "truncate text-sm font-medium text-slate-400"
+        }
       >
-        <BackIcon />
-      </button>
-      <span className="truncate text-sm font-medium text-slate-400">{title}</span>
+        {title}
+      </span>
     </>,
     slot,
   );

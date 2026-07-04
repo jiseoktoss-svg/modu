@@ -349,9 +349,38 @@ export function MeetingCreateForm({
     focusOverride.current = focusId ?? null;
     setStep(i);
   };
+  // 뒤로가기로 벗어나는 단계의 입력값을 초기 상태로 되돌린다(뒤로가기 = 해당 입력 취소).
+  const clearStepValue = (s: number) => {
+    switch (s) {
+      case 0:
+        setTitle("");
+        break;
+      case 1:
+        setAgenda("");
+        break;
+      case 2:
+        setLocation("");
+        break;
+      case 3:
+        setDurationHours(String(initialDurationHours));
+        setDurationMinute(String(initialDurationMinute));
+        break;
+      case 4:
+        setDeadlineDate("");
+        break;
+      case 5:
+        setResponseDeadlineDate("");
+        setResponseDeadlineTime("18:00");
+        break;
+      case 6:
+        setParticipants([]);
+        break;
+    }
+  };
   // 모바일 헤더 뒤로가기: 이전 입력 단계로 한 단계씩 되돌아간다(자동 포커스 없이).
   const handleStepBack = () => {
     skipNextAutoFocus.current = window.matchMedia("(max-width: 639px)").matches;
+    clearStepValue(step);
     setStep((s) => Math.max(0, s - 1));
   };
   const showToast = (message: string) => {
@@ -609,6 +638,22 @@ export function MeetingCreateForm({
     const timer = window.setTimeout(() => setConfirmCtaReady(true), confirmCtaDelayMs);
     return () => window.clearTimeout(timer);
   }, [confirming, confirmCtaDelayMs]);
+
+  // 회의 확인 화면: 글자 채움이 끝나기 전에는 문장 속 키워드의 호버·클릭을 막는다.
+  const [confirmFillDone, setConfirmFillDone] = useState(false);
+  useEffect(() => {
+    if (!confirming) {
+      setConfirmFillDone(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setConfirmFillDone(true), confirmFillEndMs);
+    return () => window.clearTimeout(timer);
+  }, [confirming, confirmFillEndMs]);
+
+  // 입력 ↔ 확인 화면 전환 시 스크롤을 맨 위로(이전 화면 스크롤 위치가 이어지는 문제).
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [confirming]);
 
   // 참석자 모달 접근성: Esc 닫기 + 열림 시 포커스 이동 + 닫힘 시 트리거로 복원.
   useEffect(() => {
@@ -1020,14 +1065,17 @@ export function MeetingCreateForm({
             {/* 확인 화면 뒤로가기: 마지막 입력 단계(참석자)로 복귀 */}
             <MobileHeaderTitle title="회의 확인" onBack={() => setConfirming(false)} />
             <p className="hidden text-sm font-medium text-slate-400 sm:block">회의 확인</p>
-            {/* 글자가 읽는 순서대로 좌→우 잉크처럼 칠해지는 등장(공용 CharFillSentence). */}
-            <CharFillSentence
-              className="text-left sm:mt-3"
-              paragraphs={[
-                { clauses: confirmClauses.slice(0, 6) },
-                { clauses: [confirmClauses[6]], className: "mt-4" },
-              ]}
-            />
+            {/* 글자가 읽는 순서대로 좌→우 잉크처럼 칠해지는 등장(공용 CharFillSentence).
+                채움이 끝나기 전에는 키워드 호버·클릭을 막는다. */}
+            <div className={cn(!confirmFillDone && "pointer-events-none")}>
+              <CharFillSentence
+                className="text-left sm:mt-3"
+                paragraphs={[
+                  { clauses: confirmClauses.slice(0, 6) },
+                  { clauses: [confirmClauses[6]], className: "mt-4" },
+                ]}
+              />
+            </div>
             <p
               className="relative mt-4 animate-fade-up-blur text-sm text-slate-400 motion-reduce:animate-none"
               style={{
