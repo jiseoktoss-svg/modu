@@ -47,9 +47,10 @@ function briefForCase(id: number, days: number) {
 }
 
 describe("buildRecommendationBrief", () => {
-  it("1. 전일 가능 날짜가 있으면 시간 슬롯이 아니라 날짜 전체 문구가 나온다 (시나리오 1)", () => {
-    const brief = briefForCase(1, 5);
+  it("1. 전원 가능 날짜가 적으면 시간 슬롯이 아니라 날짜를 직접 나열한다 (시나리오 1, 짧은 기간)", () => {
+    const brief = briefForCase(1, 3);
 
+    expect(brief.primarySentence).toContain("먼저 확인해보세요");
     expect(brief.primarySentence).toContain("회의 가능 시간대 전체");
     // 대표 슬롯 시간(10:00~11:00 등)을 노출하지 않는다.
     expect(brief.primarySentence).not.toMatch(/\d{2}:\d{2}/);
@@ -61,6 +62,17 @@ describe("buildRecommendationBrief", () => {
 
     expect(brief.primaryItems.length).toBeGreaterThanOrEqual(1);
     expect(brief.primaryItems.length).toBeLessThanOrEqual(3);
+  });
+
+  it("2-1. 전원 가능 날짜가 많으면 3개만 나열하지 않고 예외 중심으로 말한다 (시나리오 1, 넓은 기간)", () => {
+    const brief = briefForCase(1, 8);
+
+    // 예외 중심 문구 — "N월 N일만 제외하면, 대부분 날짜에 모든 인원이 참석할 수 있어요".
+    expect(brief.primarySentence).toContain("제외하면");
+    expect(brief.primarySentence).toContain("대부분 날짜에 모든 인원이 참석할 수 있어요");
+    expect(brief.primarySentence).toMatch(/7월 \d+일만 제외하면/);
+    // 3개 날짜만 '먼저 확인'하라고 말하지 않는다(나머지가 왜 빠졌는지 오해 방지).
+    expect(brief.primarySentence).not.toContain("을 먼저 확인해보세요. 회의 가능 시간대 전체");
   });
 
   it("3. 피하면 좋은 날짜가 있으면 avoidSentence 에 나온다 (시나리오 2)", () => {

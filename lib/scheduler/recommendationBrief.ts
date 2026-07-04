@@ -72,6 +72,10 @@ function pickBestSummary(summaries: DateAvailabilitySummary[]): DateAvailability
 
 const MAX_PRIMARY = 3;
 const MAX_AVOID = 2;
+/** 전원 가능한 날짜가 이 수 이상이면 3개만 나열하지 않고 '어디만 피하면 되는지'(예외) 중심으로 말한다. */
+const MANY_AVAILABLE_THRESHOLD = 4;
+/** 예외 날짜를 직접 나열할 최대 개수 — 이보다 많으면 개수 중심 문구로 바꾼다. */
+const EXCEPTION_LIST_MAX = 3;
 
 export function buildRecommendationBrief(args: {
   contextual: ContextualScheduleResult;
@@ -145,23 +149,53 @@ export function buildRecommendationBrief(args: {
 
   let primaryItems: RecommendationBriefItem[];
   let primarySentence: string;
+  // primary 가 '예외 날짜를 제외하면' 형태면, avoid 문장도 날짜 기준으로 맞춘다
+  // (특정 시간만 어렵다는 narrow 문장과 섞이면 "제외" vs "그 시간만"이 모순돼 보인다).
+  let exceptionCentricPrimary = false;
 
   if (!timeCentric && primaryPool.length > 0) {
-    const picked = primaryPool.slice(0, MAX_PRIMARY);
-    primaryItems = picked.map((s) => ({
-      date: s.date,
-      label: dateLabel(s.date),
-      detail: s.allSlotsAllAvailable
-        ? "회의 가능 시간대 전체에 모든 인원이 참석할 수 있어요."
-        : "필수참석자는 모두 참석할 수 있어요.",
-      tone: "good" as const,
-    }));
-    const joined = joinDateLabels(primaryItems.map((i) => i.label));
     const lead = hasPending ? "지금까지의 응답 기준으로는 " : "";
-    primarySentence =
-      tier1.length > 0
-        ? `${lead}${joined}을 먼저 확인해보세요. 회의 가능 시간대 전체에 모든 인원이 참석할 수 있어요.`
-        : `${lead}${joined}을 먼저 확인해보세요. 필수참석자는 모두 참석할 수 있어요.`;
+
+    if (tier1.length >= MANY_AVAILABLE_THRESHOLD) {
+      // 전원 가능한 날짜가 많다 — 앞 3개만 나열하면 "나머지 날짜는 왜 빠졌지?"라는 오해를 준다.
+      // '어디가 좋은지'를 나열하는 대신 '어디만 피하면 되는지'(예외)를 말해 전체 상황을 알려준다.
+      primaryItems = tier1.slice(0, MAX_PRIMARY).map((s) => ({
+        date: s.date,
+        label: dateLabel(s.date),
+        detail: "회의 가능 시간대 전체에 모든 인원이 참석할 수 있어요.",
+        tone: "good" as const,
+      }));
+      // 예외 = 전원 가능이 아닌 날짜(꼭 불가란 뜻은 아니고, 먼저 볼 필요가 낮은 날짜).
+      const exceptionLabels = summaries
+        .filter((s) => !s.allSlotsAllAvailable)
+        .map((s) => dateLabel(s.date));
+      if (exceptionLabels.length >= 1 && exceptionLabels.length <= EXCEPTION_LIST_MAX) {
+        const joinedEx = joinDateLabels(exceptionLabels);
+        primarySentence =
+          exceptionLabels.length <= 2
+            ? `${lead}${joinedEx}만 제외하면, 대부분 날짜에 모든 인원이 참석할 수 있어요.`
+            : `${lead}${joinedEx}을 제외하면 대부분 날짜에 모든 인원이 참석할 수 있어요.`;
+        exceptionCentricPrimary = true;
+      } else {
+        // 예외가 없거나(전부 가능) 너무 많으면 개수 중심으로 — 편한 날을 고르라고 안내한다.
+        primarySentence = `${lead}전원이 참석할 수 있는 날짜가 ${tier1.length}개 있어요. 편한 날짜를 골라도 괜찮아요.`;
+      }
+    } else {
+      const picked = primaryPool.slice(0, MAX_PRIMARY);
+      primaryItems = picked.map((s) => ({
+        date: s.date,
+        label: dateLabel(s.date),
+        detail: s.allSlotsAllAvailable
+          ? "회의 가능 시간대 전체에 모든 인원이 참석할 수 있어요."
+          : "필수참석자는 모두 참석할 수 있어요.",
+        tone: "good" as const,
+      }));
+      const joined = joinDateLabels(primaryItems.map((i) => i.label));
+      primarySentence =
+        tier1.length > 0
+          ? `${lead}${joined}을 먼저 확인해보세요. 회의 가능 시간대 전체에 모든 인원이 참석할 수 있어요.`
+          : `${lead}${joined}을 먼저 확인해보세요. 필수참석자는 모두 참석할 수 있어요.`;
+    }
   } else {
     // 바쁜 기간/좋은 후보 없음 — 이때만 특정 시간을 노출한다(가장 나은 시간이 정보다).
     const best = pickBestSummary(summaries);
@@ -197,6 +231,7 @@ export function buildRecommendationBrief(args: {
     // 피할 날짜가 하나뿐이고 하루 평가로는 대부분 시간이 괜찮은 날(특정 시간대만 어려움)이면
     // 날짜를 통째로 피하라고 하지 않고 예외 시간으로 안내한다(점심 직후 회피 등).
     const narrowException =
+      !exceptionCentricPrimary &&
       avoidItems.length === 1 &&
       worstSummary !== undefined &&
       worstSummary.requiredIssueSlots.length === 0 &&

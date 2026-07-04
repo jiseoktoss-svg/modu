@@ -51,6 +51,9 @@ export function RecommendationBriefSentence({ brief }: RecommendationBriefSenten
     text: item.label,
     className: "font-bold text-red-500",
   }));
+  // 두 색을 모든 문장에 적용한다 — 먼저 볼 날짜(파랑)/피하면 좋은 날짜(빨강)는 서로 겹치지
+  // 않아, 어느 문장에 나오든 각자 색으로 칠해진다(예: '제외하면' 예외 날짜도 빨강).
+  const allKeywords = [...primaryKeywords, ...avoidKeywords];
 
   // 문장 줄들: 등장 순서대로 살짝 시차를 두고 떠오른다(문장 빌더 톤).
   // 도입부("모두의 응답을 보니,")는 두지 않는다 — 판단(headline)부터 바로 말한다.
@@ -60,13 +63,13 @@ export function RecommendationBriefSentence({ brief }: RecommendationBriefSenten
       className: "text-xl font-extrabold leading-snug text-slate-900 sm:text-2xl",
     },
     {
-      node: highlightKeywords(brief.primarySentence, primaryKeywords),
+      node: highlightKeywords(brief.primarySentence, allKeywords),
       className: "break-keep text-base leading-relaxed text-slate-700",
     },
   ];
   if (brief.avoidSentence) {
     lines.push({
-      node: highlightKeywords(brief.avoidSentence, avoidKeywords),
+      node: highlightKeywords(brief.avoidSentence, allKeywords),
       className: "break-keep text-base leading-relaxed text-slate-700",
     });
   }
