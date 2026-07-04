@@ -43,7 +43,12 @@ export function DateAvailabilitySummaryPanel({ summary }: DateAvailabilitySummar
 
       {summary.exceptionRanges.length > 0 && (
         <div className="rounded-xl border border-red-200 bg-red-50 p-2">
-          <p className="mb-1.5 px-0.5 text-[11px] font-bold text-red-700">피하면 좋은 시간</p>
+          {/* 필수참석자 이슈가 있으면 강하게(피하면 좋은 시간), 선택참석자만 어려우면 부드럽게. */}
+          <p className="mb-1.5 px-0.5 text-[11px] font-bold text-red-700">
+            {summary.exceptionRanges.some((e) => e.reason === "requiredBusy")
+              ? "피하면 좋은 시간"
+              : "일부 인원이 어려운 시간"}
+          </p>
           <ul className="space-y-1 px-0.5">
             {summary.exceptionRanges.map((exception) => (
               <li

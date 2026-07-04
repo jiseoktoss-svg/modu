@@ -32,6 +32,8 @@ export function CandidateFilterChips({ value, counts, onChange }: CandidateFilte
             disabled={count === 0}
             onClick={() => onChange(filter.value)}
             aria-pressed={selected}
+            title={filter.description}
+            aria-label={`${filter.label} ${count}개 — ${filter.description}`}
             className={cn(
               "shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition-colors",
               selected

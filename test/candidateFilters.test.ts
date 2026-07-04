@@ -94,10 +94,11 @@ describe("rankGroupKindMatchesFilter", () => {
     expect(rankGroupKindMatchesFilter("allAvailable", "allAvailable")).toBe(true);
     expect(rankGroupKindMatchesFilter("requiredAvailable", "allAvailable")).toBe(false);
 
-    // '필수 가능'은 잠정(pendingBased) 그룹도 함께 보여준다.
+    // '필수참석자 가능'은 전원 가능(allAvailable)과 잠정(pendingBased) 그룹도 함께 보여준다
+    // — 전원 가능이면 필수참석자도 당연히 가능하기 때문.
     expect(rankGroupKindMatchesFilter("requiredAvailable", "requiredAvailable")).toBe(true);
     expect(rankGroupKindMatchesFilter("pendingBased", "requiredAvailable")).toBe(true);
-    expect(rankGroupKindMatchesFilter("allAvailable", "requiredAvailable")).toBe(false);
+    expect(rankGroupKindMatchesFilter("allAvailable", "requiredAvailable")).toBe(true);
 
     expect(rankGroupKindMatchesFilter("secondary", "secondary")).toBe(true);
     expect(rankGroupKindMatchesFilter("avoid", "secondary")).toBe(false);
@@ -124,7 +125,7 @@ describe("rankGroupKindMatchesFilter", () => {
 
     expect(counts.all).toBe(10);
     expect(counts.allAvailable).toBe(4);
-    expect(counts.requiredAvailable).toBe(3); // requiredAvailable + pendingBased
+    expect(counts.requiredAvailable).toBe(7); // allAvailable + requiredAvailable + pendingBased
     expect(counts.secondary).toBe(2);
     expect(counts.avoid).toBe(1);
   });
