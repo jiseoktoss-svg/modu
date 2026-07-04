@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { DebugPageTag } from "@/components/dev/DebugPageTag";
 import { MobileHeaderTitle } from "@/components/layout/MobileHeaderTitle";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { ResponseForm } from "@/components/scheduler/ResponseForm";
@@ -28,6 +29,7 @@ export default async function ParticipantPage({
       <main className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col px-4 pt-4 sm:px-6 sm:pt-8">
         {meeting.confirmedSlotId ? (
           <>
+            <DebugPageTag no={12} label="확정 안내" />
             <MobileHeaderTitle title="확정된 회의" />
             <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
               {meeting.title}

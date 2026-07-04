@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { DebugPageTag } from "@/components/dev/DebugPageTag";
 import { Emoji } from "@/components/ui/Emoji";
 import {
   loadCalendarSnapshot,
@@ -1333,6 +1334,7 @@ export function ResponseForm(props: Props) {
   if (step === "intro") {
     return (
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
+        <DebugPageTag no={4} label="회의 안내" />
         <div className="flex-1">
           <MobileHeaderTitle title="회의 안내" />
           <p className="hidden text-sm font-medium text-slate-400 sm:block">회의 안내</p>
@@ -1378,6 +1380,7 @@ export function ResponseForm(props: Props) {
       <>
         <Toast open={toastOpen} message={toastMessage} icon={toastIcon} />
         <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
+          <DebugPageTag no={7} label="입력 확인" />
           <div className="flex-1">
             {/* 뒤로가기: 가능 시간 입력(마지막 단계)으로 복귀 */}
             <MobileHeaderTitle title="입력 확인" onBack={() => setStep("availability")} />
@@ -1423,40 +1426,49 @@ export function ResponseForm(props: Props) {
   // 제출 후 대기 화면 — 응답 마감 시각까지 기다린 뒤 후보/캘린더로 이동.
   if (step === "waiting") {
     return (
-      <WaitingScreen
-        responseDeadline={responseDeadline}
-        totalParticipants={participants.length}
-        onProceed={() => setStep("result")}
-        onEdit={() => {
-          setAvailStep(0);
-          setMaxAvailStep(0);
-          setStep("availability");
-        }}
-      />
+      <>
+        <DebugPageTag no={8} label="응답 완료" />
+        <WaitingScreen
+          responseDeadline={responseDeadline}
+          totalParticipants={participants.length}
+          onProceed={() => setStep("result")}
+          onEdit={() => {
+            setAvailStep(0);
+            setMaxAvailStep(0);
+            setStep("availability");
+          }}
+        />
+      </>
     );
   }
 
   // 제출 후 결과 화면 — modu 의 판단(해석 문장 + 후보 그룹) 설명. 투표 없음. 캘린더는 버튼으로 이동.
   if (step === "result") {
     return (
-      <ResultScreen
-        caseId={caseId}
-        onSelectCase={handleSelectCase}
-        dates={dates}
-        onViewCalendar={() => setStep("done")}
-        onBack={() => setStep("waiting")}
-      />
+      <>
+        <DebugPageTag no={9} label="추천 시간" />
+        <ResultScreen
+          caseId={caseId}
+          onSelectCase={handleSelectCase}
+          dates={dates}
+          onViewCalendar={() => setStep("done")}
+          onBack={() => setStep("waiting")}
+        />
+      </>
     );
   }
 
   if (step === "done") {
     return (
-      <SubmittedCalendarScreenWide
-        caseId={caseId}
-        onSelectCase={handleSelectCase}
-        dates={dates}
-        onBack={() => setStep("result")}
-      />
+      <>
+        <DebugPageTag no={10} label="회의 캘린더" />
+        <SubmittedCalendarScreenWide
+          caseId={caseId}
+          onSelectCase={handleSelectCase}
+          dates={dates}
+          onBack={() => setStep("result")}
+        />
+      </>
     );
   }
 
@@ -1466,6 +1478,7 @@ export function ResponseForm(props: Props) {
       <>
         <Toast open={toastOpen} message={toastMessage} icon={toastIcon} />
         <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
+          <DebugPageTag no={5} label="본인 확인" />
           <div className="flex-1">
             {/* 뒤로가기: 직무 단계면 이름 단계로, 이름 단계면 회의 안내로 */}
             <MobileHeaderTitle
@@ -1578,6 +1591,7 @@ export function ResponseForm(props: Props) {
     <>
       <Toast open={toastOpen} message={toastMessage} icon={toastIcon} />
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
+        <DebugPageTag no={6} label="가능 시간" />
         {/* 상단: 답변이 쌓이는 문장 */}
         {/* 뒤로가기: 특정 날짜+시간 단계면 불가 날짜 단계로, 그 전이면 본인 확인으로 */}
         <MobileHeaderTitle

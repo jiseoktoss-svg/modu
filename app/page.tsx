@@ -1,3 +1,4 @@
+import { DebugPageTag } from "@/components/dev/DebugPageTag";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { StartMeetingButton } from "@/components/meeting/StartMeetingButton";
 import { Reveal } from "@/components/landing/Reveal";
@@ -12,6 +13,7 @@ import {
 export default function LandingPage() {
   return (
     <div className="flex min-h-dvh flex-col bg-white/95">
+      <DebugPageTag no={1} label="랜딩" />
       <SiteHeader mobileLogo />
 
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 pb-40 sm:px-6 sm:pb-44">
