@@ -22,8 +22,9 @@ function formatNameList(names: string[]): string {
   return honored.join(", ");
 }
 
-// 가능/불가능/미응답 명단 그룹 — 캘린더 참석 명단(AttendeeGroup)과 동일한 톤.
-function NameGroup({
+// 가능/불가능/미응답 명단 그룹 — 캘린더 참석 명단과 동일한 톤.
+// 날짜 요약 패널(DateAvailabilitySummaryPanel)도 함께 쓴다.
+export function NameGroup({
   tone,
   label,
   names,

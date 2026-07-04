@@ -77,7 +77,16 @@ export type ContextualWarning = {
   level: "soft" | "hard";
 };
 
+/** 그룹의 안정적인 분류 — UI 필터가 label 문자열에 의존하지 않게 한다. */
+export type RankGroupKind =
+  | "allAvailable"
+  | "requiredAvailable"
+  | "pendingBased"
+  | "secondary"
+  | "avoid";
+
 export type RankGroup = {
+  kind: RankGroupKind;
   label: string;
   slots: EvaluatedSlot[];
 };
@@ -267,6 +276,17 @@ export function groupMeaningfulRanks(slots: EvaluatedSlot[]): EvaluatedSlot[][] 
   }
 
   return groups;
+}
+
+/** labelRankGroup 과 같은 분기 기준으로 그룹의 stable kind 를 정한다. */
+export function classifyRankGroupKind(group: EvaluatedSlot[]): RankGroupKind {
+  const first = group[0];
+  if (first.isAllAvailable) return "allAvailable";
+  if (first.isRequiredAllAvailable) {
+    return first.pendingNames.length > 0 ? "pendingBased" : "requiredAvailable";
+  }
+  if (first.requiredBusyCount === 1) return "secondary";
+  return "avoid";
 }
 
 export function labelRankGroup(group: EvaluatedSlot[]): string {
@@ -616,7 +636,11 @@ export function buildContextualScheduleResult(slots: EvaluatedSlot[]): Contextua
     pendingNames,
     headline,
     comment,
-    rankGroups: groups.map((group) => ({ label: labelRankGroup(group), slots: group })),
+    rankGroups: groups.map((group) => ({
+      kind: classifyRankGroupKind(group),
+      label: labelRankGroup(group),
+      slots: group,
+    })),
     calendarMarks,
     warnings,
   };

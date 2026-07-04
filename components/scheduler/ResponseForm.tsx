@@ -66,11 +66,18 @@ import {
   DEMO_CASES,
   buildCaseCandidates,
   buildCaseSnapshot,
-  type CaseCandidate,
 } from "@/data/demoCases";
 import { AvailabilitySearchBox } from "@/components/scheduler/AvailabilitySearchBox";
 import { AvailabilitySearchResultPanel } from "@/components/scheduler/AvailabilitySearchResultPanel";
+import { CandidateFilterChips } from "@/components/scheduler/CandidateFilterChips";
+import { DateAvailabilitySummaryPanel } from "@/components/scheduler/DateAvailabilitySummaryPanel";
 import type { AvailabilityLookupResult } from "@/lib/scheduler/availabilityLookup";
+import {
+  CANDIDATE_FILTER_OPTIONS,
+  rankGroupKindMatchesFilter,
+  type CandidateFilter,
+} from "@/lib/scheduler/candidateFilters";
+import { summarizeDateAvailability } from "@/lib/scheduler/dateAvailabilitySummary";
 import { adaptDemoCaseToEvaluatedSlots } from "@/data/demoCaseAdapter";
 import {
   buildContextualScheduleResult,
@@ -1495,6 +1502,8 @@ export function ResponseForm(props: Props) {
           durationMinutes={durationMinutes}
           workdayStart={workdayStart}
           workdayEnd={workdayEnd}
+          lunchStart={lunchStart}
+          lunchEnd={lunchEnd}
           onBack={() => setStep("result")}
         />
       </>
@@ -2446,8 +2455,11 @@ function ResultScreen({
   // 특정 시간 검색(조회 전용) — 케이스별 더미 응답 스냅샷으로 계산한다.
   const snapshot = useMemo(() => buildCaseSnapshot(current, dates), [current, dates]);
   const [searchResult, setSearchResult] = useState<AvailabilityLookupResult | null>(null);
+  // 후보 필터 — 그룹별로 나눠 보는 탐색 보조(투표/확정 아님).
+  const [candidateFilter, setCandidateFilter] = useState<CandidateFilter>("all");
   useEffect(() => {
     setSearchResult(null);
+    setCandidateFilter("all");
   }, [caseId]);
 
   // 같은 조건의 후보는 같은 그룹으로 — 무의미한 1·2·3순위 구분 대신 그룹 라벨로 보여준다.
@@ -2460,6 +2472,7 @@ function ResultScreen({
     candidates.forEach((c, i) => indexByKey.set(`${c.startAt}|${c.endAt}`, i));
     return contextual.rankGroups
       .map((group) => ({
+        kind: group.kind,
         label: group.label,
         indexes: group.slots
           .map((slot) => indexByKey.get(`${slot.startAt}|${slot.endAt}`))
@@ -2467,14 +2480,28 @@ function ResultScreen({
       }))
       .filter((group) => group.indexes.length > 0);
   }, [contextual, candidates]);
-  // 그룹 순서대로 하나씩 페이드인시키기 위한 표시 순번.
+  // 필터 적용 — kind 기준(label 문자열에 의존하지 않는다).
+  const visibleCandidateGroups = useMemo(
+    () => candidateGroups.filter((group) => rankGroupKindMatchesFilter(group.kind, candidateFilter)),
+    [candidateGroups, candidateFilter],
+  );
+  const filterCounts = useMemo(() => {
+    const counts = {} as Record<CandidateFilter, number>;
+    for (const option of CANDIDATE_FILTER_OPTIONS) {
+      counts[option.value] = candidateGroups
+        .filter((group) => rankGroupKindMatchesFilter(group.kind, option.value))
+        .reduce((sum, group) => sum + group.indexes.length, 0);
+    }
+    return counts;
+  }, [candidateGroups]);
+  // 그룹 순서대로 하나씩 페이드인시키기 위한 표시 순번(필터 적용 후 기준).
   const cardOrder = useMemo(() => {
     const order = new Map<number, number>();
-    candidateGroups.forEach((group) => {
+    visibleCandidateGroups.forEach((group) => {
       group.indexes.forEach((i) => order.set(i, order.size));
     });
     return order;
-  }, [candidateGroups]);
+  }, [visibleCandidateGroups]);
 
   return (
     <div
@@ -2551,7 +2578,16 @@ function ResultScreen({
         ) : (
           // 후보 카드는 선택/투표 대상이 아니라 설명 카드 — 왜 이 시간이 좋은지(등급·참석 요약)를 보여준다.
           <div className="space-y-4 py-1">
-            {candidateGroups.map((group) => (
+            {/* 후보 필터 — 그룹별로 나눠 보기(개수 0인 필터는 disabled) */}
+            <CandidateFilterChips
+              value={candidateFilter}
+              counts={filterCounts}
+              onChange={setCandidateFilter}
+            />
+            {visibleCandidateGroups.length === 0 && (
+              <p className="px-1 text-sm text-slate-500">이 조건에 해당하는 후보가 없어요.</p>
+            )}
+            {visibleCandidateGroups.map((group) => (
               <section key={`${caseId}-${group.label}-${group.indexes.join(",")}`}>
                 <h2 className="px-1 pb-2 text-xs font-bold text-slate-500">{group.label}</h2>
                 <ol className="space-y-2">
@@ -2629,50 +2665,8 @@ const TONE_CELL: Record<CalendarTone, string> = {
   none: "text-slate-700 hover:bg-slate-100",
 };
 
-const REQUIRED_NAMES = new Set(
-  DEMO_PEOPLE.filter((p) => p.attendanceType === "required").map((p) => p.name),
-);
-
-// 가능/불가능/미응답 참석자 명단 그룹 — 이름 앞 점(•)이 필수인원.
-function AttendeeGroup({
-  tone,
-  label,
-  names,
-}: {
-  tone: "green" | "red" | "slate";
-  label: string;
-  names: string[];
-}) {
-  if (names.length === 0) return null;
-  const styles = {
-    green: { box: "border-green-200 bg-green-50", head: "text-green-700", chip: "text-green-800" },
-    red: { box: "border-red-200 bg-red-50", head: "text-red-700", chip: "text-red-800" },
-    slate: { box: "border-slate-200 bg-slate-50", head: "text-slate-500", chip: "text-slate-600" },
-  }[tone];
-  return (
-    <div className={cn("rounded-xl border p-2", styles.box)}>
-      <p className={cn("mb-1.5 px-0.5 text-[11px] font-bold", styles.head)}>
-        {label} {names.length}명
-      </p>
-      <div className="flex flex-wrap gap-1">
-        {names.map((name) => (
-          <span
-            key={name}
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold shadow-sm",
-              styles.chip,
-            )}
-          >
-            {REQUIRED_NAMES.has(name) && (
-              <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" aria-hidden="true" />
-            )}
-            {name}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
+// (참석 명단 칩 UI 는 AvailabilitySearchResultPanel 의 NameGroup 으로 통합 —
+//  날짜 패널은 DateAvailabilitySummaryPanel 이 담당한다.)
 
 // 주간 보기용: 날짜 범위 전체를 일요일 시작 7일 단위 주(week)로 자른다.
 function buildWeeksFromDates(dates: string[]): string[][] {
@@ -2700,6 +2694,8 @@ function SubmittedCalendarScreenWide({
   durationMinutes,
   workdayStart,
   workdayEnd,
+  lunchStart,
+  lunchEnd,
   onBack,
 }: {
   caseId: number;
@@ -2708,6 +2704,8 @@ function SubmittedCalendarScreenWide({
   durationMinutes: number;
   workdayStart: string;
   workdayEnd: string;
+  lunchStart: string;
+  lunchEnd: string;
   onBack: () => void;
 }) {
   // 데모 단계: 선택한 케이스의 더미 응답으로 달력을 채운다.
@@ -2718,17 +2716,6 @@ function SubmittedCalendarScreenWide({
   // 특정 시간 검색(조회 전용) — 케이스별 더미 응답 스냅샷으로 계산한다.
   const snapshot = useMemo(() => buildCaseSnapshot(current, dates), [current, dates]);
   const [searchResult, setSearchResult] = useState<AvailabilityLookupResult | null>(null);
-
-  // 날짜 → 그 날의 후보들(순위 오름차순). 보통 하루에 후보 하나.
-  const candidatesByDate = useMemo(() => {
-    const map = new Map<string, { rank: number; candidate: CaseCandidate }[]>();
-    candidates.forEach((candidate, i) => {
-      const list = map.get(candidate.date) ?? [];
-      list.push({ rank: i + 1, candidate });
-      map.set(candidate.date, list);
-    });
-    return map;
-  }, [candidates]);
 
   const months = useMemo(
     () => getCalendarMonthsWithDates([...dates, ...candidates.map((c) => c.date)]),
@@ -2779,7 +2766,24 @@ function SubmittedCalendarScreenWide({
   const month = months[safeMonthIdx];
   const safeWeekIdx = Math.min(Math.max(weekIdx, 0), Math.max(0, weeks.length - 1));
   const week = weeks[safeWeekIdx];
-  const selectedCandidates = selectedDate ? (candidatesByDate.get(selectedDate) ?? []) : [];
+  // 선택한 날짜 '전체'의 가능 상태 요약 — 대표 후보 시간 하나만 보여주면
+  // "이 날은 그 시간만 가능한가?"로 오해할 수 있어 하루 단위로 평가한다.
+  const dateSummary = useMemo(
+    () =>
+      selectedDate
+        ? summarizeDateAvailability({
+            date: selectedDate,
+            durationMinutes,
+            workdayStart,
+            workdayEnd,
+            lunchStart,
+            lunchEnd,
+            participants: snapshot.participants,
+            blocks: snapshot.blocks,
+          })
+        : null,
+    [selectedDate, durationMinutes, workdayStart, workdayEnd, lunchStart, lunchEnd, snapshot],
+  );
 
   // 주간 전환: 선택된 날짜(없으면 1순위)가 속한 주로 이동한다.
   const switchToWeek = () => {
@@ -3130,53 +3134,8 @@ function SubmittedCalendarScreenWide({
                   {selectedMark.reason}
                 </p>
               )}
-              {selectedCandidates.length === 0 ? (
-                <>
-                  <p className="break-keep text-sm text-slate-600">
-                    이 날을 불가능으로 입력한 사람이 없어요.{" "}
-                    {current.pendingNames.length > 0
-                      ? "응답한 사람은 모두 참석할 수 있어요."
-                      : "모두 참석할 수 있는 날이에요."}
-                  </p>
-                  <AttendeeGroup
-                    tone="green"
-                    label="가능"
-                    names={DEMO_PEOPLE.filter((p) => !current.pendingNames.includes(p.name)).map(
-                      (p) => p.name,
-                    )}
-                  />
-                  <AttendeeGroup tone="slate" label="미응답" names={current.pendingNames} />
-                </>
-              ) : (
-                // 순위 뱃지는 두지 않는다(무의미한 순위 구분 제거) — 상태는 등급 라벨이 전달한다.
-                selectedCandidates.map(({ candidate }) => (
-                  <div key={candidate.startAt} className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <p className="font-bold text-slate-900">
-                        {formatKoreanTimeRange(candidate.startAt, candidate.endAt)}
-                      </p>
-                      <span
-                        className={cn(
-                          // 2색 체계: 파랑 = 추천, 빨강 = 주의(추천안 카드의 등급 배지와 동일).
-                          "rounded-full px-2 py-0.5 text-[11px] font-bold",
-                          candidate.grade === "best"
-                            ? "bg-brand-50 text-brand-700"
-                            : candidate.grade === "caution"
-                              ? "bg-red-50 text-red-600"
-                              : "bg-slate-100 text-slate-600",
-                        )}
-                      >
-                        {GRADE_LABELS[candidate.grade]}
-                      </span>
-                    </div>
-                    <p className="break-keep text-sm text-slate-500">{candidate.reason}</p>
-                    <AttendeeGroup tone="green" label="가능" names={candidate.availableNames} />
-                    <AttendeeGroup tone="red" label="불가능" names={candidate.busyNames} />
-                    <AttendeeGroup tone="slate" label="미응답" names={candidate.pendingNames} />
-                  </div>
-                ))
-              )}
-              <p className="px-0.5 text-[11px] text-slate-400">이름 앞 점(•)은 필수인원이에요.</p>
+              {/* 날짜 전체 요약 — 대표 후보 시간 하나가 아니라 하루 단위 가능 상태를 보여준다. */}
+              {dateSummary && <DateAvailabilitySummaryPanel summary={dateSummary} />}
             </>
           )}
         </Card>
