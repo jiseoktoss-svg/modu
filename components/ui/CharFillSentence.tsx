@@ -31,6 +31,9 @@ interface CharFillSentenceProps {
    *  완료 순간 span→일반 텍스트 DOM 교체가 사라져, 긴 문장(회의 확인)에서 보이는
    *  한 번의 번쩍임을 막는다. 기본값 false — 기존 화면들은 종전 동작 그대로다. */
   retainCharSpans?: boolean;
+  /** true 면 채움 애니메이션 없이 완료 상태로 바로 그린다(onFillDone 즉시 호출).
+   *  키워드 수정 후 확인 화면에 다시 돌아온 경우 등 재생을 반복하지 않을 때 쓴다. */
+  instant?: boolean;
   className?: string;
 }
 
@@ -38,24 +41,30 @@ export function CharFillSentence({
   paragraphs,
   onFillDone,
   retainCharSpans = false,
+  instant = false,
   className,
 }: CharFillSentenceProps) {
   const clauses = paragraphs.flatMap((p) => p.clauses);
   const { clauseStartsMs, fillEndMs } = charFillTiming(clauses);
 
-  const [fillDone, setFillDone] = useState(false);
+  const [fillDone, setFillDone] = useState(instant);
   // 콜백은 ref 로 들고 있어 인라인 함수가 매 렌더 바뀌어도 타이머가 리셋되지 않는다.
   const onFillDoneRef = useRef(onFillDone);
   useEffect(() => {
     onFillDoneRef.current = onFillDone;
   });
   useEffect(() => {
+    if (instant) {
+      setFillDone(true);
+      onFillDoneRef.current?.();
+      return;
+    }
     const timer = window.setTimeout(() => {
       setFillDone(true);
       onFillDoneRef.current?.();
     }, fillEndMs);
     return () => window.clearTimeout(timer);
-  }, [fillEndMs]);
+  }, [fillEndMs, instant]);
 
   // 절 안 글자들을 읽는 순서대로 칠하는 렌더러.
   // animate=false 면 마스크 없이 렌더한다(투명 밑글 레이어·채움 완료 후 공용).

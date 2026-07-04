@@ -6,9 +6,9 @@
 
 import type { ReactNode } from "react";
 
-export const CHAR_FILL_STEP_MS = 100; // 다음 글자가 칠해지기 시작할 때까지의 시차(체감 속도)
-export const CHAR_FILL_DURATION_MS = 300; // 글자 하나가 칠해지는 시간(경계가 이웃 글자에 걸침)
-export const CHAR_FILL_CLAUSE_GAP_MS = 300; // 절(문장) 사이 호흡
+export const CHAR_FILL_STEP_MS = 60; // 다음 글자가 칠해지기 시작할 때까지의 시차(체감 속도)
+export const CHAR_FILL_DURATION_MS = 220; // 글자 하나가 칠해지는 시간(경계가 이웃 글자에 걸침)
+export const CHAR_FILL_CLAUSE_GAP_MS = 200; // 절(문장) 사이 호흡
 
 /**
  * 채움 문장의 조각. 일반 텍스트 문자열이거나, 강조 값(wrap 으로 껍데기를 주입 —

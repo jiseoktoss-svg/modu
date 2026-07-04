@@ -150,7 +150,9 @@ export function buildDateAvailabilitySummary(
       headline = "이 날은 일부 시간에 필수참석자가 참석하기 어려워요.";
       const worst = exceptionRanges.find((x) => x.reason === "requiredBusy");
       if (worst) {
-        comment = `${formatKoreanTimeRange(worst.startAt, worst.endAt)}에는 ${formatNameList(
+        // 예외 범위는 busy 시각이 아니라 '겹치는 후보 슬롯의 병합'이라 실제보다 넓게
+        // 보일 수 있다 — "겹치는 회의는"으로 회의 기준임을 분명히 한다.
+        comment = `${formatKoreanTimeRange(worst.startAt, worst.endAt)}에 겹치는 회의는 ${formatNameList(
           worst.requiredNames,
         )}이 참석하기 어려우니 피하는 게 좋아요.`;
       }
@@ -158,7 +160,7 @@ export function buildDateAvailabilitySummary(
       headline = "이 날은 대부분 시간에 모든 인원이 참석할 수 있어요.";
       const first = exceptionRanges[0];
       if (first) {
-        comment = `다만 ${formatKoreanTimeRange(first.startAt, first.endAt)}에는 ${formatNameList(
+        comment = `다만 ${formatKoreanTimeRange(first.startAt, first.endAt)}에 겹치는 회의는 ${formatNameList(
           first.names,
         )}이 참석하기 어려워요.`;
       }

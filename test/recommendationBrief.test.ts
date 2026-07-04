@@ -78,6 +78,8 @@ describe("buildRecommendationBrief", () => {
     // 피할 '날짜'는 없지만 예외 '시간'이 있는 상황 — 시간대와 이름을 함께 알려준다.
     expect(brief.avoidSentence).toBeDefined();
     expect(brief.avoidSentence).toMatch(/\d{2}:\d{2}~\d{2}:\d{2}/);
+    // 예외 범위는 겹치는 후보 슬롯의 병합이라 "겹치는 회의는"으로 회의 기준임을 밝힌다.
+    expect(brief.avoidSentence).toContain("겹치는 회의는");
     expect(brief.avoidSentence).toContain("한예린님");
     expect(brief.avoidSentence).toContain("그 시간을 피해서");
   });
@@ -85,8 +87,15 @@ describe("buildRecommendationBrief", () => {
   it("5. 미응답이 있으면 잠정 결과 문구와 응답 기준 안내가 나온다 (시나리오 8)", () => {
     const brief = briefForCase(8, 3);
 
+    // 도입부도 "모두의 응답"이 아니라 "지금까지의 응답"으로 바뀐다(의미 충돌 방지).
+    expect(brief.introSentence).toBe("지금까지의 응답을 보니,");
     expect(brief.headline).toContain("잠정 결과");
     expect(brief.primarySentence).toContain("지금까지의 응답 기준");
     expect(brief.helperSentence).toContain("결과가 바뀔 수 있어요");
+  });
+
+  it("6. 전원 응답 상태의 도입부는 '모두의 응답을 보니,'다 (시나리오 1)", () => {
+    const brief = briefForCase(1, 3);
+    expect(brief.introSentence).toBe("모두의 응답을 보니,");
   });
 });

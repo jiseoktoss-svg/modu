@@ -16,6 +16,8 @@ export type RecommendationBriefItem = {
 };
 
 export type RecommendationBrief = {
+  /** 첫 줄 도입부 — 미응답이 있으면 "지금까지의 응답을 보니,"로 바뀐다("모두의"와 충돌 방지). */
+  introSentence: string;
   headline: string;
   primarySentence: string;
   avoidSentence?: string;
@@ -83,8 +85,11 @@ export function buildRecommendationBrief(args: {
     contextual.calendarMarks.filter((m) => m.tone === "avoid").map((m) => m.date),
   );
 
+  const introSentence = hasPending ? "지금까지의 응답을 보니," : "모두의 응답을 보니,";
+
   if (summaries.length === 0) {
     return {
+      introSentence,
       headline: "아직 보여줄 추천이 없어요.",
       primarySentence: "회의 기간 안에 고를 수 있는 시간이 없어요. 기간을 확인해 주세요.",
       primaryItems: [],
@@ -200,10 +205,12 @@ export function buildRecommendationBrief(args: {
 
     if (narrowException) {
       const exception = worstSummary.exceptionRanges[0];
+      // 예외 범위는 busy 시각이 아니라 '겹치는 후보 슬롯의 병합'이라 실제보다 넓게 보일 수 있다
+      // — "겹치는 회의는"으로 회의 기준임을 분명히 한다.
       avoidSentence = `다만 ${worstAvoid.label} ${formatKoreanTimeRange(
         exception.startAt,
         exception.endAt,
-      )}에는 ${formatNameList(exception.names)}이 참석하기 어려워요. 그 시간을 피해서 확인해보세요.`;
+      )}에 겹치는 회의는 ${formatNameList(exception.names)}이 참석하기 어려워요. 그 시간을 피해서 확인해보세요.`;
     } else if (worstAvoid.detail.includes("필수참석자 여러 명")) {
       avoidSentence = `${worstAvoid.label}은 필수참석자 여러 명이 참석하기 어려워 피하는 게 좋아요.`;
     } else if (worstAvoid.detail.includes("필수참석자")) {
@@ -221,7 +228,7 @@ export function buildRecommendationBrief(args: {
       avoidSentence = `다만 ${dateLabel(withException.date)} ${formatKoreanTimeRange(
         exception.startAt,
         exception.endAt,
-      )}에는 ${formatNameList(exception.names)}이 참석하기 어려워요. 그 시간을 피해서 확인해보세요.`;
+      )}에 겹치는 회의는 ${formatNameList(exception.names)}이 참석하기 어려워요. 그 시간을 피해서 확인해보세요.`;
     }
   }
 
@@ -246,6 +253,7 @@ export function buildRecommendationBrief(args: {
       : "궁금한 날짜와 시간이 있으면 아래에서 바로 확인할 수 있어요.";
 
   return {
+    introSentence,
     headline,
     primarySentence,
     avoidSentence,

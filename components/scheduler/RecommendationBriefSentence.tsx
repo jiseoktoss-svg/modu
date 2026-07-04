@@ -53,11 +53,8 @@ export function RecommendationBriefSentence({ brief }: RecommendationBriefSenten
   }));
 
   // 문장 줄들: 등장 순서대로 살짝 시차를 두고 떠오른다(문장 빌더 톤).
+  // 도입부("모두의 응답을 보니,")는 두지 않는다 — 판단(headline)부터 바로 말한다.
   const lines: { node: ReactNode; className: string }[] = [
-    {
-      node: "모두의 응답을 보니,",
-      className: "text-sm font-medium text-slate-400",
-    },
     {
       node: brief.headline,
       className: "text-xl font-extrabold leading-snug text-slate-900 sm:text-2xl",

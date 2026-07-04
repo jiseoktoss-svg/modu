@@ -127,14 +127,11 @@ function LimitedFieldLabel({
   children: ReactNode;
 }) {
   return (
-    <Label
-      htmlFor={htmlFor}
-      id={`${htmlFor}-limit`}
-      role={invalid ? "alert" : undefined}
-      className={cn("text-lg", invalid && "text-red-600")}
-    >
+    <Label htmlFor={htmlFor} id={`${htmlFor}-limit`} role={invalid ? "alert" : undefined} className="text-lg">
       {invalid ? (
-        <span className="inline-flex items-start gap-1.5">
+        // 경고는 확실히 빨갛게 — Label 기본색(text-slate-700)과의 클래스 충돌을 피하려고
+        // 부모 override 대신 자식 span 에 색을 준다(cn 은 tailwind-merge 가 아니다).
+        <span className="inline-flex items-start gap-1.5 text-red-600">
           <span
             aria-hidden="true"
             className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-red-600 text-[11px] font-extrabold leading-none text-red-600"
@@ -263,6 +260,8 @@ export function MeetingCreateForm({
   const [maxStep, setMaxStep] = useState(0);
   const [confirming, setConfirming] = useState(false); // 회의 확인 화면 표시 여부
   const [confirmCtaReady, setConfirmCtaReady] = useState(false); // 7번 문구 등장 후 회의 만들기 노출
+  // 확인 화면 글자 채움은 세션 중 1회만 — 키워드 수정 후 다시 돌아오면 즉시 완료 상태로 그린다.
+  const [confirmPlayed, setConfirmPlayed] = useState(false);
   // 포커스 제어용 ref.
   const skipInitialFocus = useRef(true); // 최초 마운트 자동 포커스(스크롤 점프) 방지
   const skipNextAutoFocus = useRef(false); // 모바일 '다음' 이동 시 자동 포커스(키보드 팝업·스크롤) 방지
@@ -310,6 +309,10 @@ export function MeetingCreateForm({
   const titleTooLong = title.length > MAX_MEETING_TITLE_LENGTH;
   const agendaTooLong = agenda.length > MAX_MEETING_AGENDA_LENGTH;
   const locationTooLong = location.length > MAX_MEETING_LOCATION_LENGTH;
+  // 상단 문장 표시는 글자 제한까지만 — 제한을 넘긴 입력이 문장에 계속 흘러나오지 않게 한다.
+  const titleDisplay = title.slice(0, MAX_MEETING_TITLE_LENGTH);
+  const agendaDisplay = agenda.slice(0, MAX_MEETING_AGENDA_LENGTH);
+  const locationDisplay = location.slice(0, MAX_MEETING_LOCATION_LENGTH);
   const valid = [
     title.trim().length > 0 && !titleTooLong,
     agenda.trim().length > 0 && !agendaTooLong,
@@ -630,14 +633,18 @@ export function MeetingCreateForm({
   useScrollLock(showParticipantModal);
 
   // 회의 확인 화면: 마지막(7번) 문구가 등장한 뒤에 '회의 만들기' 버튼을 노출한다.
+  // 이미 한 번 재생했다면(수정 후 재진입) 기다리지 않고 바로 노출한다.
   useEffect(() => {
     if (!confirming) {
       setConfirmCtaReady(false);
       return;
     }
-    const timer = window.setTimeout(() => setConfirmCtaReady(true), confirmCtaDelayMs);
+    const timer = window.setTimeout(
+      () => setConfirmCtaReady(true),
+      confirmPlayed ? 0 : confirmCtaDelayMs,
+    );
     return () => window.clearTimeout(timer);
-  }, [confirming, confirmCtaDelayMs]);
+  }, [confirming, confirmCtaDelayMs, confirmPlayed]);
 
   // 회의 확인 화면: 글자 채움이 끝나기 전에는 문장 속 키워드의 호버·클릭을 막는다.
   const [confirmFillDone, setConfirmFillDone] = useState(false);
@@ -646,9 +653,12 @@ export function MeetingCreateForm({
       setConfirmFillDone(false);
       return;
     }
-    const timer = window.setTimeout(() => setConfirmFillDone(true), confirmFillEndMs);
+    const timer = window.setTimeout(
+      () => setConfirmFillDone(true),
+      confirmPlayed ? 0 : confirmFillEndMs,
+    );
     return () => window.clearTimeout(timer);
-  }, [confirming, confirmFillEndMs]);
+  }, [confirming, confirmFillEndMs, confirmPlayed]);
 
   // 입력 ↔ 확인 화면 전환 시 스크롤을 맨 위로(이전 화면 스크롤 위치가 이어지는 문제).
   useEffect(() => {
@@ -722,21 +732,21 @@ export function MeetingCreateForm({
             {clauseVisible(0) && (
               <span className="relative animate-fade-up-blur motion-reduce:animate-none">
                 이번 회의명은{" "}
-                {valueSlot(title.trim() === "", "회의명", () => editStep(0), title)}{" "}
-                {hasBatchim(title) ? "이에요." : "예요."}{" "}
+                {valueSlot(title.trim() === "", "회의명", () => editStep(0), titleDisplay)}{" "}
+                {hasBatchim(titleDisplay) ? "이에요." : "예요."}{" "}
               </span>
             )}
             {clauseVisible(1) && (
               <span className="relative animate-fade-up-blur motion-reduce:animate-none">
                 회의 안건은{" "}
-                {valueSlot(agenda.trim() === "", "안건", () => editStep(1), agenda)}{" "}
-                {hasBatchim(agenda) ? "이에요." : "예요."}{" "}
+                {valueSlot(agenda.trim() === "", "안건", () => editStep(1), agendaDisplay)}{" "}
+                {hasBatchim(agendaDisplay) ? "이에요." : "예요."}{" "}
               </span>
             )}
             {clauseVisible(2) && (
               <span className="relative animate-fade-up-blur motion-reduce:animate-none">
                 회의 장소는{" "}
-                {valueSlot(location.trim() === "", "장소", () => editStep(2), location)}{" "}
+                {valueSlot(location.trim() === "", "장소", () => editStep(2), locationDisplay)}{" "}
                 이고,{" "}
               </span>
             )}
@@ -1073,6 +1083,8 @@ export function MeetingCreateForm({
               <CharFillSentence
                 className="text-left sm:mt-3"
                 retainCharSpans
+                instant={confirmPlayed}
+                onFillDone={() => setConfirmPlayed(true)}
                 paragraphs={[
                   { clauses: confirmClauses.slice(0, 6) },
                   { clauses: [confirmClauses[6]], className: "mt-4" },
@@ -1082,7 +1094,7 @@ export function MeetingCreateForm({
             <p
               className="relative mt-4 animate-fade-up-blur text-sm text-slate-400 motion-reduce:animate-none"
               style={{
-                animationDelay: `${confirmHelpDelayMs}ms`,
+                animationDelay: `${confirmPlayed ? 0 : confirmHelpDelayMs}ms`,
                 animationDuration: "1s",
               }}
             >

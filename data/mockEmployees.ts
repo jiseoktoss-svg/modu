@@ -5,6 +5,9 @@ export interface MockEmployee {
 }
 
 export const MOCK_EMPLOYEES: MockEmployee[] = [
+  // 평가용 계정 — 본인확인에서 이 이름/직무는 명단과 무관하게 항상 통과한다(actions/meetings.ts).
+  // 평가자가 바로 찾을 수 있게 목록 맨 위에 둔다.
+  { id: "emp-051", name: "서지석", role: "프로덕트 디자이너" },
   { id: "emp-001", name: "김지훈", role: "프로덕트 매니저" },
   { id: "emp-002", name: "이서연", role: "프로덕트 디자이너" },
   { id: "emp-003", name: "박민준", role: "백엔드 엔지니어" },

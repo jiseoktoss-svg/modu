@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { CalendarModal } from "@/components/scheduler/CalendarModal";
-import { AvailabilitySearchResultPanel } from "@/components/scheduler/AvailabilitySearchResultPanel";
 import { Emoji } from "@/components/ui/Emoji";
 import { Select } from "@/components/ui/Select";
 import { TDSButton } from "@/components/ui/TDSButton";
+import { cn } from "@/lib/cn";
 import { generateSlots } from "@/lib/scheduler/generateSlots";
 import {
   lookupAvailabilityAtTime,
@@ -15,9 +15,10 @@ import {
 } from "@/lib/scheduler/availabilityLookup";
 import { formatKoreanTime, isoToEpoch, kstWallToIso, parseHm } from "@/lib/time";
 
-// 추천안 화면의 '원하는 날짜·시간 확인' 모듈 — 문법을 기억해 입력하는 검색창 대신
+// 추천안 화면의 '원하는 날짜·시간 확인' 입력 모듈 — 문법을 기억해 입력하는 검색창 대신
 // 날짜/시간을 직접 골라 확인한다. 선택 가능한 시간 목록은 generateSlots 를 재사용해
 // 근무시간·회의 길이·점심 제외 규칙이 추천 후보와 어긋나지 않게 한다.
+// 결과 카드는 부모가 본문에 렌더한다(이 모듈은 하단 고정 영역에 들어간다) — onResult 로 전달.
 // 조회 전용 — 확정도 투표도 아니다.
 
 type AvailabilityDateTimeLookupProps = {
@@ -31,7 +32,9 @@ type AvailabilityDateTimeLookupProps = {
   lunchEnd: string;
   /** 초기 선택 날짜(추천 요약의 먼저 볼 날짜). 없으면 첫 후보 날짜. */
   initialDate?: string | null;
-  onResult?: (result: AvailabilityLookupResult) => void;
+  /** 확인 결과. 날짜/시간을 바꾸면 이전 결과 무효화를 위해 null 로 호출된다. */
+  onResult: (result: AvailabilityLookupResult | null) => void;
+  className?: string;
 };
 
 function useIsMobile() {
@@ -64,12 +67,12 @@ export function AvailabilityDateTimeLookup({
   lunchEnd,
   initialDate,
   onResult,
+  className,
 }: AvailabilityDateTimeLookupProps) {
   const isMobile = useIsMobile();
   const sortedDates = useMemo(() => [...dates].sort(), [dates]);
   const [date, setDate] = useState<string | null>(initialDate ?? sortedDates[0] ?? null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [result, setResult] = useState<AvailabilityLookupResult | null>(null);
 
   // 선택 가능한 시작 시간 — 추천 후보와 같은 규칙(근무시간 안, 30분 단위, 점심 제외,
   // 회의 길이가 근무시간을 넘는 시작 시간 제외). 날짜와 무관하게 동일하다.
@@ -104,16 +107,14 @@ export function AvailabilityDateTimeLookup({
     if (!date || !timeHm) return;
     const startAt = kstWallToIso(date, parseHm(timeHm));
     const endAt = new Date(isoToEpoch(startAt) + durationMinutes * 60000).toISOString();
-    const next = lookupAvailabilityAtTime({ participants, blocks, startAt, endAt });
-    setResult(next);
-    onResult?.(next);
+    onResult(lookupAvailabilityAtTime({ participants, blocks, startAt, endAt }));
   };
 
   return (
-    <div className="space-y-3">
-      <div className="space-y-1">
+    <div className={cn("space-y-2.5", className)}>
+      <div>
         <p className="text-base font-bold text-slate-800">궁금한 날짜와 시간이 있나요?</p>
-        <p className="break-keep text-sm text-slate-500">
+        <p className="break-keep text-xs text-slate-500">
           날짜와 시간을 선택하면 누가 참석할 수 있는지 바로 확인할 수 있어요.
         </p>
       </div>
@@ -139,7 +140,10 @@ export function AvailabilityDateTimeLookup({
             variant="menu"
             aria-label="확인할 시간 선택"
             value={timeHm}
-            onValueChange={setTimeHm}
+            onValueChange={(next) => {
+              setTimeHm(next);
+              onResult(null); // 조건이 바뀌면 이전 결과는 더 이상 유효하지 않다.
+            }}
             options={
               timeOptions.length > 0
                 ? timeOptions.map((hm) => ({ value: hm, label: hm }))
@@ -160,12 +164,6 @@ export function AvailabilityDateTimeLookup({
         참석 가능 여부 확인
       </TDSButton>
 
-      {result && (
-        <div className="rounded-2xl bg-white p-4 shadow-[0_1px_4px_rgba(15,23,42,0.12)]">
-          <AvailabilitySearchResultPanel result={result} onClear={() => setResult(null)} />
-        </div>
-      )}
-
       <CalendarModal
         open={modalOpen}
         title="확인할 날짜"
@@ -175,6 +173,7 @@ export function AvailabilityDateTimeLookup({
         selected={new Set(date ? [date] : [])}
         onToggle={(ds) => {
           setDate(ds);
+          onResult(null); // 조건이 바뀌면 이전 결과는 더 이상 유효하지 않다.
           setModalOpen(false);
         }}
         tone="pref"

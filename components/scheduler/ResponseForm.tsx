@@ -476,6 +476,7 @@ function TimeSelect({
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={ariaLabel}
+        // 글씨 스타일은 회의 만들기 날짜 선택(DatePicker)과 동일 — 버튼형 피커라 text-sm(14px).
         className="flex h-11 w-full items-center justify-between rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 transition-colors hover:border-slate-400 focus:border-2 focus:border-brand-400 focus:outline-none focus:ring-0"
       >
         <span className={inWork(valueMin) ? "" : "text-amber-600"}>{formatClock(valueMin)}</span>
@@ -605,6 +606,7 @@ function CalendarModalField({
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
         aria-expanded={open}
+        // 글씨 스타일은 회의 만들기 날짜 선택(DatePicker)과 동일 — 버튼형 피커라 text-sm(14px).
         className="flex h-11 w-full items-center justify-between rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 transition-colors hover:border-slate-400 focus:border-2 focus:border-brand-400 focus:outline-none focus:ring-0"
       >
         <span className={list.length > 0 ? "truncate" : "text-slate-400"}>
@@ -732,9 +734,12 @@ export function ResponseForm(props: Props) {
   const [responseDraftReady, setResponseDraftReady] = useState(false);
 
   const selected = participants.find((p) => p.id === selectedId) ?? null;
+  // 평가용 우회 계정(서지석/프로덕트 디자이너)이 어느 회의에서든 선택 가능하도록 직무를 보장한다.
   const roleOptions = Array.from(
-    new Set(participants.map((p) => p.role.trim()).filter(Boolean)),
+    new Set([...participants.map((p) => p.role.trim()).filter(Boolean), "프로덕트 디자이너"]),
   );
+  const IDENTITY_HELP_TEXT =
+    "참석자 명단에 있는 분만 응답할 수 있도록 본인 확인을 해요. 입력한 이름·직무가 명단과 일치하면 다음 단계로 넘어가요. 평가용으로 이름에 서지석, 직무에 프로덕트 디자이너를 입력하면 명단과 상관없이 통과할 수 있어요.";
   // 본인확인 빌더: 0=이름, 1=직무(마지막).
   const IDENTITY_LAST_STEP = 1;
   const formValid = (s: number) =>
@@ -753,6 +758,17 @@ export function ResponseForm(props: Props) {
   ];
   const AVAIL_HELP_TEXT =
     "외근, 점심 직후, 집중 업무처럼 회의가 부담스러운 시간도 함께 표시해 주세요.";
+  // 주말 제외 선택 가능한 날짜 수 — 전부 '어려움'으로 고르면 날짜 나열 대신 기간 전체 문구를 쓴다.
+  const selectableDateCount = useMemo(
+    () =>
+      dates.filter((ds) => {
+        const [y, m, d] = ds.split("-").map(Number);
+        const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+        return weekday !== 0 && weekday !== 6;
+      }).length,
+    [dates],
+  );
+  const allDatesBusy = selectableDateCount > 0 && busyDates.size >= selectableDateCount;
 
   useEffect(() => {
     const draft = readResponseDraft(window.sessionStorage, meetingId);
@@ -1300,10 +1316,12 @@ export function ResponseForm(props: Props) {
   const reviewClauses: CharFillSegment[][] = [
     [`${personName}님은`],
     busyDatesText
-      ? [
-          reviewValue(busyDatesText, "회의가 어려운 날짜", goBusyDatesEdit),
-          "에는 회의가 어렵고,",
-        ]
+      ? allDatesBusy
+        ? [reviewValue("해당 기간에는 회의가 불가능해요.", "회의가 어려운 날짜", goBusyDatesEdit)]
+        : [
+            reviewValue(busyDatesText, "회의가 어려운 날짜", goBusyDatesEdit),
+            "에는 회의가 어렵고,",
+          ]
       : [reviewValue("회의가 어려운 날짜는 없고,", "회의가 어려운 날짜", goBusyDatesEdit)],
     dtText
       ? [
@@ -1318,14 +1336,19 @@ export function ResponseForm(props: Props) {
   const reviewHelpDelayMs = Math.max(0, reviewFillEndMs - 200); // 마지막 글자가 거의 채워진 뒤
   const reviewCtaDelayMs = reviewHelpDelayMs + 600;
 
+  // 입력 확인 글자 채움은 세션 중 1회만 — 키워드 수정 후 다시 돌아오면 즉시 완료 상태다.
+  const [reviewPlayed, setReviewPlayed] = useState(false);
   useEffect(() => {
     if (step !== "review") {
       setReviewCtaReady(false);
       return;
     }
-    const timer = window.setTimeout(() => setReviewCtaReady(true), reviewCtaDelayMs);
+    const timer = window.setTimeout(
+      () => setReviewCtaReady(true),
+      reviewPlayed ? 0 : reviewCtaDelayMs,
+    );
     return () => window.clearTimeout(timer);
-  }, [step, reviewCtaDelayMs]);
+  }, [step, reviewCtaDelayMs, reviewPlayed]);
 
   // 입력 확인: 글자 채움이 끝나기 전에는 문장 속 키워드의 호버·클릭을 막는다.
   const [reviewFillDone, setReviewFillDone] = useState(false);
@@ -1334,9 +1357,12 @@ export function ResponseForm(props: Props) {
       setReviewFillDone(false);
       return;
     }
-    const timer = window.setTimeout(() => setReviewFillDone(true), reviewFillEndMs);
+    const timer = window.setTimeout(
+      () => setReviewFillDone(true),
+      reviewPlayed ? 0 : reviewFillEndMs,
+    );
     return () => window.clearTimeout(timer);
-  }, [step, reviewFillEndMs]);
+  }, [step, reviewFillEndMs, reviewPlayed]);
 
   // 단계 화면이 바뀌면 스크롤을 맨 위로 되돌린다(이전 화면의 스크롤 위치가 이어지는 문제).
   useEffect(() => {
@@ -1416,13 +1442,15 @@ export function ResponseForm(props: Props) {
             <div className={cn(!reviewFillDone && "pointer-events-none")}>
               <CharFillSentence
                 className="text-left sm:mt-3"
+                instant={reviewPlayed}
+                onFillDone={() => setReviewPlayed(true)}
                 paragraphs={[{ clauses: reviewClauses }]}
               />
             </div>
             <p
               className="mt-5 animate-fade-up-blur text-sm text-slate-500 motion-reduce:animate-none"
               style={{
-                animationDelay: `${reviewHelpDelayMs}ms`,
+                animationDelay: `${reviewPlayed ? 0 : reviewHelpDelayMs}ms`,
                 animationDuration: "1000ms",
               }}
             >
@@ -1565,7 +1593,7 @@ export function ResponseForm(props: Props) {
                     <Label htmlFor="pName" className="mb-0 text-lg">
                       이름을 입력해주세요
                     </Label>
-                    <HelpTooltip text="참석자 명단에 있는 분만 응답할 수 있도록 본인 확인을 해요. 입력한 이름·직무가 명단과 일치하면 다음 단계로 넘어가요." />
+                    <HelpTooltip text={IDENTITY_HELP_TEXT} />
                   </div>
                   <Input
                     id="pName"
@@ -1582,7 +1610,7 @@ export function ResponseForm(props: Props) {
                     <Label htmlFor="pRole" className="mb-0 text-lg">
                       직무를 선택해주세요
                     </Label>
-                    <HelpTooltip text="참석자 명단에 있는 분만 응답할 수 있도록 본인 확인을 해요. 입력한 이름·직무가 명단과 일치하면 다음 단계로 넘어가요." />
+                    <HelpTooltip text={IDENTITY_HELP_TEXT} />
                   </div>
                   <Select
                     variant="menu"
@@ -1663,12 +1691,19 @@ export function ResponseForm(props: Props) {
                   에는 회의가 어렵고,{" "}
                 </>
               ) : busyDates.size > 0 ? (
-                <>
+                allDatesBusy ? (
+                  // 모든 날짜를 고른 경우 — 날짜를 전부 나열하지 않고 기간 전체로 말한다.
                   <EditValue fieldLabel="회의가 어려운 날짜" tone="negative" onEdit={() => editAvailStep(0)}>
-                    {[...busyDates].sort().map(fmtMD).join(", ")}
+                    해당 기간에는 회의가 불가능해요.
                   </EditValue>
-                  에는 회의가 어렵고,{" "}
-                </>
+                ) : (
+                  <>
+                    <EditValue fieldLabel="회의가 어려운 날짜" tone="negative" onEdit={() => editAvailStep(0)}>
+                      {[...busyDates].sort().map(fmtMD).join(", ")}
+                    </EditValue>
+                    에는 회의가 어렵고,{" "}
+                  </>
+                )
               ) : (
                 <EditValue fieldLabel="회의가 어려운 날짜" tone="negative" onEdit={() => editAvailStep(0)}>
                   회의가 어려운 날짜는 없고,
@@ -1707,7 +1742,7 @@ export function ResponseForm(props: Props) {
         <div key={availStep} className="mt-auto pt-6">
           {/* 하단 입력 타이틀: 회의 만들기(2번) 하단 Label 과 동일 서식(text-lg + mb-1.5). */}
           <div className="mb-1.5 flex items-center gap-1.5">
-            <p className="text-lg font-semibold text-slate-700">{AVAIL_QUESTIONS[availStep]}</p>
+            <Label className="mb-0 text-lg">{AVAIL_QUESTIONS[availStep]}</Label>
             <HelpTooltip text={AVAIL_HELP_TEXT} />
           </div>
           <div>
@@ -1729,13 +1764,12 @@ export function ResponseForm(props: Props) {
                   onClick={openDtAdd}
                   aria-haspopup="dialog"
                   aria-expanded={dtModalOpen}
-                  className="flex h-11 w-full items-center justify-between rounded-xl border border-slate-300 bg-white px-3 text-sm transition-colors hover:border-slate-400 focus:border-2 focus:border-brand-400 focus:outline-none focus:ring-0"
+                  // 글씨 스타일은 회의 만들기 날짜 선택(DatePicker)과 동일 — 버튼형 피커라 text-sm(14px).
+                  className="flex h-11 w-full items-center justify-between rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 transition-colors hover:border-slate-400 focus:border-2 focus:border-brand-400 focus:outline-none focus:ring-0"
                 >
                   <span
                     className={
-                      Object.keys(dateTimeBusy).length > 0
-                        ? "font-semibold text-brand-600"
-                        : "text-slate-400"
+                      Object.keys(dateTimeBusy).length > 0 ? "text-slate-900" : "text-slate-400"
                     }
                   >
                     {Object.keys(dateTimeBusy).length > 0 ? "다른 날 추가하기" : "날짜 선택"}
@@ -2036,9 +2070,10 @@ function FloatingCaseSelector({
           onClick={() => setOpen(true)}
           aria-haspopup="dialog"
           aria-label={`상황 예시 열기 (현재 ${caseId}번 상황)`}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-sm font-bold text-white shadow-md shadow-brand-500/30 transition-transform active:scale-95"
+          // 보조 컨트롤 — 메인 문장보다 튀지 않게 조용한 슬레이트 칩으로 둔다.
+          className="inline-flex h-8 shrink-0 items-center rounded-full bg-slate-100 px-2.5 text-xs font-bold text-slate-500 transition-colors hover:bg-slate-200 active:scale-95"
         >
-          {caseId}
+          상황 예시 {caseId}
         </button>
         {open && (
           <>
@@ -2431,9 +2466,9 @@ function WaitingScreen({
   );
 }
 
-// 투표 없는 결과 화면 — 후보 카드는 선택 대상이 아니라 modu 의 판단을 설명하는 카드다.
-// (색·그룹·문장은 contextualResult 가 만든다. modu 는 확정하지 않는다 —
-//  최종 회의 시간은 참여자들이 추천안을 보고 제품 밖에서 정한다.)
+// 투표 없는 결과 화면 — 후보 카드 목록 대신 문장형 추천 요약(브리프)과
+// 날짜·시간 확인 모듈로 구성한다. modu 는 확정하지 않는다 —
+// 최종 회의 시간은 참여자들이 추천안을 보고 제품 밖에서 정한다.
 function ResultScreen({
   caseId,
   onSelectCase,
@@ -2490,6 +2525,17 @@ function ResultScreen({
     [contextual, summaries],
   );
 
+  // 날짜·시간 확인 결과 — 입력 모듈은 하단 고정 영역에 있고, 결과 카드는 본문에 렌더한다.
+  const [lookupResult, setLookupResult] = useState<AvailabilityLookupResult | null>(null);
+  const lookupResultRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    setLookupResult(null);
+  }, [caseId]);
+  // 하단 입력으로 확인하면 본문에 새로 뜬 결과 카드로 스크롤해 시선을 옮겨준다.
+  useEffect(() => {
+    if (lookupResult) lookupResultRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [lookupResult]);
+
   return (
     <div
       // 레이아웃 기준은 회의 만들기 페이지: 페이지 전체 스크롤 구조.
@@ -2537,9 +2583,34 @@ function ResultScreen({
           이 추천을 바탕으로 참여자들과 최종 회의 시간을 정해보세요.
         </p>
 
-        {/* ② 원하는 날짜·시간 확인 — 텍스트 검색 대신 picker 형(조회 전용, 확정/투표 아님).
-            key 로 상황 전환 시 선택·결과를 초기화한다. */}
-        <div className="px-1 pt-3">
+        {/* ② 날짜·시간 확인 결과 — 입력 모듈은 하단 고정 영역에 있고, 결과 카드는 본문에 노출한다.
+            key 로 새 결과마다 다시 마운트해 페이드인(fade-up-blur)을 재생한다. */}
+        {lookupResult && (
+          <div ref={lookupResultRef} className="px-1 pt-1">
+            <div
+              key={`${lookupResult.startAt}-${lookupResult.endAt}`}
+              style={{ animationDuration: "0.6s" }}
+              className="relative animate-fade-up-blur rounded-2xl bg-white p-4 shadow-[0_1px_4px_rgba(15,23,42,0.12)] motion-reduce:animate-none"
+            >
+              <AvailabilitySearchResultPanel
+                result={lookupResult}
+                onClear={() => setLookupResult(null)}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 하단 고정 — '원하는 날짜·시간 확인' 입력 + 캘린더 보기 CTA(맨 아래, 그 아래엔 아무것도 두지 않음).
+          PC 에서도 고정, 폭은 본문 컬럼과 맞춘다. */}
+      <MobileStickyAction
+        className="mt-6 sm:mt-8"
+        stickyDesktop
+        innerClassName="sm:max-w-2xl sm:px-6"
+      >
+        <div className="space-y-3">
+          {/* 원하는 날짜·시간 확인 — 텍스트 검색 대신 picker 형(조회 전용, 확정/투표 아님).
+              key 로 상황 전환 시 선택·결과를 초기화한다. */}
           <AvailabilityDateTimeLookup
             key={`lookup-${caseId}`}
             dates={dates}
@@ -2551,20 +2622,12 @@ function ResultScreen({
             lunchStart={lunchStart}
             lunchEnd={lunchEnd}
             initialDate={brief.primaryItems[0]?.date ?? null}
+            onResult={setLookupResult}
           />
+          <TDSButton size="xl" display="block" onClick={onViewCalendar}>
+            캘린더 보기
+          </TDSButton>
         </div>
-      </div>
-
-      {/* PC 에서도 하단 고정 — 고정 바 안에서 버튼 폭은 본문 컬럼(랜딩 CTA와 동일)과 맞춘다.
-          투표 CTA 는 제거 — 캘린더에서 분포와 판단 근거를 확인하는 흐름으로 잇는다. */}
-      <MobileStickyAction
-        className="mt-6 sm:mt-8"
-        stickyDesktop
-        innerClassName="sm:max-w-2xl sm:px-6"
-      >
-        <TDSButton size="xl" display="block" onClick={onViewCalendar}>
-          캘린더 보기
-        </TDSButton>
       </MobileStickyAction>
     </div>
   );
@@ -2685,6 +2748,13 @@ function SubmittedCalendarScreenWide({
     const wIdx = weekIndexOf(result.date);
     if (wIdx >= 0) setWeekIdx(wIdx);
   };
+  // 모바일은 검색 입력이 하단 고정 바에 있어, 결과 패널이 화면 밖일 수 있으므로 스크롤로 시선을 옮긴다.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (searchResult && window.matchMedia("(max-width: 639px)").matches) {
+      panelRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [searchResult]);
 
   const safeMonthIdx = Math.min(Math.max(monthIdx, 0), Math.max(0, months.length - 1));
   const month = months[safeMonthIdx];
@@ -3004,17 +3074,20 @@ function SubmittedCalendarScreenWide({
         </p>
       </div>
 
-      {/* 특정 시간 검색 — 성공하면 그 날짜로 이동·선택되고 우측 패널에 결과가 보인다. */}
-      <AvailabilitySearchBox
-        className="px-1 sm:max-w-sm"
-        dates={dates}
-        durationMinutes={durationMinutes}
-        participants={snapshot.participants}
-        blocks={snapshot.blocks}
-        workdayStart={workdayStart}
-        workdayEnd={workdayEnd}
-        onResult={handleSearchResult}
-      />
+      {/* 특정 시간 검색(데스크톱) — 성공하면 그 날짜로 이동·선택되고 우측 패널에 결과가 보인다.
+          모바일은 아래 하단 고정 바로 대체한다. */}
+      <div className="hidden sm:block">
+        <AvailabilitySearchBox
+          className="px-1 sm:max-w-sm"
+          dates={dates}
+          durationMinutes={durationMinutes}
+          participants={snapshot.participants}
+          blocks={snapshot.blocks}
+          workdayStart={workdayStart}
+          workdayEnd={workdayEnd}
+          onResult={handleSearchResult}
+        />
+      </div>
 
       {/* 범례 — busyPeriod 에선 차선 후보도 파랗게 칠해질 수 있어 '추천'이 아니라 '가장 나은'으로 쓴다. */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-slate-500">
@@ -3038,15 +3111,23 @@ function SubmittedCalendarScreenWide({
           )}
         </div>
 
-        {/* 선택한 날짜의 참석 명단 패널 — 검색 직후에는 검색한 시간 기준 결과를 우선 보여준다. */}
+        {/* 선택한 날짜의 참석 명단 패널 — 검색 직후에는 검색한 시간 기준 결과를 우선 보여준다.
+            (모바일 하단 고정 검색 후 이 패널로 스크롤하기 위해 ref 래퍼로 감싼다.) */}
+        <div ref={panelRef} className="scroll-mt-4">
         <Card className="space-y-3">
           {selectedDate === null ? (
             <p className="text-sm text-slate-500">날짜를 누르면 참석자별 가능 여부를 볼 수 있어요.</p>
           ) : searchResult && searchResult.date === selectedDate ? (
-            <AvailabilitySearchResultPanel
-              result={searchResult}
-              onClear={() => setSearchResult(null)}
-            />
+            <div
+              key={`${searchResult.startAt}-${searchResult.endAt}`}
+              style={{ animationDuration: "0.6s" }}
+              className="relative animate-fade-up-blur motion-reduce:animate-none"
+            >
+              <AvailabilitySearchResultPanel
+                result={searchResult}
+                onClear={() => setSearchResult(null)}
+              />
+            </div>
           ) : (
             <>
               <p className="text-base font-bold text-slate-900">
@@ -3063,9 +3144,23 @@ function SubmittedCalendarScreenWide({
             </>
           )}
         </Card>
+        </div>
       </div>
 
-      <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} />
+      {/* 모바일: 특정 시간 검색을 하단 고정 바로 (데스크톱은 위에 인라인). */}
+      <MobileStickyAction className="sm:hidden" innerClassName="sm:max-w-2xl">
+        <AvailabilitySearchBox
+          dates={dates}
+          durationMinutes={durationMinutes}
+          participants={snapshot.participants}
+          blocks={snapshot.blocks}
+          workdayStart={workdayStart}
+          workdayEnd={workdayEnd}
+          onResult={handleSearchResult}
+        />
+      </MobileStickyAction>
+
+      <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} aboveCta />
     </div>
   );
 }
