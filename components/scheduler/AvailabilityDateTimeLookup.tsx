@@ -161,7 +161,7 @@ export function AvailabilityDateTimeLookup({
         disabled={!canLookup}
         onClick={handleLookup}
       >
-        참석 가능 여부 확인
+        검색하기
       </TDSButton>
 
       <CalendarModal

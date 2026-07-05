@@ -2220,20 +2220,6 @@ function CheckIcon() {
   );
 }
 
-function CalendarLineIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
-      <path
-        d="M7 3v3M17 3v3M4 9h16M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 // 추천안(순위 리스트) 아이콘 — 캘린더 화면에서 추천안 화면으로 돌아가는 버튼용.
 function RankListIcon() {
   return (
@@ -2547,17 +2533,6 @@ function ResultScreen({
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
               {total}명 중 {current.submitted}명 응답
             </span>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onViewCalendar();
-              }}
-              aria-label="회의 캘린더 보기"
-              className="-my-1 flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
-            >
-              <CalendarLineIcon />
-            </button>
           </div>
         </div>
         {/* 데스크톱: 인라인 케이스 선택. 모바일은 우하단 플로팅 버튼으로 대체(화면 절약). */}
@@ -2881,7 +2856,7 @@ function SubmittedCalendarScreenWide({
         <div className="space-y-4">{monthCard()}</div>
 
         {/* 선택한 날짜의 참석 명단 패널 — 날짜 전체 요약을 보여준다. */}
-        <Card className="space-y-3">
+        <Card className="space-y-3 !border-0 shadow-[0_12px_36px_rgba(15,23,42,0.12)]">
           {selectedDate === null ? (
             <p className="text-sm text-slate-500">날짜를 누르면 참석자별 가능 여부를 볼 수 있어요.</p>
           ) : (
