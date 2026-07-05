@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { DebugPageTag } from "@/components/dev/DebugPageTag";
 import { MobileHeaderTitle } from "@/components/layout/MobileHeaderTitle";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { MeetingCreatedPanel } from "@/components/meeting/MeetingCreatedPanel";
@@ -48,7 +47,6 @@ export default async function SharePage({
 
   return (
     <div className="flex min-h-dvh flex-col bg-white/95">
-      <DebugPageTag no={3} label="링크 공유" />
       {/* 모바일: 완료 화면이라 헤더(뒤로가기 포함)를 노출하지 않는다. 데스크톱은 유지. */}
       <SiteHeader mobileHidden />
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 sm:px-6">

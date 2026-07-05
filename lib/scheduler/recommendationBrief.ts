@@ -1,12 +1,14 @@
 // 추천안 화면의 문장형 추천 요약(ViewModel).
 // 후보 카드/필터를 나열하는 대신 "modu가 먼저 판단을 정리해주는" 짧은 문장을 만든다.
-//   headline 1줄 + primary 1~2줄 + avoid 0~1줄 + helper 1줄 — 보고서가 아니라 답변.
-// 특정 대표 슬롯(10:00~11:00)을 노출하지 않고 날짜 전체 상태(DateAvailabilitySummary)를
+//   headline 1줄 + context comment 1줄 + avoid 0~1줄 — 보고서가 아니라 답변.
+// 추천 시간 화면의 상단 판단 문구는 캘린더 화면과 같은 contextual.headline/comment 를 쓴다.
+// 단일 후보 슬롯(10:00~11:00)을 먼저 노출하지 않고 날짜 전체 상태(DateAvailabilitySummary)를
 // 우선 사용한다. 시간은 바쁜 기간처럼 정말 특정 시간만 의미 있을 때만 노출한다.
 
-import { formatKoreanTime, formatKoreanTimeRange } from "@/lib/time";
+import { formatKoreanTime, formatKoreanTimeRange, isoToEpoch } from "@/lib/time";
 import type { ContextualScheduleResult } from "./contextualResult";
 import type { DateAvailabilitySummary } from "./dateAvailabilitySummary";
+import type { AvailabilityLookupResult } from "./availabilityLookup";
 
 export type RecommendationBriefItem = {
   date: string; // YYYY-MM-DD
@@ -63,18 +65,43 @@ function avoidSeverity(summary: DateAvailabilitySummary, avoidMarked: Set<string
   return 0;
 }
 
-/** 전체에서 가장 나은 날짜 요약(필수 불가 적음 > 가능 인원 많음 > 이른 날짜). */
-function pickBestSummary(summaries: DateAvailabilitySummary[]): DateAvailabilitySummary | null {
-  const withBest = summaries.filter((s) => s.bestSlot);
-  if (withBest.length === 0) return null;
-  return [...withBest].sort((a, b) => {
-    const ar = a.bestSlot!.requiredBusyNames.length;
-    const br = b.bestSlot!.requiredBusyNames.length;
-    if (ar !== br) return ar - br;
-    const aa = a.bestSlot!.totalAvailable;
-    const ba = b.bestSlot!.totalAvailable;
-    if (aa !== ba) return ba - aa;
-    return a.date < b.date ? -1 : 1;
+function summarySlots(summary: DateAvailabilitySummary): AvailabilityLookupResult[] {
+  return [
+    ...summary.allAvailableSlots,
+    ...summary.requiredIssueSlots,
+    ...summary.optionalIssueSlots,
+    ...summary.pendingSlots,
+  ];
+}
+
+function compareLookupResults(a: AvailabilityLookupResult, b: AvailabilityLookupResult): number {
+  if (a.requiredBusyNames.length !== b.requiredBusyNames.length) {
+    return a.requiredBusyNames.length - b.requiredBusyNames.length;
+  }
+  if (a.totalAvailable !== b.totalAvailable) return b.totalAvailable - a.totalAvailable;
+  return isoToEpoch(a.startAt) - isoToEpoch(b.startAt);
+}
+
+function pickLeastDifficultSlot(summary: DateAvailabilitySummary): AvailabilityLookupResult | null {
+  const slots = summarySlots(summary);
+  return slots.length > 0 ? [...slots].sort(compareLookupResults)[0] : null;
+}
+
+/** 바쁜 기간에서 차선 후보를 말해야 할 때만 날짜와 슬롯을 함께 고른다. */
+function pickLeastDifficultSummary(
+  summaries: DateAvailabilitySummary[],
+): { summary: DateAvailabilitySummary; slot: AvailabilityLookupResult } | null {
+  const candidates = summaries
+    .map((summary) => ({ summary, slot: pickLeastDifficultSlot(summary) }))
+    .filter(
+      (item): item is { summary: DateAvailabilitySummary; slot: AvailabilityLookupResult } =>
+        item.slot !== null,
+    );
+  if (candidates.length === 0) return null;
+  return [...candidates].sort((a, b) => {
+    const result = compareLookupResults(a.slot, b.slot);
+    if (result !== 0) return result;
+    return a.summary.date < b.summary.date ? -1 : 1;
   })[0];
 }
 
@@ -92,7 +119,6 @@ export function buildRecommendationBrief(args: {
 }): RecommendationBrief {
   const { contextual, summaries } = args;
   const hasPending = contextual.hasPending;
-  const pendingCount = contextual.pendingNames.length;
   const avoidMarked = new Set(
     contextual.calendarMarks.filter((m) => m.tone === "avoid").map((m) => m.date),
   );
@@ -153,8 +179,7 @@ export function buildRecommendationBrief(args: {
     (s) =>
       !s.allSlotsAllAvailable &&
       !avoidDates.has(s.date) &&
-      s.bestSlot !== null &&
-      s.bestSlot.requiredBusyNames.length === 0 &&
+      pickLeastDifficultSlot(s)?.requiredBusyNames.length === 0 &&
       !tier2.includes(s),
   );
 
@@ -218,10 +243,10 @@ export function buildRecommendationBrief(args: {
           : `${lead}${joined}을 먼저 확인해보세요. 필수참석자는 모두 참석할 수 있어요.`;
     }
   } else {
-    // 바쁜 기간/좋은 후보 없음 — 이때만 특정 시간을 노출한다(가장 나은 시간이 정보다).
-    const best = pickBestSummary(summaries);
-    if (best?.bestSlot) {
-      const slot = best.bestSlot;
+    // 바쁜 기간/좋은 후보 없음 — 이때만 특정 시간을 노출한다(그나마 덜 어려운 시간이 정보다).
+    const leastDifficult = pickLeastDifficultSummary(summaries);
+    if (leastDifficult) {
+      const { summary: best, slot } = leastDifficult;
       const timeLabel = `${dateLabel(best.date)} ${formatKoreanTime(slot.startAt)}`;
       primaryItems = [
         {
@@ -292,31 +317,11 @@ export function buildRecommendationBrief(args: {
     }
   }
 
-  // ---- 한 줄 판단 + 보조 안내 ----
-  let headline: string;
-  if (hasPending) {
-    headline = `아직 ${pendingCount}명이 응답하지 않아 잠정 결과예요.`;
-  } else if (contextual.context === "mostlyAvailable") {
-    headline = "이번 회의는 잡기 쉬운 편이에요.";
-  } else if (contextual.context === "normal") {
-    headline = "먼저 확인해보면 좋은 날짜가 보여요.";
-  } else if (contextual.context === "busyPeriod") {
-    headline = "이번 기간은 다들 바빠서 모든 인원이 맞는 시간이 많지 않아요.";
-  } else {
-    headline = "필수참석자가 모두 가능한 시간이 많지 않아요.";
-  }
-
-  const helperSentence = hasPending
-    ? "미응답자가 있어 결과가 바뀔 수 있어요."
-    : contextual.context === "noGoodOption"
-      ? "가능하면 회의 기간을 조금 넓혀보는 게 좋아요."
-      : undefined;
-
   return {
-    headline,
-    primarySentence,
+    headline: contextual.headline,
+    primarySentence: contextual.comment || primarySentence,
     avoidSentence,
-    helperSentence,
+    helperSentence: undefined,
     primaryItems,
     avoidItems,
     nameBadges: [...nameBadgeMap].map(([name, attendanceType]) => ({ name, attendanceType })),

@@ -72,7 +72,7 @@ function isStepIndex(value: unknown): value is number {
 }
 
 function isCaseId(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 8;
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 7;
 }
 
 function isDateList(value: unknown): value is string[] {

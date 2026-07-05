@@ -48,14 +48,13 @@ const KEYFRAMES = `
 @keyframes mi-cell-mark { to { background: #fecaca; } }
 @keyframes mi-cell-fall-l { to { opacity: 0; transform: translateY(150px) rotate(-18deg); } }
 @keyframes mi-cell-fall-r { to { opacity: 0; transform: translateY(150px) rotate(22deg); } }
-/* 장면 4: 후보 리스트가 위로 빠르게 날아가고, 워드마크가 팡 하고 등장한다 */
+/* 장면 4: 후보 리스트가 위로 빠르게 날아가고, 워드마크가 등장한다 */
 @keyframes mi-list-up { to { opacity: 0; transform: translateY(-110px) scale(0.94); } }
 @keyframes mi-pop-in {
   0%   { opacity: 0; transform: scale(0.45); }
   70%  { opacity: 1; transform: scale(1.1); }
   100% { opacity: 1; transform: scale(1); }
 }
-@keyframes mi-burst { 0% { opacity: 0.55; transform: scale(0.2); } 100% { opacity: 0; transform: scale(1.7); } }
 `;
 
 // ── 장면 데이터 ─────────────────────────────
@@ -71,31 +70,35 @@ const TYPED: Array<{ ch?: string; red?: boolean }> = [
   { ch: "해" }, { ch: "요" },
 ];
 
-// 장면 2: 참석자 뱃지 4개(모서리) + 중앙으로 수렴하는 불가 칩 4개.
+// 장면 2: 참석자 뱃지 6개 + 중앙으로 수렴하는 불가 칩 6개.
+// 필수 4명(위/중간 두 줄) + 선택 2명(아래 줄). 세로 중앙(분석 필 자리)은 비워 겹침을 막는다.
 const BADGES = [
-  { name: "지수", required: true, pos: { left: -8, top: 60 }, pop: 4.8, float: "mi-floaty 3.2s ease-in-out 0.2s infinite" },
-  { name: "민준", required: true, pos: { right: -8, top: 60 }, pop: 4.95, float: "mi-floaty 3.6s ease-in-out 0.8s infinite" },
-  { name: "지석", required: true, pos: { left: -8, top: 218 }, pop: 5.4, float: "mi-floaty 3.3s ease-in-out 0.6s infinite" },
-  { name: "하늘", required: true, pos: { right: -8, top: 218 }, pop: 5.55, float: "mi-floaty 3.7s ease-in-out 1.3s infinite" },
-  { name: "서연", required: false, pos: { left: -8, top: 384 }, pop: 5.1, float: "mi-floaty 3s ease-in-out 0.4s infinite" },
-  { name: "도윤", required: false, pos: { right: -8, top: 384 }, pop: 5.25, float: "mi-floaty 3.4s ease-in-out 1.1s infinite" },
+  { name: "지수", required: true, pos: { left: -8, top: 56 }, pop: 4.8, float: "mi-floaty 3.2s ease-in-out 0.2s infinite" },
+  { name: "민준", required: true, pos: { right: -8, top: 56 }, pop: 4.95, float: "mi-floaty 3.6s ease-in-out 0.8s infinite" },
+  { name: "지석", required: true, pos: { left: -8, top: 140 }, pop: 5.1, float: "mi-floaty 3.3s ease-in-out 0.6s infinite" },
+  { name: "하늘", required: true, pos: { right: -8, top: 140 }, pop: 5.25, float: "mi-floaty 3.7s ease-in-out 1.3s infinite" },
+  { name: "서연", required: false, pos: { left: -8, top: 388 }, pop: 5.4, float: "mi-floaty 3s ease-in-out 0.4s infinite" },
+  { name: "도윤", required: false, pos: { right: -8, top: 388 }, pop: 5.55, float: "mi-floaty 3.4s ease-in-out 1.1s infinite" },
 ] as const;
 
+// 각 칩은 배지 근처에서 나와 중앙(분석 필, ≈y265)으로 비슷한 거리를 이동해 수렴한다.
 const CHIPS = [
-  { label: "7/8 종일", pos: { left: 8, top: 100 }, dx: 127, dy: 152, pop: 5.5, converge: 5.95 },
-  { label: "7/9 오전", pos: { right: 8, top: 100 }, dx: -125, dy: 152, pop: 5.75, converge: 6.2 },
-  { label: "7/11", pos: { left: 8, top: 352 }, dx: 134, dy: -100, pop: 6, converge: 6.45 },
-  { label: "7/14 오후", pos: { right: 8, top: 352 }, dx: -120, dy: -100, pop: 6.25, converge: 6.7 },
+  { label: "7/8 종일", pos: { left: 8, top: 96 }, dx: 127, dy: 158, pop: 5.5, converge: 5.95 },
+  { label: "7/9 오전", pos: { right: 8, top: 96 }, dx: -125, dy: 158, pop: 5.65, converge: 6.1 },
+  { label: "7/10 오후", pos: { left: 8, top: 174 }, dx: 127, dy: 82, pop: 5.8, converge: 6.25 },
+  { label: "7/13 오전", pos: { right: 8, top: 174 }, dx: -125, dy: 82, pop: 5.95, converge: 6.4 },
+  { label: "7/11", pos: { left: 8, top: 356 }, dx: 134, dy: -100, pop: 6.1, converge: 6.55 },
+  { label: "7/14 오후", pos: { right: 8, top: 356 }, dx: -120, dy: -100, pop: 6.25, converge: 6.7 },
 ] as const;
 
 // 장면 3: 탈락하는 날짜(값은 등장 순서 인덱스). 스캔이 지나간 뒤 빨갛게 물들고, 순서대로 낙하한다.
 const CELL_FALL: Record<number, number> = {
   3: 0, 6: 1, 8: 2, 9: 3, 10: 4, 11: 5, 13: 6, 14: 7, 21: 8, 24: 9, 28: 10,
 };
-const MARK_BASE = 10.8; // 빨간 칸 물들기 시작
+const MARK_BASE = 11.15; // 빨간 칸 물들기 시작(느려진 스캔이 지나간 뒤)
 const MARK_STEP = 0.03;
-const FALL_BASE = 11.3; // 낙하 시작
-const FALL_STEP = 0.07;
+const FALL_BASE = 11.55; // 낙하 시작
+const FALL_STEP = 0.06;
 
 // 추천 후보 리스트 — 달력 다음 장면(장면 4)에서 새로 노출. 2026년 7월 기준 요일(주말·탈락일 제외).
 const CANDIDATE_DATES = [
@@ -486,7 +489,7 @@ function MotionScenes() {
               style={{
                 position: "relative",
                 animation:
-                  "mi-pill-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) 5.2s both, mi-pill-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 6.6s, mi-pill-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 6.85s, mi-pill-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 7.1s, mi-pill-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 7.35s",
+                  "mi-pill-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) 5.2s both, mi-pill-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 6.6s, mi-pill-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 6.8s, mi-pill-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 7s, mi-pill-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 7.2s, mi-pill-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 7.4s, mi-pill-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 7.6s",
                 opacity: 0,
               }}
             >
@@ -518,7 +521,7 @@ function MotionScenes() {
             </div>
           </div>
 
-          <SceneCaption text="모두의 응답을 모아서 해석하고" delay={5} />
+          <SceneCaption text="모두의 응답을 모아 분석하고" delay={5} />
         </div>
       </div>
 
@@ -612,14 +615,14 @@ function MotionScenes() {
                     background:
                       "linear-gradient(105deg, rgba(148, 163, 184, 0) 0%, rgba(203, 213, 225, 0.4) 42%, rgba(255, 255, 255, 0.95) 50%, rgba(203, 213, 225, 0.4) 58%, rgba(148, 163, 184, 0) 100%)",
                     transform: "translateX(-130%)",
-                    animation: "mi-scan 0.8s ease-in-out 9.9s both",
+                    animation: "mi-scan 1.5s ease-in-out 9.7s both",
                   }}
                 />
               </div>
             </div>
           </div>
 
-          <SceneCaption text="어려운 날은 덜어내면" delay={9.5} />
+          <SceneCaption text="불가능한 날은 제외하여" delay={9.5} />
         </div>
       </div>
 
@@ -659,23 +662,8 @@ function MotionScenes() {
             ))}
           </div>
 
-          {/* 팡 버스트 + 마무리 워드마크 */}
+          {/* 마무리 워드마크 */}
           <div style={{ position: "absolute", left: 0, right: 0, top: "50%", transform: "translateY(-50%)", textAlign: "center" }}>
-            <div
-              style={{
-                position: "absolute",
-                left: "50%",
-                top: "50%",
-                width: 240,
-                height: 240,
-                margin: "-120px 0 0 -120px",
-                borderRadius: 999,
-                background:
-                  "radial-gradient(circle, rgba(69, 147, 252, 0.45) 0%, rgba(144, 194, 255, 0.25) 40%, rgba(49, 130, 246, 0) 70%)",
-                opacity: 0,
-                animation: "mi-burst 0.6s ease-out 15.1s both",
-              }}
-            />
             <div
               style={{
                 position: "relative",
@@ -686,8 +674,6 @@ function MotionScenes() {
               <Wordmark />
             </div>
           </div>
-
-          <SceneCaption text="모두가 되는 시간만 남아요" delay={13} flyAt={14.4} />
         </div>
       </div>
     </div>
@@ -736,6 +722,18 @@ export function LandingIntro() {
             </div>
           )}
         </div>
+        {phase === "playing" && (
+          <p
+            className="mt-3 text-center text-[19px] font-extrabold text-slate-700"
+            style={{
+              animation:
+                "mi-fade-up 0.55s ease-out 13s both, mi-scene-out 0.25s ease 14.4s forwards",
+              opacity: 0,
+            }}
+          >
+            최적의 시간을 알려드려요
+          </p>
+        )}
       </main>
 
       {/* 하단 고정 CTA — 인트로가 끝나야 페이드인. PC·모바일 공통, CTA 아래에는 아무것도 두지 않는다. */}

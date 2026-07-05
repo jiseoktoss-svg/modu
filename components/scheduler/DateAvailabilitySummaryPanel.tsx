@@ -6,23 +6,33 @@ import { formatKoreanTimeRange } from "@/lib/time";
 import type { DateAvailabilitySummary } from "@/lib/scheduler/dateAvailabilitySummary";
 
 // 캘린더에서 날짜를 눌렀을 때 보여주는 '날짜 전체' 요약 패널.
-// 대표 후보 시간 하나가 아니라 그 날짜 전체의 가능 상태(+예외 시간)를 먼저 말해,
-// "이 날은 이 시간만 가능한가?"라는 오해를 막는다. 조회 전용 — 확정/투표가 아니다.
+// 그 날짜 전체의 가능 상태(+예외 시간)를 먼저 말해 "이 날은 이 시간만 가능한가?"
+// 라는 오해를 막는다. 조회 전용 — 확정/투표가 아니다.
 
 type DateAvailabilitySummaryPanelProps = {
   summary: DateAvailabilitySummary;
 };
 
 export function DateAvailabilitySummaryPanel({ summary }: DateAvailabilitySummaryPanelProps) {
-  // 명단·필수 표시는 대표 슬롯 기준(참석자 구성은 시간과 무관하게 동일하다).
-  const rep = summary.bestSlot;
+  const allSlots = [
+    ...summary.allAvailableSlots,
+    ...summary.requiredIssueSlots,
+    ...summary.optionalIssueSlots,
+    ...summary.pendingSlots,
+  ];
+  // 참석자 구성은 시간과 무관하게 동일하므로 명단 표시에만 첫 슬롯을 샘플로 쓴다.
+  const sampleSlot = allSlots[0] ?? null;
   const requiredNames = new Set(
-    rep
-      ? [...rep.requiredAvailableNames, ...rep.requiredBusyNames, ...rep.requiredPendingNames]
+    sampleSlot
+      ? [
+          ...sampleSlot.requiredAvailableNames,
+          ...sampleSlot.requiredBusyNames,
+          ...sampleSlot.requiredPendingNames,
+        ]
       : [],
   );
   // 예외가 없는 날만 가능 명단 칩을 보여준다(예외가 있으면 시간대별로 명단이 달라진다).
-  const showAvailableChips = rep !== null && summary.exceptionRanges.length === 0;
+  const showAvailableChips = sampleSlot !== null && summary.exceptionRanges.length === 0;
 
   return (
     <div className="space-y-3">
@@ -72,24 +82,24 @@ export function DateAvailabilitySummaryPanel({ summary }: DateAvailabilitySummar
         </div>
       )}
 
-      {showAvailableChips && rep && (
+      {showAvailableChips && sampleSlot && (
         <NameGroup
           tone="green"
           label="가능"
-          names={rep.availableNames}
+          names={sampleSlot.availableNames}
           requiredNames={requiredNames}
         />
       )}
-      {rep && rep.pendingNames.length > 0 && (
+      {sampleSlot && sampleSlot.pendingNames.length > 0 && (
         <NameGroup
           tone="slate"
           label="미응답"
-          names={rep.pendingNames}
+          names={sampleSlot.pendingNames}
           requiredNames={requiredNames}
         />
       )}
 
-      {(showAvailableChips || (rep && rep.pendingNames.length > 0)) && (
+      {(showAvailableChips || (sampleSlot && sampleSlot.pendingNames.length > 0)) && (
         <p className="px-0.5 text-[11px] text-slate-400">
           이름 옆 &lsquo;필수/선택&rsquo;은 참석 유형이에요.
         </p>

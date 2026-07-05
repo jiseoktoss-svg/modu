@@ -54,30 +54,32 @@ function briefForCase(id: number, days: number) {
 describe("buildRecommendationBrief", () => {
   it("0. 데모 케이스별 상황이 context와 headline에 다르게 드러난다", () => {
     const cases = new Map(
-      [1, 3, 6, 7, 8].map((id) => [id, analysisForCase(id, 8)]),
+      [1, 3, 5, 6, 7].map((id) => [id, analysisForCase(id, 8)]),
     );
 
     expect(cases.get(1)?.contextual.context).toBe("mostlyAvailable");
     expect(cases.get(3)?.contextual.context).toBe("normal");
-    expect(cases.get(6)?.contextual.context).toBe("busyPeriod");
-    expect(cases.get(7)?.contextual.context).toBe("noGoodOption");
+    expect(cases.get(5)?.contextual.context).toBe("busyPeriod");
+    expect(cases.get(6)?.contextual.context).toBe("noGoodOption");
 
+    expect(cases.get(5)?.contextual.context).not.toBe("mostlyAvailable");
     expect(cases.get(6)?.contextual.context).not.toBe("mostlyAvailable");
     expect(cases.get(7)?.contextual.context).not.toBe("mostlyAvailable");
-    expect(cases.get(8)?.contextual.context).not.toBe("mostlyAvailable");
 
-    expect(cases.get(8)?.contextual.hasPending).toBe(true);
-    expect(cases.get(8)?.brief.headline).toContain(
-      "아직 2명이 응답하지 않아 잠정 결과예요",
-    );
+    cases.forEach(({ contextual, brief }) => {
+      expect(brief.headline).toBe(contextual.headline);
+      expect(brief.primarySentence).toBe(contextual.comment);
+    });
+
+    expect(cases.get(7)?.contextual.hasPending).toBe(true);
+    expect(cases.get(7)?.brief.headline).toContain("아직 2명이 응답하지 않아 잠정 결과예요");
   });
 
-  it("1. 전원 가능 날짜가 적으면 시간 슬롯이 아니라 날짜를 직접 나열한다 (시나리오 1, 짧은 기간)", () => {
-    const brief = briefForCase(1, 3);
+  it("1. 추천 시간 화면 상단 문구는 캘린더 화면 문구와 같다 (시나리오 1, 짧은 기간)", () => {
+    const { contextual, brief } = analysisForCase(1, 3);
 
-    expect(brief.primarySentence).toContain("먼저 확인해보세요");
-    expect(brief.primarySentence).toContain("회의 가능 시간대 전체");
-    // 대표 슬롯 시간(10:00~11:00 등)을 노출하지 않는다.
+    expect(brief.headline).toBe(contextual.headline);
+    expect(brief.primarySentence).toBe(contextual.comment);
     expect(brief.primarySentence).not.toMatch(/\d{2}:\d{2}/);
     expect(brief.primaryItems[0].tone).toBe("good");
   });
@@ -89,13 +91,11 @@ describe("buildRecommendationBrief", () => {
     expect(brief.primaryItems.length).toBeLessThanOrEqual(3);
   });
 
-  it("2-1. 전원 가능 날짜가 많고 특정 시간만 어려운 날은 개수 중심으로 말한다 (시나리오 1, 넓은 기간)", () => {
-    const brief = briefForCase(1, 8);
+  it("2-1. 전원 가능 날짜가 많아도 상단 판단은 캘린더 화면과 맞춘다 (시나리오 1, 넓은 기간)", () => {
+    const { contextual, brief } = analysisForCase(1, 8);
 
-    // 3개만 나열하거나(오해) 특정 시간만 어려운 날을 '날짜 전체 제외'로 말하지 않는다.
-    expect(brief.primarySentence).toMatch(/전원이 참석할 수 있는 날짜가 \d+개 있어요/);
-    expect(brief.primarySentence).not.toContain("제외하면");
-    expect(brief.primarySentence).not.toContain("먼저 확인해보세요");
+    expect(brief.headline).toBe(contextual.headline);
+    expect(brief.primarySentence).toBe(contextual.comment);
     // 그 시간대는 avoid 문장에서 '겹치는 회의는'으로 짚는다.
     expect(brief.avoidSentence).toContain("겹치는 회의는");
   });
@@ -111,16 +111,6 @@ describe("buildRecommendationBrief", () => {
     expect(brief.avoidSentence).toContain("정우진님");
   });
 
-  it("2-2. 하루 전체가 어려운 예외 날짜는 '~만 제외하면'으로 말한다 (시나리오 4, 외근)", () => {
-    const brief = briefForCase(4, 6);
-
-    expect(brief.primarySentence).toMatch(/7월 \d+일만 제외하면/);
-    expect(brief.primarySentence).toContain("대부분 날짜에 모든 인원이 참석할 수 있어요");
-    expect(brief.primarySentence).not.toContain("먼저 확인해보세요");
-    // '제외하면' 문장과 짝이 되는 avoid 는 특정 시간이 아니라 날짜 기준으로 말한다.
-    expect(brief.avoidSentence).toContain("다른 날짜를 먼저 보는 게 좋아요");
-  });
-
   it("3. 피하면 좋은 날짜가 있으면 avoidSentence 에 나온다 (시나리오 2)", () => {
     const brief = briefForCase(2, 8);
 
@@ -130,23 +120,22 @@ describe("buildRecommendationBrief", () => {
     expect(brief.avoidSentence).toContain("다른 날짜를 먼저 보는 게 좋아요");
   });
 
-  it("4. 점심 직후처럼 특정 시간대만 어려우면 예외 시간 문구가 나온다 (시나리오 5)", () => {
-    const brief = briefForCase(5, 3);
+  it("4. 특정 시간대만 어려우면 예외 시간 문구가 나온다 (시나리오 4)", () => {
+    const brief = briefForCase(4, 3);
 
-    // 피할 '날짜'는 없지만 예외 '시간'이 있는 상황 — 시간대와 이름을 함께 알려준다.
     expect(brief.avoidSentence).toBeDefined();
     expect(brief.avoidSentence).toMatch(/\d{2}:\d{2}~\d{2}:\d{2}/);
-    // 예외 범위는 겹치는 후보 슬롯의 병합이라 "겹치는 회의는"으로 회의 기준임을 밝힌다.
     expect(brief.avoidSentence).toContain("겹치는 회의는");
     expect(brief.avoidSentence).toContain("한예린님");
     expect(brief.avoidSentence).toContain("그 시간을 피해서");
   });
 
-  it("5. 미응답이 있으면 잠정 결과 문구와 응답 기준 안내가 나온다 (시나리오 8)", () => {
-    const brief = briefForCase(8, 3);
+  it("5. 미응답이 있으면 캘린더 화면과 같은 잠정 결과 문구가 나온다 (시나리오 7)", () => {
+    const { contextual, brief } = analysisForCase(7, 3);
 
+    expect(brief.headline).toBe(contextual.headline);
+    expect(brief.primarySentence).toBe(contextual.comment);
     expect(brief.headline).toContain("잠정 결과");
-    expect(brief.primarySentence).toContain("지금까지의 응답 기준");
-    expect(brief.helperSentence).toContain("결과가 바뀔 수 있어요");
+    expect(brief.helperSentence).toBeUndefined();
   });
 });

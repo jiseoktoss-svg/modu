@@ -1,4 +1,3 @@
-import { DebugPageTag } from "@/components/dev/DebugPageTag";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { LandingIntro } from "@/components/landing/LandingIntro";
 
@@ -7,7 +6,6 @@ import { LandingIntro } from "@/components/landing/LandingIntro";
 export default function LandingPage() {
   return (
     <div className="flex min-h-dvh flex-col bg-white/95">
-      <DebugPageTag no={1} label="랜딩" />
       <SiteHeader mobileLogo />
       <LandingIntro />
     </div>

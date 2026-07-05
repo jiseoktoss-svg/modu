@@ -76,8 +76,8 @@ function makeSlot(over: {
 // ---- 테스트 ----
 
 describe("contextualResult", () => {
-  it("1. pending 은 context 가 아니라 잠정 결과 수식어로 처리된다 (시나리오 8)", () => {
-    const slots = adaptDemoCaseToEvaluatedSlots(caseById(8), upcomingWeekdays(3));
+  it("1. pending 은 context 가 아니라 잠정 결과 수식어로 처리된다 (시나리오 7)", () => {
+    const slots = adaptDemoCaseToEvaluatedSlots(caseById(7), upcomingWeekdays(3));
     const result = buildContextualScheduleResult(slots);
 
     expect(result.hasPending).toBe(true);
@@ -104,7 +104,7 @@ describe("contextualResult", () => {
     expect(result.rankGroups[1].slots).toHaveLength(1);
   });
 
-  it("3. mostlyAvailable 에서는 파란색이 남발되지 않는다 (시나리오 1)", () => {
+  it("3. mostlyAvailable 에서는 recommended 톤이 남발되지 않는다 (시나리오 1)", () => {
     const slots = adaptDemoCaseToEvaluatedSlots(caseById(1), upcomingWeekdays(8));
     const result = buildContextualScheduleResult(slots);
 
@@ -112,28 +112,28 @@ describe("contextualResult", () => {
     expect(result.calendarMarks.filter((m) => m.tone === "recommended")).toHaveLength(0);
   });
 
-  it("4. 넓은 기간이어도 시나리오 6은 자동 전원 가능 후보로 희석되지 않는다", () => {
-    const slots = adaptDemoCaseToEvaluatedSlots(caseById(6), upcomingWeekdays(8));
+  it("4. 넓은 기간이어도 시나리오 5는 자동 전원 가능 후보로 희석되지 않는다", () => {
+    const slots = adaptDemoCaseToEvaluatedSlots(caseById(5), upcomingWeekdays(8));
     const result = buildContextualScheduleResult(slots);
 
     expect(result.context).toBe("busyPeriod");
     expect(result.context).not.toBe("mostlyAvailable");
     expect(result.calendarMarks.filter((m) => m.tone === "recommended")).toHaveLength(0);
-    // 시나리오 6의 필수 어려움 인원 중 한 명이 문구에 나와야 한다.
+    // 시나리오 5의 필수 어려움 인원 중 한 명이 문구에 나와야 한다.
     expect(
       ["김지훈", "이서연", "박민준"].some((name) => result.comment.includes(`${name}님`)),
     ).toBe(true);
   });
 
-  it("5. busyPeriod 에서 필수참석자가 빠지는 최상위 후보는 파란색으로 칠하지 않는다 (시나리오 6)", () => {
-    const slots = adaptDemoCaseToEvaluatedSlots(caseById(6), upcomingWeekdays(3));
+  it("5. busyPeriod 에서 필수참석자가 빠지는 후보는 avoid 톤으로 칠한다 (시나리오 5)", () => {
+    const slots = adaptDemoCaseToEvaluatedSlots(caseById(5), upcomingWeekdays(6));
     const result = buildContextualScheduleResult(slots);
 
     expect(result.context).toBe("busyPeriod");
-    // 시나리오 6은 모든 후보가 필수 1명씩 빠진다 — 파랑은 필수 전원 가능 후보에만 쓴다.
+    // 시나리오 5는 모든 후보가 필수 1명씩 빠진다 — recommended 는 필수 전원 가능 후보에만 쓴다.
     expect(result.calendarMarks.filter((m) => m.tone === "recommended")).toHaveLength(0);
-    // 바쁜 기간에 비슷한 차선 후보들을 빨강으로 도배하지도 않는다.
-    expect(result.calendarMarks.filter((m) => m.tone === "avoid")).toHaveLength(0);
+    // 케이스와 무관하게 필수참석자가 빠지는 후보일은 피하는 날로 표시한다.
+    expect(result.calendarMarks.filter((m) => m.tone === "avoid")).toHaveLength(3);
   });
 
   it("5-1. busyPeriod 에서 필수 전원 가능한 최선 후보는 1~2개만 recommended 가 된다", () => {
@@ -155,12 +155,12 @@ describe("contextualResult", () => {
     const recommended = result.calendarMarks.filter((m) => m.tone === "recommended");
     expect(recommended.length).toBeGreaterThanOrEqual(1);
     expect(recommended.length).toBeLessThanOrEqual(2);
-    // 파랑은 필수 전원 가능 후보(d[0])에만.
+    // recommended 는 필수 전원 가능 후보(d[0])에만.
     expect(recommended[0].date).toBe(d[0]);
   });
 
-  it("6. noGoodOption 에서는 파란색 없이 기간을 넓히는 문구가 나온다 (시나리오 7)", () => {
-    const slots = adaptDemoCaseToEvaluatedSlots(caseById(7), upcomingWeekdays(3));
+  it("6. noGoodOption 에서는 recommended 톤 없이 기간을 넓히는 문구가 나온다 (시나리오 6)", () => {
+    const slots = adaptDemoCaseToEvaluatedSlots(caseById(6), upcomingWeekdays(3));
     const result = buildContextualScheduleResult(slots);
 
     expect(result.context).toBe("noGoodOption");
@@ -177,7 +177,6 @@ describe("contextualResult", () => {
 
     expect(marks).toHaveLength(1);
     expect(marks[0].tone).toBe("recommended");
-    expect(marks[0].representativeSlot?.startAt).toBe(good.startAt);
   });
 
   it("8. 특정 시간만 위험한 날짜는 날짜 전체가 빨강이 되지 않는다", () => {
@@ -250,10 +249,10 @@ describe("추천안 해석(rankGroups)", () => {
     expect(result.rankGroups.at(-1)?.label).toBe("피하는 게 좋은 시간");
   });
 
-  it("16. 가장 나은 시간(recommended)과 피하는 게 좋은 날(avoid)이 calendarMarks 에 반영된다", () => {
+  it("16. recommended/avoid 톤이 calendarMarks 에 반영된다", () => {
     const d = upcomingWeekdays(4);
     const slots = [
-      makeSlot({ date: d[0], startHm: "10:00" }), // 전원 가능 → 파랑 후보
+      makeSlot({ date: d[0], startHm: "10:00" }), // 전원 가능 → recommended 후보
       makeSlot({ date: d[1], startHm: "14:00", optionalBusyNames: ["정우진"] }),
       makeSlot({ date: d[2], startHm: "10:00", requiredBusyNames: ["김지훈"] }),
       makeSlot({ date: d[3], startHm: "15:00", requiredBusyNames: ["이서연", "박민준"] }), // hard avoid 만 있는 날
@@ -316,6 +315,8 @@ describe("pickRedSlots(상대적 빨강)", () => {
     expect(toneOf(d[0])).not.toBe("avoid");
     // 최상위 대비 1명 차이(선택 1명 추가 불가)도 중립으로 남는다.
     expect(toneOf(d[1])).not.toBe("avoid");
+    // 필수참석자가 빠지는 후보는 컨텍스트와 무관하게 피하는 날로 남긴다.
+    expect(toneOf(d[2])).toBe("avoid");
   });
 
   it("19. 선택참석자만 빠지는 상대적 빨강은 필수참석자 경고 문구를 쓰지 않는다", () => {

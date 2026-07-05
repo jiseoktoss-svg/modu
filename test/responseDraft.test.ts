@@ -87,4 +87,30 @@ describe("response draft storage", () => {
     expect(readResponseDraft(storage, "meeting-1")).toBeNull();
     expect(storage.getItem("modu:response-draft:meeting-1:v1")).toBeNull();
   });
+
+  it("존재하지 않는 케이스 번호는 복원하지 않고 삭제한다", () => {
+    const storage = new MemoryStorage();
+
+    writeResponseDraft(storage, {
+      meetingId: "meeting-1",
+      step: "done",
+      caseId: 8,
+      selectedId: "participant-1",
+      token: "token-1",
+      role: "PM",
+      identityName: "김모두",
+      identityRole: "PM",
+      formStep: 1,
+      maxFormStep: 1,
+      availStep: 1,
+      maxAvailStep: 1,
+      busyDates: [],
+      dateTimeBusy: {},
+      dtDate: null,
+      draftStart: "10:00",
+      draftEnd: "11:00",
+    });
+
+    expect(readResponseDraft(storage, "meeting-1")).toBeNull();
+  });
 });

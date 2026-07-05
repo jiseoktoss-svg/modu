@@ -10,7 +10,6 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { DebugPageTag } from "@/components/dev/DebugPageTag";
 import { Emoji } from "@/components/ui/Emoji";
 import {
   loadCalendarSnapshot,
@@ -43,7 +42,7 @@ import { cn } from "@/lib/cn";
 import { hasBatchim } from "@/lib/korean";
 import { useScrollLock } from "@/lib/useScrollLock";
 import { cellKey, cellsToBlocks, GRID_STEP_MINUTES } from "@/lib/grid";
-import { formatKoreanTimeRange, kstWallToIso, parseHm } from "@/lib/time";
+import { kstWallToIso, parseHm } from "@/lib/time";
 import { MOCK_EMPLOYEES } from "@/data/mockEmployees";
 import type { PublicParticipant } from "@/lib/data";
 import type {
@@ -62,7 +61,10 @@ import { AvailabilitySearchResultPanel } from "@/components/scheduler/Availabili
 import { DateAvailabilitySummaryPanel } from "@/components/scheduler/DateAvailabilitySummaryPanel";
 import { RecommendationBriefSentence } from "@/components/scheduler/RecommendationBriefSentence";
 import type { AvailabilityLookupResult } from "@/lib/scheduler/availabilityLookup";
-import { summarizeDateAvailability } from "@/lib/scheduler/dateAvailabilitySummary";
+import {
+  summarizeDateAvailability,
+  type DateAvailabilitySummary,
+} from "@/lib/scheduler/dateAvailabilitySummary";
 import { buildRecommendationBrief } from "@/lib/scheduler/recommendationBrief";
 import { adaptDemoCaseToEvaluatedSlots } from "@/data/demoCaseAdapter";
 import {
@@ -250,19 +252,6 @@ function EditValue({
 }
 
 // 칩 삭제 X 아이콘: 칩의 텍스트 색(currentColor)을 따라가 배지 색과 어울리게 한다.
-function ChipRemoveIcon() {
-  return (
-    <svg viewBox="0 0 10 10" className="h-2.5 w-2.5" fill="none" aria-hidden="true">
-      <path
-        d="M2 2 8 8M8 2 2 8"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 // 시간대: 모든 입력은 30분 단위 분(minute) 범위로 환원한다.
 type TimeRange = { start: number; end: number };
 
@@ -623,7 +612,7 @@ function CalendarModalField({
                 aria-label={`${fmtMD(ds)} 삭제`}
                 className="ml-0.5 opacity-60 hover:opacity-100"
               >
-                <ChipRemoveIcon />
+                <Emoji symbol="✕" size={12} />
               </button>
             </span>
           ))}
@@ -731,7 +720,7 @@ export function ResponseForm(props: Props) {
     new Set([...participants.map((p) => p.role.trim()).filter(Boolean), "프로덕트 디자이너"]),
   );
   const IDENTITY_HELP_TEXT =
-    "참석자 명단에 있는 분만 응답할 수 있도록 본인 확인을 해요. 입력한 이름·직무가 명단과 일치하면 다음 단계로 넘어가요. 평가용으로 이름에 서지석, 직무에 프로덕트 디자이너를 입력하면 명단과 상관없이 통과할 수 있어요.";
+    "참석자 명단에 있는 분만 응답할 수 있도록 본인 확인을 해요. 입력한 이름·직무가 명단과 일치하면 다음 단계로 넘어가요. 이름에 서지석, 직무에 프로덕트 디자이너를 입력하면 명단과 상관없이 통과할 수 있어요.";
   // 본인확인 빌더: 0=이름, 1=직무(마지막).
   const IDENTITY_LAST_STEP = 1;
   const formValid = (s: number) =>
@@ -767,7 +756,9 @@ export function ResponseForm(props: Props) {
     if (draft) {
       skipFormFocus.current = true;
       skipNextAutoFocus.current = true;
-      setStep(draft.step);
+      // 추천 시간 화면은 현재 플로우에서 비활성화했으므로, 예전 임시저장이 result 를
+      // 들고 있어도 캘린더 결과 화면으로 이어준다.
+      setStep(draft.step === "result" ? "done" : draft.step);
       setCaseId(draft.caseId);
       setSelectedId(draft.selectedId);
       setToken(draft.token);
@@ -1156,7 +1147,7 @@ export function ResponseForm(props: Props) {
                 aria-label={`${fmtRange(r)} 삭제`}
                 className="ml-0.5 opacity-60 hover:opacity-100"
               >
-                <ChipRemoveIcon />
+                <Emoji symbol="✕" size={12} />
               </button>
             </span>
           ))}
@@ -1377,7 +1368,6 @@ export function ResponseForm(props: Props) {
   if (step === "intro") {
     return (
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
-        <DebugPageTag no={4} label="회의 안내" />
         <div className="flex-1">
           {/* 응답 플로우의 첫 화면이라 뒤로 갈 곳이 없다 — 뒤로가기 버튼 없이 타이틀만. */}
           <MobileHeaderTitle title="회의 안내" hideBack />
@@ -1424,7 +1414,6 @@ export function ResponseForm(props: Props) {
       <>
         <Toast open={toastOpen} message={toastMessage} icon={toastIcon} />
         <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
-          <DebugPageTag no={7} label="입력 확인" />
           <div className="flex-1">
             {/* 뒤로가기: 가능 시간 입력(마지막 단계)으로 복귀 */}
             <MobileHeaderTitle title="입력 확인" onBack={() => setStep("availability")} />
@@ -1472,15 +1461,14 @@ export function ResponseForm(props: Props) {
     );
   }
 
-  // 제출 후 대기 화면 — 응답 마감 시각까지 기다린 뒤 후보/캘린더로 이동.
+  // 제출 후 대기 화면 — 응답 마감 시각까지 기다린 뒤 캘린더로 이동.
   if (step === "waiting") {
     return (
       <>
-        <DebugPageTag no={8} label="응답 완료" />
         <WaitingScreen
           responseDeadline={responseDeadline}
           totalParticipants={participants.length}
-          onProceed={() => setStep("result")}
+          onProceed={() => setStep("done")}
           onEdit={() => {
             setAvailStep(0);
             setMaxAvailStep(0);
@@ -1491,40 +1479,26 @@ export function ResponseForm(props: Props) {
     );
   }
 
-  // 제출 후 결과 화면 — modu 의 판단(해석 문장 + 후보 그룹) 설명. 투표 없음. 캘린더는 버튼으로 이동.
+  // 추천 시간 화면은 혹시 몰라 ResultScreen 컴포넌트를 아래에 보존하지만,
+  // 현재 플로우에서는 주석 처리한 상태로 캘린더(done)를 바로 쓴다.
+  // 되살릴 때는 waiting onProceed 를 setStep("result")로 돌리고 이 분기를 복구하면 된다.
   if (step === "result") {
-    return (
-      <>
-        <DebugPageTag no={9} label="추천 시간" />
-        <ResultScreen
-          caseId={caseId}
-          onSelectCase={handleSelectCase}
-          dates={dates}
-          durationMinutes={durationMinutes}
-          workdayStart={workdayStart}
-          workdayEnd={workdayEnd}
-          lunchStart={lunchStart}
-          lunchEnd={lunchEnd}
-          onViewCalendar={() => setStep("done")}
-        />
-      </>
-    );
+    return null;
   }
 
   if (step === "done") {
     return (
       <>
-        <DebugPageTag no={10} label="회의 캘린더" />
         <SubmittedCalendarScreenWide
           caseId={caseId}
           onSelectCase={handleSelectCase}
+          deadlineDate={deadlineDate}
           dates={dates}
           durationMinutes={durationMinutes}
           workdayStart={workdayStart}
           workdayEnd={workdayEnd}
           lunchStart={lunchStart}
           lunchEnd={lunchEnd}
-          onBack={() => setStep("result")}
         />
       </>
     );
@@ -1536,7 +1510,6 @@ export function ResponseForm(props: Props) {
       <>
         <Toast open={toastOpen} message={toastMessage} icon={toastIcon} />
         <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
-          <DebugPageTag no={5} label="본인 확인" />
           <div className="flex-1">
             {/* 뒤로가기: 직무 단계면 이름 단계로, 이름 단계면 회의 안내로 */}
             <MobileHeaderTitle
@@ -1652,7 +1625,6 @@ export function ResponseForm(props: Props) {
     <>
       <Toast open={toastOpen} message={toastMessage} icon={toastIcon} />
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
-        <DebugPageTag no={6} label="가능 시간" />
         {/* 상단: 답변이 쌓이는 문장 */}
         {/* 뒤로가기: 특정 날짜+시간 단계면 불가 날짜 단계로, 그 전이면 본인 확인으로 */}
         <MobileHeaderTitle
@@ -1808,7 +1780,7 @@ export function ResponseForm(props: Props) {
                             aria-label={`${fmtMD(ds)} 삭제`}
                             className="ml-0.5 opacity-60 hover:opacity-100"
                           >
-                            <ChipRemoveIcon />
+                            <Emoji symbol="✕" size={12} />
                           </button>
                         </span>
                       ))}
@@ -1891,7 +1863,7 @@ export function ResponseForm(props: Props) {
                                       aria-label={`${fmtMD(ds)} 삭제`}
                                       className="ml-0.5 opacity-60 hover:opacity-100"
                                     >
-                                      <ChipRemoveIcon />
+                                      <Emoji symbol="✕" size={12} />
                                     </button>
                                   </span>
                                 ))}
@@ -1916,74 +1888,6 @@ export function ResponseForm(props: Props) {
         </MobileStickyAction>
       </div>
     </>
-  );
-}
-
-// 제품 흐름 데모용 케이스 선택 (후보·캘린더 화면 공용).
-// 평소엔 선택한 케이스만, 마우스 호버(또는 탭)하면 1~8번 전부 노출.
-function CaseSelector({ caseId, onSelect }: { caseId: number; onSelect: (id: number) => void }) {
-  const [hovered, setHovered] = useState(false);
-  // 선택된 케이스가 항상 맨 왼쪽(첫 번째)에 오도록 정렬한다.
-  const ordered = [caseId, ...DEMO_CASES.map((c) => c.id).filter((id) => id !== caseId)];
-  const GAP = 40; // 칩 간격(px)
-  const expandedWidth = (DEMO_CASES.length - 1) * GAP + 32;
-  return (
-    <div className="select-none">
-      <div className="relative flex items-center gap-1.5">
-        <p className="text-xs font-bold text-slate-400">상황 예시</p>
-        {/* 평가용 탐색 장치라는 점을 ? 아이콘 툴팁으로 알린다(디버그 도구가 아님). */}
-        <button
-          type="button"
-          aria-label="상황 예시 안내"
-          className="peer flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 text-[10px] font-bold leading-none text-slate-400 transition-colors hover:border-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
-        >
-          ?
-        </button>
-        {/* 폭을 넓혀 두 줄로 보이게 하고, 모바일에서 화면 밖으로 넘치지 않도록 뷰포트 기준으로 제한한다. */}
-        <span
-          role="tooltip"
-          className="pointer-events-none absolute left-0 top-7 z-30 w-[22rem] max-w-[calc(100vw-2rem)] rounded-lg bg-slate-800 px-3 py-2 text-xs font-medium leading-relaxed text-white opacity-0 shadow-lg transition-opacity duration-150 peer-hover:opacity-100 peer-focus:opacity-100"
-        >
-          회의 조율에서 자주 생기는 상황을 빠르게 확인해보세요. 평가를 위해 노출한 영역이라 실제 사용 화면에는 보이지 않아요.
-        </span>
-      </div>
-      {/* 호버 시 너비가 늘며 마우스 인식 영역을 제어. 안의 칩들은 절대배치로 펼쳐진다. */}
-      <div
-        className="relative mt-1.5 h-8 cursor-pointer transition-[width] duration-500 ease-out motion-reduce:transition-none"
-        style={{ width: hovered ? `${expandedWidth}px` : "32px" }}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-      >
-        {DEMO_CASES.map((c) => {
-          // 정렬된 배열 안에서 이 칩이 차지할 위치(선택 칩=0=맨 왼쪽).
-          const index = ordered.indexOf(c.id);
-          const isSelected = c.id === caseId;
-          const visible = hovered || isSelected;
-          return (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => onSelect(c.id)}
-              aria-pressed={isSelected}
-              aria-label={`상황 ${c.id} ${c.title}`}
-              style={{
-                transform: `translateX(${hovered ? index * GAP : 0}px)`,
-                opacity: visible ? 1 : 0,
-                pointerEvents: visible ? "auto" : "none",
-              }}
-              className={cn(
-                "absolute left-0 top-0 flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold transition-all duration-500 ease-out motion-reduce:transition-none",
-                isSelected
-                  ? "z-20 scale-100 bg-brand-500 text-white shadow-md"
-                  : "z-10 scale-95 border border-slate-200 bg-white text-slate-600 shadow-sm hover:scale-100 hover:bg-slate-50",
-              )}
-            >
-              {c.id}
-            </button>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 
@@ -2024,22 +1928,42 @@ function CaseDescription({ caseId }: { caseId: number }) {
   );
 }
 
-// 모바일 전용: 케이스 선택을 플로팅 버튼으로 접어둔다(데모 컨트롤이 화면을 차지하지 않게).
-// 현재 케이스 번호 버튼을 탭하면 케이스 칩 8개 + 설명 패널이 열리고, 바깥 탭/✕/Esc 로 닫힌다.
-// inline: 우하단 고정 대신 본문 상단 행(응답 칩과 같은 줄)에 작은 버튼으로 배치한다(추천 시간 화면).
+// 케이스 선택을 드롭다운 모달로 접어둔다(데모 컨트롤이 화면을 차지하지 않게 · PC·모바일 공통).
+// `상황 {N}` 칩을 탭하면 케이스 칩 + 설명 패널이 그 아래로 열리고, 바깥 탭/✕/Esc 로 닫힌다.
+// result·done 화면 모두 헤더 행 좌측 같은 자리에 둔다.
 function FloatingCaseSelector({
   caseId,
   onSelect,
-  aboveCta = false,
-  inline = false,
 }: {
   caseId: number;
   onSelect: (id: number) => void;
-  // 하단 고정 CTA(MobileStickyAction)가 있는 화면에서는 그 위로 띄운다.
-  aboveCta?: boolean;
-  inline?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  // 배경 딤(backdrop)이 화면 전체를 덮도록 backdrop+dialog 를 document.body 로 portal 한다
+  // — 캘린더(done) 래퍼의 transform(sm:-translate-x-1/2)이 fixed 자식을 뷰포트가 아닌 래퍼 안에 가두는 문제 회피.
+  // dialog 는 트리거 버튼 rect 기준 fixed 로 배치한다(HelpTooltip 모바일 포털과 같은 방식).
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  const openMenu = () => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (rect) setPos({ top: rect.bottom + 8, left: rect.left });
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const measure = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (rect) setPos({ top: rect.bottom + 8, left: rect.left });
+    };
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -2050,24 +1974,22 @@ function FloatingCaseSelector({
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
 
-  const bottomClass = aboveCta
-    ? "bottom-[calc(7rem+env(safe-area-inset-bottom))]"
-    : "bottom-[calc(1.25rem+env(safe-area-inset-bottom))]";
-
-  if (inline) {
-    return (
-      <div className="relative sm:hidden" onClick={(e) => e.stopPropagation()}>
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          aria-haspopup="dialog"
-          aria-label={`상황 예시 열기 (현재 ${caseId}번 상황)`}
-          // 보조 컨트롤 — 메인 문장보다 튀지 않게 조용한 슬레이트 칩으로 둔다.
-          className="inline-flex h-8 shrink-0 items-center rounded-full bg-slate-100 px-2.5 text-xs font-bold text-slate-500 transition-colors hover:bg-slate-200 active:scale-95"
-        >
-          상황 예시 {caseId}
-        </button>
-        {open && (
+  return (
+    <div className="relative" onClick={(e) => e.stopPropagation()}>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={openMenu}
+        aria-haspopup="dialog"
+        aria-label={`상황 열기 (현재 ${caseId}번 상황)`}
+        // 보조 컨트롤 — 메인 문장보다 튀지 않게 조용한 슬레이트 칩으로 둔다.
+        className="inline-flex h-8 shrink-0 items-center rounded-full bg-slate-100 px-2.5 text-xs font-bold text-slate-500 transition-colors hover:bg-slate-200 active:scale-95"
+      >
+        상황 {caseId}
+      </button>
+      {open &&
+        typeof document !== "undefined" &&
+        createPortal(
           <>
             <div
               className="fixed inset-0 z-40 bg-slate-900/30 animate-fade-in motion-reduce:animate-none"
@@ -2076,12 +1998,13 @@ function FloatingCaseSelector({
             <div
               role="dialog"
               aria-modal="true"
-              aria-label="상황 예시"
-              className="absolute left-0 top-10 z-50 w-[calc(100vw-2rem)] max-w-[22rem] rounded-2xl bg-white p-4 shadow-2xl animate-fade-up motion-reduce:animate-none"
+              aria-label="상황"
+              style={{ top: pos?.top ?? 0, left: pos?.left ?? 0 }}
+              className="fixed z-50 w-[calc(100vw-2rem)] max-w-[22rem] rounded-2xl bg-white p-4 shadow-2xl animate-fade-up motion-reduce:animate-none"
             >
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <p className="text-sm font-bold text-slate-900">상황 예시</p>
+                  <p className="text-sm font-bold text-slate-900">상황</p>
                   <p className="mt-0.5 break-keep text-xs text-slate-400">
                     회의 조율에서 자주 생기는 상황을 빠르게 확인해보세요. 실제 사용 화면에는 보이지 않아요.
                   </p>
@@ -2089,7 +2012,7 @@ function FloatingCaseSelector({
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
-                  aria-label="상황 예시 닫기"
+                  aria-label="상황 닫기"
                   className="-mr-1 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
                 >
                   <Emoji symbol="✕" size={16} />
@@ -2121,86 +2044,9 @@ function FloatingCaseSelector({
                 <CaseDescription caseId={caseId} />
               </div>
             </div>
-          </>
+          </>,
+          document.body,
         )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="sm:hidden" onClick={(e) => e.stopPropagation()}>
-      {open ? (
-        <>
-          <div
-            className="fixed inset-0 z-40 bg-slate-900/30 animate-fade-in motion-reduce:animate-none"
-            onClick={() => setOpen(false)}
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="상황 예시"
-            className={cn(
-              "fixed right-4 z-40 w-[calc(100vw-2rem)] max-w-[22rem] rounded-2xl bg-white p-4 shadow-2xl animate-fade-up motion-reduce:animate-none",
-              bottomClass,
-            )}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="text-sm font-bold text-slate-900">상황 예시</p>
-                <p className="mt-0.5 break-keep text-xs text-slate-400">
-                  회의 조율에서 자주 생기는 상황을 빠르게 확인해보세요. 실제 사용 화면에는 보이지 않아요.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                aria-label="상황 예시 닫기"
-                className="-mr-1 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-              >
-                <Emoji symbol="✕" size={16} />
-              </button>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {DEMO_CASES.map((c) => {
-                const isSelected = c.id === caseId;
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => onSelect(c.id)}
-                    aria-pressed={isSelected}
-                    aria-label={`상황 ${c.id} ${c.title}`}
-                    className={cn(
-                      "flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold transition-colors",
-                      isSelected
-                        ? "bg-brand-500 text-white shadow-md"
-                        : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
-                    )}
-                  >
-                    {c.id}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="mt-3">
-              <CaseDescription caseId={caseId} />
-            </div>
-          </div>
-        </>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          aria-haspopup="dialog"
-          aria-label={`상황 예시 열기 (현재 ${caseId}번 상황)`}
-          className={cn(
-            "fixed right-4 z-40 flex h-11 w-11 items-center justify-center rounded-full bg-brand-500 text-base font-bold text-white shadow-lg shadow-brand-500/30 transition-transform active:scale-95",
-            bottomClass,
-          )}
-        >
-          {caseId}
-        </button>
-      )}
     </div>
   );
 }
@@ -2242,7 +2088,7 @@ function RankListIcon() {
 }
 
 // 제출 후 대기 화면(세로형 스텝퍼 + 응답 마감 카운트다운).
-// 제품 흐름 확인 단계라 타이머는 5초 고정이며, 0이 되면 후보/캘린더로 넘어갈 수 있다.
+// 제품 흐름 확인 단계라 타이머는 7초 고정이며, 0이 되면 캘린더로 넘어갈 수 있다.
 function WaitingScreen({
   totalParticipants,
   onProceed,
@@ -2276,25 +2122,25 @@ function WaitingScreen({
     return () => window.clearInterval(id);
   }, [total]);
 
-  // 마감 시간이 지나거나, 마감 전이라도 전원이 응답하면 추천 시간을 열람할 수 있다.
+  // 마감 시간이 지나거나, 마감 전이라도 전원이 응답하면 캘린더를 열람할 수 있다.
   const allResponded = responded >= total;
   const ready = allResponded || remaining <= 0;
   const mmss = `${String(Math.floor(remaining / 60)).padStart(2, "0")}:${String(
     remaining % 60,
   ).padStart(2, "0")}`;
 
-  // 응답 마감(ready)이 되면 마지막 스텝(추천 확인)이 활성화(current)된다.
+  // 응답 마감(ready)이 되면 마지막 스텝(캘린더 확인)이 활성화(current)된다.
   type StepState = "done" | "current" | "todo";
   const steps: { state: StepState; label: string }[] = ready
     ? [
         { state: "done", label: "내 가능한 시간을 보냈어요" },
         { state: "done", label: "다른 참여자들의 응답을 받았어요" },
-        { state: "current", label: "추천 시간을 확인해보세요" },
+        { state: "current", label: "캘린더를 확인해보세요" },
       ]
     : [
         { state: "done", label: "내 가능한 시간을 보냈어요" },
         { state: "current", label: "다른 참여자들의 응답을 기다리고 있어요" },
-        { state: "todo", label: "추천 시간을 확인해보세요" },
+        { state: "todo", label: "캘린더를 확인해보세요" },
       ];
 
   return (
@@ -2436,7 +2282,7 @@ function WaitingScreen({
             </button>
           )}
           <TDSButton size="xl" display="block" onClick={onProceed} disabled={!ready}>
-            {ready ? "추천 시간 확인하러 가기" : `잠시만요… ${mmss}`}
+            {ready ? "캘린더 확인하기" : `잠시만요… ${mmss}`}
           </TDSButton>
         </div>
       </MobileStickyAction>
@@ -2444,7 +2290,7 @@ function WaitingScreen({
   );
 }
 
-// 투표 없는 결과 화면 — 후보 카드 목록 대신 문장형 추천 요약(브리프)과
+// 비활성 보존: 투표 없는 추천 시간 화면 — 후보 카드 목록 대신 문장형 추천 요약(브리프)과
 // 날짜·시간 확인 모듈로 구성한다. modu 는 확정하지 않는다 —
 // 최종 회의 시간은 참여자들이 추천안을 보고 제품 밖에서 정한다.
 function ResultScreen({
@@ -2482,7 +2328,7 @@ function ResultScreen({
     [current, dates],
   );
   // 날짜별 하루 요약 → "modu가 먼저 판단을 정리해주는" 문장형 브리프.
-  // 대표 슬롯(10:00~11:00)이 아니라 날짜 전체 상태로 말한다.
+  // 단일 후보 시간(10:00~11:00)이 아니라 날짜 전체 상태로 말한다.
   const summaries = useMemo(() => {
     const summaryDates = [...new Set(candidates.map((c) => c.date))].sort();
     return summaryDates.map((date) =>
@@ -2526,8 +2372,8 @@ function ResultScreen({
         {/* 결과 화면 — 뒤로가기 버튼 없이 타이틀만. */}
         <MobileHeaderTitle title="추천 시간" hideBack />
         <div className="flex items-start justify-between gap-2">
-          {/* 모바일: 케이스 선택 버튼을 응답 칩과 같은 줄 좌측에 배치(데모 컨트롤). */}
-          <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} inline />
+          {/* 케이스 선택 버튼을 응답 칩과 같은 줄 좌측에 배치(데모 컨트롤·탭하면 모달). */}
+          <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} />
           <h1 className="hidden text-sm font-medium text-slate-400 sm:block">추천 시간</h1>
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
@@ -2535,14 +2381,6 @@ function ResultScreen({
             </span>
           </div>
         </div>
-        {/* 데스크톱: 인라인 케이스 선택. 모바일은 우하단 플로팅 버튼으로 대체(화면 절약). */}
-        <div className="hidden sm:block">
-          <CaseSelector caseId={caseId} onSelect={onSelectCase} />
-        </div>
-        <div className="hidden sm:block">
-          <CaseDescription caseId={caseId} />
-        </div>
-
         {/* ① 문장형 추천 요약 — 후보 카드/필터 대신 modu 가 먼저 판단을 정리해주는 답변.
             확정은 하지 않는다 — 최종 결정은 참여자들이 제품 밖에서 한다. */}
         <RecommendationBriefSentence key={`brief-${caseId}`} brief={brief} />
@@ -2606,25 +2444,30 @@ function LegendDot({ className, label }: { className: string; label: string }) {
   );
 }
 
-// 추천결과 캘린더(와이드) 셀 톤: 색은 순위가 아니라 신호다.
-// 파랑 = 이 후보군에서 가장 나은 시간이 있는 날(필수참석자 전원 가능 후보에만),
-// 옅은 빨강 = 이 후보군에서 피하는 게 좋은 날(필수참석자 불가 + 상대적으로 참석 인원이 적은 날),
-// 나머지는 중립. 톤 판정은 lib/scheduler/contextualResult 의 calendarMarks 가 한다.
+// 추천결과 캘린더(와이드) 셀 톤: 캘린더는 피해야 할 날만 신호로 보여준다.
+// 빨강 = 피하는 게 좋은 날, 나머지는 중립. recommended 톤은 내부 메타데이터로만 다룬다.
 const TONE_CELL: Record<CalendarTone, string> = {
-  recommended: "bg-brand-500 font-bold text-white shadow-sm shadow-brand-500/20",
+  recommended: "bg-slate-50 text-slate-700 hover:bg-slate-100",
   avoid: "bg-red-100 font-semibold text-red-700",
   none: "bg-slate-50 text-slate-700 hover:bg-slate-100",
 };
+
+function isWeekendDateStr(dateStr: string): boolean {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return weekday === 0 || weekday === 6;
+}
 
 // (참석 명단 칩 UI 는 AvailabilitySearchResultPanel 의 NameGroup 으로 통합 —
 //  날짜 패널은 DateAvailabilitySummaryPanel 이 담당한다.)
 
 // 회의 캘린더(done) 화면. (순위 농도 방식의 구버전 SubmittedCalendarScreen 은 삭제 — git 히스토리 참고)
 // PC 전용: ① 이 화면만 페이지 폭을 넓게 씀(뷰포트 기준 브레이크아웃)
-// ② 월간 달력 + 명단 패널 2열 배치. 색은 맥락형 해석(contextualResult)의 신호 3톤(파랑/빨강/중립)만 쓴다.
+// ② 월간 달력 + 명단 패널 2열 배치. 색은 피해야 할 날(빨강)만 강조하고 나머지는 중립으로 둔다.
 function SubmittedCalendarScreenWide({
   caseId,
   onSelectCase,
+  deadlineDate,
   dates,
   durationMinutes,
   workdayStart,
@@ -2635,13 +2478,14 @@ function SubmittedCalendarScreenWide({
 }: {
   caseId: number;
   onSelectCase: (id: number) => void;
+  deadlineDate: string;
   dates: string[];
   durationMinutes: number;
   workdayStart: string;
   workdayEnd: string;
   lunchStart: string;
   lunchEnd: string;
-  onBack: () => void;
+  onBack?: () => void;
 }) {
   // 데모 단계: 선택한 케이스의 더미 응답으로 달력을 채운다.
   const current = DEMO_CASES.find((c) => c.id === caseId) ?? DEMO_CASES[0];
@@ -2704,26 +2548,76 @@ function SubmittedCalendarScreenWide({
     contextual.calendarMarks.forEach((mark) => map.set(mark.date, mark));
     return map;
   }, [contextual]);
+  const fallbackSummaryByDate = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof summarizeDateAvailability>>();
+    dates.forEach((date) => {
+      if (isWeekendDateStr(date)) return;
+      map.set(
+        date,
+        summarizeDateAvailability({
+          date,
+          durationMinutes,
+          workdayStart,
+          workdayEnd,
+          lunchStart,
+          lunchEnd,
+          participants: snapshot.participants,
+          blocks: snapshot.blocks,
+        }),
+      );
+    });
+    return map;
+  }, [dates, durationMinutes, workdayStart, workdayEnd, lunchStart, lunchEnd, snapshot]);
   // 선택한 날짜가 빨간 날이면 왜 피하는 게 좋은지(mark.reason)를 패널 상단에서 바로 알려준다.
   const selectedMark = selectedDate ? markByDate.get(selectedDate) : undefined;
-  // 날짜 셀 공통 계산 — 톤을 정한 대표 슬롯(representativeSlot)을 표시에도 그대로 써서,
-  // 하루에 슬롯이 여러 개여도 톤과 숫자/시간이 서로 다른 슬롯에서 오지 않게 한다.
-  const cellInfo = (dateStr: string) => {
-    const mark = markByDate.get(dateStr);
-    const rep = mark?.representativeSlot;
-    if (!mark || !rep) return null;
+  const [lookupResult, setLookupResult] = useState<AvailabilityLookupResult | null>(null);
+  const lookupResultRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setLookupResult(null);
+  }, [caseId, selectedDate]);
+
+  useEffect(() => {
+    if (lookupResult) {
+      lookupResultRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [lookupResult]);
+
+  const availabilityLabelForDate = (summary: DateAvailabilitySummary) => {
+    const byStart = new Map<string, AvailabilityLookupResult>();
+    [
+      ...summary.allAvailableSlots,
+      ...summary.requiredIssueSlots,
+      ...summary.optionalIssueSlots,
+      ...summary.pendingSlots,
+    ].forEach((slot) => byStart.set(slot.startAt, slot));
+    const slots = [...byStart.values()];
+    if (slots.length === 0) return null;
+    const totals = slots.map((slot) => slot.totalAvailable);
+    const min = Math.min(...totals);
+    const max = Math.max(...totals);
     return {
-      tone: mark.tone,
-      cellClass: TONE_CELL[mark.tone],
-      availCount: rep.totalAvailable,
-      startAt: rep.startAt,
-      endAt: rep.endAt,
-      // 필수 인원이 빠지는 날은 배경 대신 가능 인원 숫자를 빨간색으로(soft 경고).
-      warn: rep.requiredBusyCount >= 1,
+      text: min === max ? `${max}` : `${min}~${max}`,
+      warn: slots.some((slot) => slot.requiredBusyNames.length >= 1),
     };
   };
 
-  // 월간 달력 카드. 모바일 셀은 원본과 동일한 정사각 숫자, PC 셀은 높이를 키워 순위·시간 요약을 함께 보여준다.
+  // 날짜 셀 공통 계산 — 캘린더는 피해야 할 날만 빨강으로 표시하고, 숫자는 날짜 전체 범위로 보여준다.
+  const cellInfo = (dateStr: string) => {
+    const summary = fallbackSummaryByDate.get(dateStr);
+    const availability = summary ? availabilityLabelForDate(summary) : null;
+    if (!availability) return null;
+    const mark = markByDate.get(dateStr);
+    const displayTone: CalendarTone = mark?.tone === "avoid" ? "avoid" : "none";
+    return {
+      tone: displayTone,
+      cellClass: TONE_CELL[displayTone],
+      availLabel: availability.text,
+      warn: availability.warn,
+    };
+  };
+
+  // 월간 달력 카드. 모바일/PC 모두 날짜 신호와 참석 가능 인원만 보여준다.
   const monthCard = () =>
     month && (
       <Card className="border-none px-2 sm:px-3">
@@ -2737,6 +2631,7 @@ function SubmittedCalendarScreenWide({
           renderDate={(cell) => {
             const info = cellInfo(cell.date);
             const isSelected = selectedDate === cell.date;
+            const isDeadline = cell.date === deadlineDate;
             return (
               <button
                 key={cell.key}
@@ -2745,14 +2640,14 @@ function SubmittedCalendarScreenWide({
                 onClick={() => setSelectedDate(cell.date)}
                 aria-pressed={isSelected}
                 aria-label={`${month.m}월 ${cell.day}일${
+                  isDeadline ? " — 회의 마감일" : ""
+                }${
                   info
                     ? `${
-                        info.tone === "recommended"
-                          ? " — 가장 나은 시간"
-                          : info.tone === "avoid"
-                            ? " — 피하는 게 좋은 날"
-                            : ""
-                      }, ${info.availCount}/${totalPeople}명 가능`
+                      info.tone === "avoid"
+                          ? " — 피하는 게 좋은 날"
+                          : ""
+                      }, ${info.availLabel}/${totalPeople}명 가능`
                     : ""
                 }`}
                 className={cn(
@@ -2762,12 +2657,14 @@ function SubmittedCalendarScreenWide({
                   isSelected && "modu-cell-pop z-10",
                 )}
               >
-                {cell.day}
-                {info?.tone === "recommended" && (
-                  <span className="hidden text-[11px] font-semibold leading-tight sm:block">
-                    {formatKoreanTimeRange(info.startAt, info.endAt)}
-                  </span>
-                )}
+                <span className="flex items-center gap-1 leading-none sm:w-full">
+                  <span>{cell.day}</span>
+                  {isDeadline && (
+                    <span className="whitespace-nowrap text-[8px] font-extrabold leading-none text-slate-500 sm:rounded-full sm:bg-slate-100 sm:px-1.5 sm:py-0.5 sm:text-[10px]">
+                      회의 마감일
+                    </span>
+                  )}
+                </span>
                 {info && (
                   <span
                     className={cn(
@@ -2777,7 +2674,7 @@ function SubmittedCalendarScreenWide({
                         : "opacity-80",
                     )}
                   >
-                    {info.availCount}/{totalPeople}
+                    {info.availLabel}/{totalPeople}
                   </span>
                 )}
               </button>
@@ -2790,35 +2687,28 @@ function SubmittedCalendarScreenWide({
   return (
     // 이 화면만 특별히 넓게: 부모(max-w-2xl)를 뷰포트 기준으로 벗어나 가운데 정렬(PC 전용).
     <div className="space-y-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-2 sm:relative sm:left-1/2 sm:w-[min(80rem,calc(100vw-4rem))] sm:-translate-x-1/2 sm:pb-8">
-      {/* 뒤로가기: 추천 시간(result) 화면으로 — 우상단 추천안 보기 아이콘과 동일 동작 */}
-      <MobileHeaderTitle title="회의 캘린더" onBack={onBack} />
+      <MobileHeaderTitle title="캘린더" hideBack={!onBack} onBack={onBack} />
       <div className="flex items-center justify-between gap-2">
-        <div className="hidden items-center gap-2 sm:flex">
-          <Emoji symbol="📅" size={22} />
-          <h2 className="text-xl font-extrabold text-slate-900">회의 캘린더</h2>
+        {/* 케이스 선택 버튼 — 데모 컨트롤·탭하면 모달. */}
+        <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} />
+        <div className="hidden sm:block">
+          <h2 className="text-xl font-extrabold text-slate-900">캘린더</h2>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
             {DEMO_PEOPLE.length}명 중 {respondedCount}명 응답
           </span>
-          {/* 추천안으로 돌아가기 — 추천안 화면의 캘린더 버튼과 짝(같은 자리) */}
-          <button
-            type="button"
-            onClick={onBack}
-            aria-label="추천안 보기"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
-          >
-            <RankListIcon />
-          </button>
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              aria-label="추천안 보기"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+            >
+              <RankListIcon />
+            </button>
+          )}
         </div>
-      </div>
-
-      {/* 데스크톱: 인라인 케이스 선택. 모바일은 우하단 플로팅 버튼으로 대체(화면 절약). */}
-      <div className="hidden sm:block">
-        <CaseSelector caseId={caseId} onSelect={onSelectCase} />
-      </div>
-      <div className="hidden sm:block">
-        <CaseDescription caseId={caseId} />
       </div>
 
       {/* 맥락형 해석 문장 — 결과 분포(대부분 가능/보통/바쁨/없음)에 따라 문구가 달라진다.
@@ -2843,41 +2733,67 @@ function SubmittedCalendarScreenWide({
         </p>
       </div>
 
-      {/* 범례 — busyPeriod 에선 차선 후보도 파랗게 칠해질 수 있어 '추천'이 아니라 '가장 나은'으로 쓴다. */}
+      {/* 범례 — 캘린더는 피해야 할 날만 색으로 알려준다. */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-slate-500">
-        <LegendDot className="bg-brand-500" label="가장 나은 시간" />
         <LegendDot className="bg-red-300" label="피하는 게 좋은 날" />
-        <span>숫자는 참석할 수 있는 인원이에요.</span>
-        <span className="text-slate-400">날짜를 누르면 참석 명단이 보여요.</span>
       </div>
 
       {/* PC: 달력(좌) + 참석 명단(우) 2열. 모바일: 원본과 동일한 세로 스택. */}
       <div className="space-y-4 sm:grid sm:grid-cols-[minmax(0,1fr)_24rem] sm:items-start sm:gap-5 sm:space-y-0">
         <div className="space-y-4">{monthCard()}</div>
 
-        {/* 선택한 날짜의 참석 명단 패널 — 날짜 전체 요약을 보여준다. */}
-        <Card className="space-y-3 !border-0 shadow-[0_12px_36px_rgba(15,23,42,0.12)]">
-          {selectedDate === null ? (
-            <p className="text-sm text-slate-500">날짜를 누르면 참석자별 가능 여부를 볼 수 있어요.</p>
-          ) : (
-            <>
-              <p className="text-base font-bold text-slate-900">
-                {formatKoreanDateLabel(selectedDate)}
-              </p>
-              {/* 빨간 날짜를 눌렀을 때 왜 피하는 게 좋은지 명시(상대적 인원 부족 포함) */}
-              {selectedMark?.tone === "avoid" && selectedMark.reason && (
-                <p className="break-keep rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-600">
-                  {selectedMark.reason}
+        <div className="space-y-4">
+          {/* 선택한 날짜의 참석 명단 패널 — 날짜 전체 요약을 보여준다. */}
+          <Card className="space-y-3 !border-0 shadow-[0_12px_36px_rgba(15,23,42,0.12)]">
+            {selectedDate === null ? (
+              <p className="text-sm text-slate-500">날짜를 누르면 참석자별 가능 여부를 볼 수 있어요.</p>
+            ) : (
+              <>
+                <p className="text-base font-bold text-slate-900">
+                  {formatKoreanDateLabel(selectedDate)}
                 </p>
-              )}
-              {/* 날짜 전체 요약 — 대표 후보 시간 하나가 아니라 하루 단위 가능 상태를 보여준다. */}
-              {dateSummary && <DateAvailabilitySummaryPanel summary={dateSummary} />}
-            </>
-          )}
-        </Card>
-      </div>
+                {/* 빨간 날짜를 눌렀을 때 왜 피하는 게 좋은지 명시(상대적 인원 부족 포함) */}
+                {selectedMark?.tone === "avoid" && selectedMark.reason && (
+                  <p className="break-keep rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-600">
+                    {selectedMark.reason}
+                  </p>
+                )}
+                {dateSummary && <DateAvailabilitySummaryPanel summary={dateSummary} />}
+              </>
+            )}
+          </Card>
 
-      <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} />
+          {/* 날짜·시간 검색 — 추천 시간 화면을 거치지 않아도 캘린더에서 바로 확인한다. */}
+          <Card className="space-y-3 !border-0 shadow-[0_12px_36px_rgba(15,23,42,0.12)]">
+            <AvailabilityDateTimeLookup
+              key={`calendar-lookup-${caseId}-${selectedDate ?? "none"}`}
+              dates={dates}
+              durationMinutes={durationMinutes}
+              participants={snapshot.participants}
+              blocks={snapshot.blocks}
+              workdayStart={workdayStart}
+              workdayEnd={workdayEnd}
+              lunchStart={lunchStart}
+              lunchEnd={lunchEnd}
+              initialDate={selectedDate ?? candidates[0]?.date ?? null}
+              onResult={setLookupResult}
+            />
+            {lookupResult && (
+              <div
+                ref={lookupResultRef}
+                key={`${lookupResult.startAt}-${lookupResult.endAt}`}
+                style={{ animationDuration: "0.6s" }}
+                className="relative animate-fade-up-blur rounded-2xl bg-slate-50 p-3 motion-reduce:animate-none"
+              >
+                <AvailabilitySearchResultPanel
+                  result={lookupResult}
+                  onClear={() => setLookupResult(null)}
+                />
+              </div>
+            )}
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }

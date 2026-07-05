@@ -1,7 +1,7 @@
 // DemoCase → EvaluatedSlot[] 어댑터.
-// data/demoCases.ts(문서화된 8개 시나리오)는 그대로 두고, 맥락형 해석 레이어
+// data/demoCases.ts(문서화된 데모 시나리오)는 그대로 두고, 맥락형 해석 레이어
 // (lib/scheduler/contextualResult.ts)의 입력으로 변환만 한다.
-// 덕분에 8개 케이스가 새 로직의 테스트 fixture 로 그대로 쓰인다.
+// 덕분에 데모 케이스가 새 로직의 테스트 fixture 로 그대로 쓰인다.
 
 import { buildCaseCandidates, type DemoCase } from "@/data/demoCases";
 import type { EvaluatedSlot } from "@/lib/scheduler/contextualResult";

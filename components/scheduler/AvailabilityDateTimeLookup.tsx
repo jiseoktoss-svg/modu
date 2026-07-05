@@ -15,7 +15,7 @@ import {
 } from "@/lib/scheduler/availabilityLookup";
 import { formatKoreanTime, isoToEpoch, kstWallToIso, parseHm } from "@/lib/time";
 
-// 추천안 화면의 '원하는 날짜·시간 확인' 입력 모듈 — 문법을 기억해 입력하는 검색창 대신
+// 결과 캘린더의 '원하는 날짜·시간 확인' 입력 모듈 — 문법을 기억해 입력하는 검색창 대신
 // 날짜/시간을 직접 골라 확인한다. 선택 가능한 시간 목록은 generateSlots 를 재사용해
 // 근무시간·회의 길이·점심 제외 규칙이 추천 후보와 어긋나지 않게 한다.
 // 결과 카드는 부모가 본문에 렌더한다(이 모듈은 하단 고정 영역에 들어간다) — onResult 로 전달.
@@ -30,7 +30,7 @@ type AvailabilityDateTimeLookupProps = {
   workdayEnd: string;
   lunchStart: string;
   lunchEnd: string;
-  /** 초기 선택 날짜(추천 요약의 먼저 볼 날짜). 없으면 첫 후보 날짜. */
+  /** 초기 선택 날짜. 없으면 첫 후보 날짜. */
   initialDate?: string | null;
   /** 확인 결과. 날짜/시간을 바꾸면 이전 결과 무효화를 위해 null 로 호출된다. */
   onResult: (result: AvailabilityLookupResult | null) => void;

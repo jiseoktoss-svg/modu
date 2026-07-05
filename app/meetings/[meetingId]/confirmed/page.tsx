@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { DebugPageTag } from "@/components/dev/DebugPageTag";
 import { MobileHeaderTitle } from "@/components/layout/MobileHeaderTitle";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { Card, CardTitle } from "@/components/ui/Card";
@@ -44,7 +43,6 @@ export default async function ConfirmedPage({
 
   return (
     <div className="min-h-dvh bg-white/95">
-      <DebugPageTag no={11} label="확정된 회의" />
       <SiteHeader />
       <main className="mx-auto w-full max-w-2xl px-4 pb-10 pt-4 sm:px-6 sm:pt-10">
         <MobileHeaderTitle title="확정된 회의" />

@@ -7,7 +7,7 @@ import type { RecommendationBrief } from "@/lib/scheduler/recommendationBrief";
 
 // 추천안 화면의 문장형 추천 요약 — 회의 만들기/응답 입력의 문장 빌더 톤을 잇는다.
 // modu 가 먼저 판단(headline)을 정리해주고 이유를 덧붙이는 답변처럼 읽히게 한다.
-// 날짜 키워드는 파랑(먼저 볼 날짜)/빨강(피하면 좋은 날짜)으로, 참석자 이름은 '필수/선택' 벳지로 노출한다.
+// 날짜 키워드는 브랜드색(먼저 볼 날짜)/빨강(피하면 좋은 날짜)으로, 참석자 이름은 '필수/선택' 벳지로 노출한다.
 
 type RecommendationBriefSentenceProps = {
   brief: RecommendationBrief;
@@ -48,7 +48,7 @@ export function RecommendationBriefSentence({ brief }: RecommendationBriefSenten
       </span>
     ),
   });
-  // 날짜 라벨: 먼저 볼 날짜(파랑)/피하면 좋은 날짜(빨강). 서로 겹치지 않아 어느 문장에 나오든 각자 색.
+  // 날짜 라벨: 먼저 볼 날짜(브랜드색)/피하면 좋은 날짜(빨강). 서로 겹치지 않아 어느 문장에 나오든 각자 색.
   const dateTokens: SentenceToken[] = [
     ...brief.primaryItems.map((item) => colorToken(item.label, "font-bold text-brand-600")),
     ...brief.avoidItems.map((item) => colorToken(item.label, "font-bold text-red-500")),

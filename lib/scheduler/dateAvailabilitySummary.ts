@@ -36,8 +36,6 @@ export type DateAvailabilitySummary = {
   optionalIssueSlots: AvailabilityLookupResult[];
   pendingSlots: AvailabilityLookupResult[];
 
-  bestSlot: AvailabilityLookupResult | null;
-
   headline: string;
   comment: string;
 
@@ -50,15 +48,6 @@ function formatNameList(names: string[]): string {
   if (honored.length <= 1) return honored.join("");
   if (honored.length === 2) return `${honored[0]}과 ${honored[1]}`;
   return honored.join(", ");
-}
-
-/** 그날의 가장 나은 시간: 필수 불가 적음 > 가능 인원 많음 > 이른 시간. */
-function compareResults(a: AvailabilityLookupResult, b: AvailabilityLookupResult): number {
-  if (a.requiredBusyNames.length !== b.requiredBusyNames.length) {
-    return a.requiredBusyNames.length - b.requiredBusyNames.length;
-  }
-  if (a.totalAvailable !== b.totalAvailable) return b.totalAvailable - a.totalAvailable;
-  return isoToEpoch(a.startAt) - isoToEpoch(b.startAt);
 }
 
 /** 불가 인원이 있는 슬롯들을 예외 구간으로 병합한다 — 같은 명단·같은 수위의
@@ -122,7 +111,6 @@ export function buildDateAvailabilitySummary(
   );
   const pendingSlots = results.filter((r) => r.hasPending);
 
-  const bestSlot = totalSlots > 0 ? [...results].sort(compareResults)[0] : null;
   const exceptionRanges = buildExceptionRanges(results);
 
   // ---- 문구 ----
@@ -186,7 +174,6 @@ export function buildDateAvailabilitySummary(
     requiredIssueSlots,
     optionalIssueSlots,
     pendingSlots,
-    bestSlot,
     headline,
     comment,
     exceptionRanges,

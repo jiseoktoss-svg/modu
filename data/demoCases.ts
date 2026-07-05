@@ -1,4 +1,4 @@
-// 평가용 시나리오 데이터. docs/cases.md 의 8개 대표 회의 조율 상황을 화면에서
+// 평가용 시나리오 데이터. docs/cases.md 의 대표 회의 조율 상황을 화면에서
 // 빠르게 전환해 보기 위한 장치다(가짜 데이터가 아니라 설계 가설을 검증하는 시나리오).
 // 평가자가 6명의 역할을 나눠 직접 재현하기에는 시간이 많이 들어, 시나리오를 고르면
 // 그 상황에 맞는 후보/캘린더/날짜 요약을 바로 보여준다. 배경은 docs/case-study.md 참고.
@@ -50,10 +50,17 @@ export type DemoCase = {
   fillRemainingDates?: boolean;
   /** 자동으로 채우는 전원 가능 후보의 최대 개수. fillRemainingDates:false이면 무시된다. */
   maxFillerSlots?: number;
+  /** 자동으로 채우는 전원 가능 후보의 시작 시각. 기본값은 10:00. */
+  fillerStartMin?: number;
 };
 
 const H = (h: number) => h * 60;
+const SPREAD_PATTERN_MIN_DATES = 10;
+const SPREAD_PATTERN_EVERY_WEEKDAYS = 7;
+const SPREAD_PATTERN_MAX_SLOTS = 12;
 
+// 데모 캘린더가 샘플 데이터처럼 보이지 않도록, 피하면 좋은 날은 앞쪽에 몰지 않고
+// 회의 기간 안에서 띄엄띄엄 배치한다. dateIndex 는 미래 평일 목록 기준이다.
 export const DEMO_CASES: DemoCase[] = [
   {
     id: 1,
@@ -69,9 +76,9 @@ export const DEMO_CASES: DemoCase[] = [
     pendingNames: [],
     slots: [
       // 전원 가능한 후보 여러 개(같은 그룹) + 선택 두 명이 어려운 아래 그룹 하나
-      { dateIndex: 1, startMin: H(14), busy: [] },
+      { dateIndex: 0, startMin: H(14), busy: [] },
       { dateIndex: 2, startMin: H(10), busy: [] },
-      { dateIndex: 0, startMin: H(15), busy: [4, 5] },
+      { dateIndex: 5, startMin: H(15), busy: [4, 5] },
     ],
   },
   {
@@ -84,8 +91,8 @@ export const DEMO_CASES: DemoCase[] = [
     pendingNames: [],
     slots: [
       { dateIndex: 1, startMin: H(14), busy: [4] },
-      { dateIndex: 2, startMin: H(10), busy: [5] },
-      { dateIndex: 0, startMin: H(16), busy: [4, 5] },
+      { dateIndex: 4, startMin: H(10), busy: [5] },
+      { dateIndex: 6, startMin: H(16), busy: [4, 5] },
     ],
   },
   {
@@ -94,57 +101,41 @@ export const DEMO_CASES: DemoCase[] = [
     situation:
       "필수참석자는 다 되지만 선택참석자가 빠지는 날과, 선택참석자는 다 되지만 필수참석자 1명이 어려운 날이 같이 있어요.",
     judgment:
-      "선택참석자가 더 많이 가능해도 필수참석자가 어려운 후보는 뒤로 보내요. 필수참석자가 모두 가능한 후보를 먼저 보여줘요.",
+      "선택참석자가 더 많이 가능해도 필수참석자가 참여 못하는 날짜는 후순위로 고려해요. 필수참석자가 모두 가능한 후보가 우선시 됩니다.",
     submitted: 6,
     pendingNames: [],
     maxFillerSlots: 1,
+    fillerStartMin: H(12),
     slots: [
       // 필수 전원 가능, 선택 둘 다 어려움 → 그래도 필수가 어려운 후보들보다 먼저
       { dateIndex: 1, startMin: H(14), busy: [4, 5] },
       // 선택 전원 가능, 필수 1명(김지훈) 어려움
-      { dateIndex: 2, startMin: H(10), busy: [0] },
+      { dateIndex: 4, startMin: H(10), busy: [0] },
       // 필수 2명(이서연·박민준) 어려움 → 피하면 좋은 시간
-      { dateIndex: 0, startMin: H(15), busy: [1, 2] },
+      { dateIndex: 6, startMin: H(15), busy: [1, 2] },
     ],
   },
   {
     id: 4,
-    title: "특정 요일 외근으로 날짜 전체가 어려움",
+    title: "특정 시간대만 어려움",
     situation:
-      "정우진님이 외근이 많은 요일이라 그 날은 근무시간 내내 회의가 어려워요. 사유는 따로 입력하지 않고 '회의가 어려운 날짜'로만 표시했어요.",
+      "한예린님이 특정 시간대에는 회의가 어렵다고 표시했어요. 날짜 전체가 아니라 그 시간대만 피하면 돼요.",
     judgment:
-      "그 날짜는 참석 가능 인원이 적은 날로 해석해요. 캘린더에서 날짜를 누르면 하루 전체 상태와 어려운 시간대로 이유를 설명해요.",
+      "날짜 전체를 제외하지 않고, 겹치는 시간만 피하면 되는지 확인해요. 캘린더에서는 피해야 할 날만 따로 표시해요.",
     banner: {
       tone: "info",
-      text: "외근·집중 업무 같은 사유는 입력받지 않아요. 회의가 어려운 날짜로만 표시하면 modu가 결과에서 해석해요.",
+      text: "특정 시간만 어려운 경우에는 날짜 전체가 아니라 해당 시간대만 확인해요.",
     },
     submitted: 6,
     pendingNames: [],
-    slots: [{ dateIndex: 1, startMin: H(10), busy: [4] }],
-    // 외근: 근무시간 전체가 어려움 — 날짜 요약·검색에서 하루 전체 busy 로 보이게 한다.
-    extraBusy: [{ dateIndex: 1, startMin: H(9), endMin: H(18), who: [4] }],
+    slots: [{ dateIndex: 4, startMin: H(13), busy: [5] }],
   },
   {
     id: 5,
-    title: "점심 직후처럼 특정 시간대만 어려움",
-    situation:
-      "한예린님이 점심 직후 13:00~14:00에는 회의가 어렵다고 표시했어요. '피하고 싶은 시간' 입력을 따로 두지 않고 같은 방식으로 표시해요.",
-    judgment:
-      "그 시간과 겹치는 후보만 빼면 대부분 시간에 전원이 참석할 수 있어요. 캘린더 날짜 요약에서 어려운 시간대를 함께 보여줘요.",
-    banner: {
-      tone: "info",
-      text: "점심 직후 회피 같은 선호도 별도 입력 없이 '이 날 이 시간엔 어려움'으로 표시하면 돼요.",
-    },
-    submitted: 6,
-    pendingNames: [],
-    slots: [{ dateIndex: 2, startMin: H(13), busy: [5] }],
-  },
-  {
-    id: 6,
     title: "필수참석자 1명이 어려운 후보들",
     situation: "몇몇 날짜는 어느 시간을 골라도 필수참석자 1명이 참석하기 어려워요.",
     judgment:
-      "그런 후보는 '필수 1명 어려움' 그룹으로 분리해 보여주고, 파란색 추천으로 강조하지 않아요. 누가 어려운지 이름과 함께 설명해요.",
+      "그런 후보는 '필수 1명 어려움' 그룹으로 분리해 보여주고, 최상위 추천처럼 과장하지 않아요. 누가 어려운지 이름과 함께 설명해요.",
     banner: {
       tone: "caution",
       text: "필수참석자가 어려운 날짜는 피하면 좋은 날짜로 표시돼요.",
@@ -154,12 +145,12 @@ export const DEMO_CASES: DemoCase[] = [
     fillRemainingDates: false,
     slots: [
       { dateIndex: 0, startMin: H(10), busy: [0] },
-      { dateIndex: 1, startMin: H(14), busy: [1] },
-      { dateIndex: 2, startMin: H(11), busy: [2, 5] },
+      { dateIndex: 3, startMin: H(14), busy: [1] },
+      { dateIndex: 5, startMin: H(11), busy: [2, 5] },
     ],
   },
   {
-    id: 7,
+    id: 6,
     title: "필수참석자 2명 이상이 어려움",
     situation: "후보 대부분에서 필수참석자 2명 이상이 참석하기 어려워요.",
     judgment:
@@ -173,12 +164,12 @@ export const DEMO_CASES: DemoCase[] = [
     fillRemainingDates: false,
     slots: [
       { dateIndex: 1, startMin: H(14), busy: [0, 1] },
-      { dateIndex: 2, startMin: H(10), busy: [2, 3] },
-      { dateIndex: 0, startMin: H(15), busy: [0, 1, 4] },
+      { dateIndex: 4, startMin: H(10), busy: [2, 3] },
+      { dateIndex: 6, startMin: H(15), busy: [0, 1, 4] },
     ],
   },
   {
-    id: 8,
+    id: 7,
     title: "미응답자가 있어 잠정 결과만 보여줌",
     situation: "참석자 6명 중 2명이 아직 응답하지 않았어요. 그중 1명(최수아)은 필수참석자예요.",
     judgment:
@@ -191,9 +182,9 @@ export const DEMO_CASES: DemoCase[] = [
     pendingNames: ["최수아", "한예린"],
     maxFillerSlots: 1,
     slots: [
-      { dateIndex: 2, startMin: H(10), busy: [] },
+      { dateIndex: 5, startMin: H(10), busy: [] },
       { dateIndex: 1, startMin: H(14), busy: [4] },
-      { dateIndex: 0, startMin: H(15), busy: [1] },
+      { dateIndex: 4, startMin: H(15), busy: [1] },
     ],
   },
 ];
@@ -246,23 +237,95 @@ function slotTimes(dates: string[], slot: DemoSlot) {
   };
 }
 
+function clampDateIndex(index: number, dateCount: number): number {
+  return Math.max(0, Math.min(index, dateCount - 1));
+}
+
+function relativeDateIndex(index: number, dateCount: number): number {
+  const normalized = Math.max(0, Math.min(index, 6)) / 6;
+  return clampDateIndex(Math.round(normalized * (dateCount - 1)), dateCount);
+}
+
+function nearestFreeDateIndex(target: number, dateCount: number, used: Set<number>): number | null {
+  const start = clampDateIndex(target, dateCount);
+  for (let offset = 0; offset < dateCount; offset += 1) {
+    const after = start + offset;
+    if (after < dateCount && !used.has(after)) return after;
+    const before = start - offset;
+    if (before >= 0 && !used.has(before)) return before;
+  }
+  return null;
+}
+
+function spreadPatternIndexes(dateCount: number, count: number, seed: number, used: Set<number>) {
+  const indexes: number[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const base = ((i + 0.45) * dateCount) / count;
+    const offset = ((seed + i * 2) % 5) - 2;
+    const found = nearestFreeDateIndex(Math.round(base + offset), dateCount, used);
+    if (found === null) break;
+    used.add(found);
+    indexes.push(found);
+  }
+  return indexes;
+}
+
+function buildCaseSlotsForDates(c: DemoCase, demoDates: string[]): DemoSlot[] {
+  const dateCount = demoDates.length;
+  if (dateCount <= SPREAD_PATTERN_MIN_DATES) return c.slots;
+
+  const used = new Set<number>();
+  const slots: DemoSlot[] = [];
+
+  // 전원 가능 기준점은 기간 길이에 맞춰 상대 위치로 옮긴다.
+  c.slots
+    .filter((slot) => slot.busy.length === 0)
+    .forEach((slot) => {
+      const target = relativeDateIndex(slot.dateIndex, dateCount);
+      const dateIndex = nearestFreeDateIndex(target, dateCount, used);
+      if (dateIndex === null) return;
+      used.add(dateIndex);
+      slots.push({ ...slot, dateIndex });
+    });
+
+  const issueSlots = c.slots.filter((slot) => slot.busy.length > 0);
+  if (issueSlots.length === 0) return slots;
+
+  const spreadCount = Math.min(
+    dateCount - used.size,
+    SPREAD_PATTERN_MAX_SLOTS,
+    Math.max(issueSlots.length, Math.ceil(dateCount / SPREAD_PATTERN_EVERY_WEEKDAYS)),
+  );
+  const indexes = spreadPatternIndexes(dateCount, spreadCount, c.id, used);
+  indexes.forEach((dateIndex, i) => {
+    const source = issueSlots[i % issueSlots.length];
+    slots.push({ ...source, dateIndex });
+  });
+
+  return slots.sort((a, b) => {
+    if (a.dateIndex !== b.dateIndex) return a.dateIndex - b.dateIndex;
+    return a.startMin - b.startMin;
+  });
+}
+
 export function buildCaseCandidates(c: DemoCase, dates: string[]): CaseCandidate[] {
   if (dates.length === 0) return [];
   const demoDates = resolveDemoDates(dates);
   const pending = new Set(c.pendingNames);
+  const caseSlots = buildCaseSlotsForDates(c, demoDates);
 
   // 케이스 슬롯이 없는 나머지 미래 평일은 불가 입력이 없는 날 = '전원 가능' 후보로 그대로 올린다.
   const usedIdx = new Set(
-    c.slots.map((s) => Math.max(0, Math.min(s.dateIndex, demoDates.length - 1))),
+    caseSlots.map((s) => Math.max(0, Math.min(s.dateIndex, demoDates.length - 1))),
   );
-  const slots: DemoSlot[] = [...c.slots];
+  const slots: DemoSlot[] = [...caseSlots];
   const fillRemainingDates = c.fillRemainingDates ?? true;
   const maxFillerSlots = c.maxFillerSlots ?? Number.POSITIVE_INFINITY;
   if (fillRemainingDates) {
     let fillerCount = 0;
     demoDates.forEach((_, di) => {
       if (!usedIdx.has(di) && fillerCount < maxFillerSlots) {
-        slots.push({ dateIndex: di, startMin: H(10), busy: [] });
+        slots.push({ dateIndex: di, startMin: c.fillerStartMin ?? H(10), busy: [] });
         fillerCount += 1;
       }
     });
@@ -387,7 +450,8 @@ export function buildCaseSnapshot(c: DemoCase, dates: string[]): CaseSnapshot {
   const seen = new Set<string>();
   if (dates.length > 0) {
     const demoDates = resolveDemoDates(dates);
-    for (const slot of c.slots) {
+    const caseSlots = buildCaseSlotsForDates(c, demoDates);
+    for (const slot of caseSlots) {
       const { startAt, endAt } = slotTimes(demoDates, slot);
       for (const i of slot.busy) {
         const p = DEMO_PEOPLE[i];
