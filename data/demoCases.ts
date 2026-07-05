@@ -46,6 +46,10 @@ export type DemoCase = {
   /** 후보 리스트와 별개로 스냅샷(날짜 요약·특정 시간 검색)에만 추가되는 busy 블록.
    *  외근처럼 하루 전체가 어려운 상황은 후보 슬롯 하나로 표현할 수 없어 여기에 둔다. */
   extraBusy?: { dateIndex: number; startMin: number; endMin: number; who: number[] }[];
+  /** 케이스 슬롯이 없는 나머지 미래 평일을 전원 가능 후보로 채울지 여부. 기본값은 true. */
+  fillRemainingDates?: boolean;
+  /** 자동으로 채우는 전원 가능 후보의 최대 개수. fillRemainingDates:false이면 무시된다. */
+  maxFillerSlots?: number;
 };
 
 const H = (h: number) => h * 60;
@@ -93,6 +97,7 @@ export const DEMO_CASES: DemoCase[] = [
       "선택참석자가 더 많이 가능해도 필수참석자가 어려운 후보는 뒤로 보내요. 필수참석자가 모두 가능한 후보를 먼저 보여줘요.",
     submitted: 6,
     pendingNames: [],
+    maxFillerSlots: 1,
     slots: [
       // 필수 전원 가능, 선택 둘 다 어려움 → 그래도 필수가 어려운 후보들보다 먼저
       { dateIndex: 1, startMin: H(14), busy: [4, 5] },
@@ -146,6 +151,7 @@ export const DEMO_CASES: DemoCase[] = [
     },
     submitted: 6,
     pendingNames: [],
+    fillRemainingDates: false,
     slots: [
       { dateIndex: 0, startMin: H(10), busy: [0] },
       { dateIndex: 1, startMin: H(14), busy: [1] },
@@ -164,6 +170,7 @@ export const DEMO_CASES: DemoCase[] = [
     },
     submitted: 6,
     pendingNames: [],
+    fillRemainingDates: false,
     slots: [
       { dateIndex: 1, startMin: H(14), busy: [0, 1] },
       { dateIndex: 2, startMin: H(10), busy: [2, 3] },
@@ -182,6 +189,7 @@ export const DEMO_CASES: DemoCase[] = [
     },
     submitted: 4,
     pendingNames: ["최수아", "한예린"],
+    maxFillerSlots: 1,
     slots: [
       { dateIndex: 2, startMin: H(10), busy: [] },
       { dateIndex: 1, startMin: H(14), busy: [4] },
@@ -248,9 +256,17 @@ export function buildCaseCandidates(c: DemoCase, dates: string[]): CaseCandidate
     c.slots.map((s) => Math.max(0, Math.min(s.dateIndex, demoDates.length - 1))),
   );
   const slots: DemoSlot[] = [...c.slots];
-  demoDates.forEach((_, di) => {
-    if (!usedIdx.has(di)) slots.push({ dateIndex: di, startMin: H(10), busy: [] });
-  });
+  const fillRemainingDates = c.fillRemainingDates ?? true;
+  const maxFillerSlots = c.maxFillerSlots ?? Number.POSITIVE_INFINITY;
+  if (fillRemainingDates) {
+    let fillerCount = 0;
+    demoDates.forEach((_, di) => {
+      if (!usedIdx.has(di) && fillerCount < maxFillerSlots) {
+        slots.push({ dateIndex: di, startMin: H(10), busy: [] });
+        fillerCount += 1;
+      }
+    });
+  }
 
   // 각 슬롯을 순위 지표로 환산한다(busy=불가, pending=미응답).
   const enriched = slots.map((slot) => {

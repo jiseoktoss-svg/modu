@@ -112,12 +112,13 @@ describe("contextualResult", () => {
     expect(result.calendarMarks.filter((m) => m.tone === "recommended")).toHaveLength(0);
   });
 
-  it("4. mostlyAvailable 에서 필수참석자 불가 예외는 코멘트로 노출된다 (시나리오 6 + 넓은 기간)", () => {
+  it("4. 넓은 기간이어도 시나리오 6은 자동 전원 가능 후보로 희석되지 않는다", () => {
     const slots = adaptDemoCaseToEvaluatedSlots(caseById(6), upcomingWeekdays(8));
     const result = buildContextualScheduleResult(slots);
 
-    expect(result.context).toBe("mostlyAvailable");
-    expect(result.comment).toContain("피해주세요");
+    expect(result.context).toBe("busyPeriod");
+    expect(result.context).not.toBe("mostlyAvailable");
+    expect(result.calendarMarks.filter((m) => m.tone === "recommended")).toHaveLength(0);
     // 시나리오 6의 필수 어려움 인원 중 한 명이 문구에 나와야 한다.
     expect(
       ["김지훈", "이서연", "박민준"].some((name) => result.comment.includes(`${name}님`)),

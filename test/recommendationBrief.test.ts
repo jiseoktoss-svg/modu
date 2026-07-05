@@ -21,7 +21,7 @@ function upcomingWeekdays(count: number): string[] {
   return out;
 }
 
-function briefForCase(id: number, days: number) {
+function analysisForCase(id: number, days: number) {
   const demoCase = DEMO_CASES.find((c) => c.id === id);
   if (!demoCase) throw new Error(`demo case ${id} not found`);
   const dates = upcomingWeekdays(days);
@@ -43,10 +43,35 @@ function briefForCase(id: number, days: number) {
       blocks: snapshot.blocks,
     }),
   );
-  return buildRecommendationBrief({ contextual, summaries });
+  const brief = buildRecommendationBrief({ contextual, summaries });
+  return { contextual, brief };
+}
+
+function briefForCase(id: number, days: number) {
+  return analysisForCase(id, days).brief;
 }
 
 describe("buildRecommendationBrief", () => {
+  it("0. 데모 케이스별 상황이 context와 headline에 다르게 드러난다", () => {
+    const cases = new Map(
+      [1, 3, 6, 7, 8].map((id) => [id, analysisForCase(id, 8)]),
+    );
+
+    expect(cases.get(1)?.contextual.context).toBe("mostlyAvailable");
+    expect(cases.get(3)?.contextual.context).toBe("normal");
+    expect(cases.get(6)?.contextual.context).toBe("busyPeriod");
+    expect(cases.get(7)?.contextual.context).toBe("noGoodOption");
+
+    expect(cases.get(6)?.contextual.context).not.toBe("mostlyAvailable");
+    expect(cases.get(7)?.contextual.context).not.toBe("mostlyAvailable");
+    expect(cases.get(8)?.contextual.context).not.toBe("mostlyAvailable");
+
+    expect(cases.get(8)?.contextual.hasPending).toBe(true);
+    expect(cases.get(8)?.brief.headline).toContain(
+      "아직 2명이 응답하지 않아 잠정 결과예요",
+    );
+  });
+
   it("1. 전원 가능 날짜가 적으면 시간 슬롯이 아니라 날짜를 직접 나열한다 (시나리오 1, 짧은 기간)", () => {
     const brief = briefForCase(1, 3);
 
