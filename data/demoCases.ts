@@ -46,6 +46,9 @@ export type DemoCase = {
   /** 후보 리스트와 별개로 스냅샷(날짜 요약·특정 시간 검색)에만 추가되는 busy 블록.
    *  외근처럼 하루 전체가 어려운 상황은 후보 슬롯 하나로 표현할 수 없어 여기에 둔다. */
   extraBusy?: { dateIndex: number; startMin: number; endMin: number; who: number[] }[];
+  /** 매일 반복되는 불가 시간대(특정 시간만 늘 어려운 경우). 모든 날짜의 스냅샷 블록에 들어간다.
+   *  후보(전원 가능 채움)에는 넣지 않아 날짜 톤은 '가능'으로 두고, 상단 경고에서 '매일 …'로 짚는다. */
+  recurringBusy?: { startMin: number; endMin: number; who: number[] }[];
   /** 케이스 슬롯이 없는 나머지 미래 평일을 전원 가능 후보로 채울지 여부. 기본값은 true. */
   fillRemainingDates?: boolean;
   /** 자동으로 채우는 전원 가능 후보의 최대 개수. fillRemainingDates:false이면 무시된다. */
@@ -64,13 +67,13 @@ const SPREAD_PATTERN_MAX_SLOTS = 12;
 export const DEMO_CASES: DemoCase[] = [
   {
     id: 1,
-    title: "전원이 가능한 후보가 여러 개 있음",
-    situation: "모든 인원이 참석할 수 있는 후보가 여러 개 있어요.",
+    title: "전원이 가능한 날짜가 여러 개 있음",
+    situation: "모든 인원이 참석할 수 있는 날짜가 여러 개 있어요.",
     judgment:
-      "억지로 순위를 나누지 않고 '모두 참석할 수 있는 후보'로 묶어 먼저 보여줘요. 캘린더에서 날짜를 누르면 그 날 전체의 가능 상태를 보여줘요.",
+      "억지로 순위를 나누지 않고 '모두 참석할 수 있는 날짜'로 묶어 먼저 보여줘요. 캘린더에서 날짜를 누르면 그 날 전체의 가능 상태를 보여줘요.",
     banner: {
       tone: "info",
-      text: "비슷하게 좋은 후보는 한 그룹으로 묶어 보여줘요. 더 이른 시간이 먼저예요.",
+      text: "비슷하게 좋은 날짜는 한 그룹으로 묶어 보여줘요. 더 이른 시간이 먼저예요.",
     },
     submitted: 6,
     pendingNames: [],
@@ -101,7 +104,7 @@ export const DEMO_CASES: DemoCase[] = [
     situation:
       "필수참석자는 다 되지만 선택참석자가 빠지는 날과, 선택참석자는 다 되지만 필수참석자 1명이 어려운 날이 같이 있어요.",
     judgment:
-      "선택참석자가 더 많이 가능해도 필수참석자가 참여 못하는 날짜는 후순위로 고려해요. 필수참석자가 모두 가능한 후보가 우선시 됩니다.",
+      "선택참석자가 더 많이 가능해도 필수참석자가 참여 못하는 날짜는 후순위로 고려해요. 필수참석자가 모두 가능한 날짜가 우선시 됩니다.",
     submitted: 6,
     pendingNames: [],
     maxFillerSlots: 1,
@@ -117,25 +120,26 @@ export const DEMO_CASES: DemoCase[] = [
   },
   {
     id: 4,
-    title: "특정 시간대만 어려움",
+    title: "특정 시간대만 늘 어려움",
     situation:
-      "한예린님이 특정 시간대에는 회의가 어렵다고 표시했어요. 날짜 전체가 아니라 그 시간대만 피하면 돼요.",
+      "김지훈님(필수참석자)이 매일 13:00~14:00에는 회의가 어려워요. 날짜 전체가 아니라 그 시간대만 피하면 돼요.",
     judgment:
-      "날짜 전체를 제외하지 않고, 겹치는 시간만 피하면 되는지 확인해요. 캘린더에서는 피해야 할 날만 따로 표시해요.",
+      "날짜를 통째로 빼지 않아요. '그 시간만 피하면 어느 날짜든 된다'고 안내하고, 캘린더는 모든 날짜를 가능으로 두되 그 시간대만 경고로 짚어요.",
     banner: {
       tone: "info",
-      text: "특정 시간만 어려운 경우에는 날짜 전체가 아니라 해당 시간대만 확인해요.",
+      text: "매일 같은 시간만 어려운 경우엔 날짜가 아니라 그 시간대만 피하면 돼요.",
     },
     submitted: 6,
     pendingNames: [],
-    slots: [{ dateIndex: 4, startMin: H(13), busy: [5] }],
+    slots: [],
+    recurringBusy: [{ startMin: H(13), endMin: H(14), who: [0] }],
   },
   {
     id: 5,
-    title: "필수참석자 1명이 어려운 후보들",
+    title: "필수참석자 1명이 어려운 날짜들",
     situation: "몇몇 날짜는 어느 시간을 골라도 필수참석자 1명이 참석하기 어려워요.",
     judgment:
-      "그런 후보는 '필수 1명 어려움' 그룹으로 분리해 보여주고, 최상위 추천처럼 과장하지 않아요. 누가 어려운지 이름과 함께 설명해요.",
+      "그런 날짜는 '필수 1명 어려움' 그룹으로 분리해 보여주고, 최상위 추천처럼 과장하지 않아요. 누가 어려운지 이름과 함께 설명해요.",
     banner: {
       tone: "caution",
       text: "필수참석자가 어려운 날짜는 피하면 좋은 날짜로 표시돼요.",
@@ -152,7 +156,7 @@ export const DEMO_CASES: DemoCase[] = [
   {
     id: 6,
     title: "필수참석자 2명 이상이 어려움",
-    situation: "후보 대부분에서 필수참석자 2명 이상이 참석하기 어려워요.",
+    situation: "날짜 대부분에서 필수참석자 2명 이상이 참석하기 어려워요.",
     judgment:
       "그런 날짜는 피하면 좋은 시간으로 강하게 표시하고, 회의 기간을 조금 넓히는 게 좋다고 안내해요.",
     banner: {
@@ -475,6 +479,21 @@ export function buildCaseSnapshot(c: DemoCase, dates: string[]): CaseSnapshot {
         if (seen.has(key)) continue;
         seen.add(key);
         blocks.push({ participantId: p.id, startAt, endAt, status: "busy" });
+      }
+    }
+    // 매일 반복되는 불가(특정 시간대가 늘 어려운 경우) — 모든 날짜에 같은 블록을 넣는다.
+    for (const rec of c.recurringBusy ?? []) {
+      for (const date of demoDates) {
+        const startAt = kstWallToIso(date, rec.startMin);
+        const endAt = kstWallToIso(date, rec.endMin);
+        for (const i of rec.who) {
+          const p = DEMO_PEOPLE[i];
+          if (!p) continue;
+          const key = `${p.id}|${startAt}|${endAt}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          blocks.push({ participantId: p.id, startAt, endAt, status: "busy" });
+        }
       }
     }
   }

@@ -87,7 +87,7 @@ describe("contextualResult", () => {
     expect(["mostlyAvailable", "normal", "busyPeriod", "noGoodOption"]).toContain(result.context);
     expect(result.headline).toContain("잠정 결과");
     // 미응답자가 있으면 '필수참석자가 모두 가능'이라고 과장하지 않는다.
-    expect(result.rankGroups[0].label).toBe("지금까지의 응답 기준 추천 후보");
+    expect(result.rankGroups[0].label).toBe("지금까지의 응답 기준 추천 날짜");
   });
 
   it("2. 같은 조건의 후보는 같은 rankGroup 으로 묶인다", () => {
@@ -100,7 +100,7 @@ describe("contextualResult", () => {
     const result = buildContextualScheduleResult(slots);
 
     expect(result.rankGroups[0].slots).toHaveLength(2);
-    expect(result.rankGroups[0].label).toBe("모두 참석할 수 있는 후보");
+    expect(result.rankGroups[0].label).toBe("모두 참석할 수 있는 날짜");
     expect(result.rankGroups[1].slots).toHaveLength(1);
   });
 
@@ -203,7 +203,7 @@ describe("contextualResult", () => {
 
     // 전원 참석 가능한 후보들(시나리오 슬롯 2개 + 빈 평일 채움 2개)이 한 그룹으로 묶인다.
     expect(result.rankGroups[0].slots.length).toBeGreaterThanOrEqual(2);
-    expect(result.rankGroups[0].label).toBe("모두 참석할 수 있는 후보");
+    expect(result.rankGroups[0].label).toBe("모두 참석할 수 있는 날짜");
     const signatures = new Set(
       result.rankGroups[0].slots.map((s) => `${s.requiredBusyCount}|${s.totalAvailable}`),
     );
@@ -222,7 +222,7 @@ describe("추천안 해석(rankGroups)", () => {
     ];
     const result = buildContextualScheduleResult(slots);
     // 전원 가능 후보들이 최상위 그룹, 그룹 안은 이른 시간 순 — 화면 표시 순서일 뿐 확정이 아니다.
-    expect(result.rankGroups[0].label).toBe("모두 참석할 수 있는 후보");
+    expect(result.rankGroups[0].label).toBe("모두 참석할 수 있는 날짜");
     expect(result.rankGroups[0].slots[0].date).toBe(d[1]);
   });
 
@@ -236,7 +236,7 @@ describe("추천안 해석(rankGroups)", () => {
     const secondary = result.rankGroups.find((g) =>
       g.slots.some((s) => s.requiredBusyCount === 1),
     );
-    expect(secondary?.label).toBe("차선 후보");
+    expect(secondary?.label).toBe("차선 날짜");
   });
 
   it("15. 필수참석자 2명 이상 빠지는 후보는 '피하는 게 좋은 시간'으로 분류된다", () => {
@@ -332,7 +332,7 @@ describe("pickRedSlots(상대적 빨강)", () => {
     expect(mark?.reason).toContain("참석할 수 있는 인원이 적어요");
     expect(mark?.reason).not.toContain("필수참석자");
     // normal 에서 필수 경고 없이 상대적 빨강만 있으면 상단 코멘트도 인원 부족을 설명한다.
-    expect(result.comment).toContain("다른 후보보다 참석할 수 있는 인원이 적어요");
+    expect(result.comment).toContain("다른 날짜보다 참석할 수 있는 인원이 적어요");
   });
 
   it("20. 필수참석자 1명이 빠져 빨간 날짜의 reason 은 '필수참석자 1명'을 말한다", () => {

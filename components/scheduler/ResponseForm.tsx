@@ -1945,9 +1945,16 @@ function FloatingCaseSelector({
   // dialog 는 트리거 버튼 rect 기준 fixed 로 배치한다(HelpTooltip 모바일 포털과 같은 방식).
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
+  // 드롭다운이 헤더 오른쪽에 붙어도 화면 밖으로 나가지 않게 좌우 16px 여백 안으로 맞춘다.
+  const posFromRect = (rect: DOMRect) => {
+    const width = Math.min(window.innerWidth - 32, 352); // max-w-[22rem]
+    const left = Math.max(16, Math.min(rect.left, window.innerWidth - width - 16));
+    return { top: rect.bottom + 8, left };
+  };
+
   const openMenu = () => {
     const rect = triggerRef.current?.getBoundingClientRect();
-    if (rect) setPos({ top: rect.bottom + 8, left: rect.left });
+    if (rect) setPos(posFromRect(rect));
     setOpen(true);
   };
 
@@ -1955,7 +1962,7 @@ function FloatingCaseSelector({
     if (!open) return;
     const measure = () => {
       const rect = triggerRef.current?.getBoundingClientRect();
-      if (rect) setPos({ top: rect.bottom + 8, left: rect.left });
+      if (rect) setPos(posFromRect(rect));
     };
     window.addEventListener("resize", measure);
     window.addEventListener("scroll", measure, true);
@@ -2324,8 +2331,14 @@ function ResultScreen({
   // 전체 응답 해석 — 문장형 추천 요약(브리프)의 재료.
   // rankGroups/필터는 내부 로직·테스트로만 유지하고, 화면은 후보 카드 대신 브리프가 담당한다.
   const contextual = useMemo(
-    () => buildContextualScheduleResult(adaptDemoCaseToEvaluatedSlots(current, dates)),
-    [current, dates],
+    () =>
+      buildContextualScheduleResult(adaptDemoCaseToEvaluatedSlots(current, dates), {
+        blocks: snapshot.blocks,
+        participants: snapshot.participants,
+        workdayStart,
+        workdayEnd,
+      }),
+    [current, dates, snapshot, workdayStart, workdayEnd],
   );
   // 날짜별 하루 요약 → "modu가 먼저 판단을 정리해주는" 문장형 브리프.
   // 단일 후보 시간(10:00~11:00)이 아니라 날짜 전체 상태로 말한다.
@@ -2435,15 +2448,6 @@ function ResultScreen({
   );
 }
 
-function LegendDot({ className, label }: { className: string; label: string }) {
-  return (
-    <span className="flex items-center gap-1.5">
-      <span className={cn("h-2.5 w-2.5 rounded-full", className)} />
-      {label}
-    </span>
-  );
-}
-
 // 추천결과 캘린더(와이드) 셀 톤: 캘린더는 피해야 할 날만 신호로 보여준다.
 // 빨강 = 피하는 게 좋은 날, 나머지는 중립. recommended 톤은 내부 메타데이터로만 다룬다.
 const TONE_CELL: Record<CalendarTone, string> = {
@@ -2537,11 +2541,16 @@ function SubmittedCalendarScreenWide({
     [selectedDate, durationMinutes, workdayStart, workdayEnd, lunchStart, lunchEnd, snapshot],
   );
 
-  const totalPeople = DEMO_PEOPLE.length;
   // 맥락형 해석 — 후보 전체를 평가해 컨텍스트·해석 문장·날짜 톤(신호)을 만든다.
   const contextual = useMemo(
-    () => buildContextualScheduleResult(adaptDemoCaseToEvaluatedSlots(current, dates)),
-    [current, dates],
+    () =>
+      buildContextualScheduleResult(adaptDemoCaseToEvaluatedSlots(current, dates), {
+        blocks: snapshot.blocks,
+        participants: snapshot.participants,
+        workdayStart,
+        workdayEnd,
+      }),
+    [current, dates, snapshot, workdayStart, workdayEnd],
   );
   const markByDate = useMemo(() => {
     const map = new Map<string, CalendarMark>();
@@ -2593,12 +2602,12 @@ function SubmittedCalendarScreenWide({
     ].forEach((slot) => byStart.set(slot.startAt, slot));
     const slots = [...byStart.values()];
     if (slots.length === 0) return null;
-    const totals = slots.map((slot) => slot.totalAvailable);
-    const min = Math.min(...totals);
-    const max = Math.max(...totals);
+    // 하루에 후보 슬롯이 여러 개여도 범위 대신 숫자 하나만 보여준다 —
+    // 가장 빠듯한 슬롯(가능 최소 = 불가 최대. 가능+불가+미응답=전체라 둘은 같은 슬롯) 기준.
     return {
-      text: min === max ? `${max}` : `${min}~${max}`,
-      warn: slots.some((slot) => slot.requiredBusyNames.length >= 1),
+      // 미응답(pending)은 '불가'가 아니라 별도라서 busy 만 센다(상세 패널의 '미응답'과 일치).
+      availText: `${Math.min(...slots.map((slot) => slot.totalAvailable))}`,
+      busyText: `${Math.max(...slots.map((slot) => slot.totalBusy))}`,
     };
   };
 
@@ -2612,8 +2621,8 @@ function SubmittedCalendarScreenWide({
     return {
       tone: displayTone,
       cellClass: TONE_CELL[displayTone],
-      availLabel: availability.text,
-      warn: availability.warn,
+      availText: availability.availText,
+      busyText: availability.busyText,
     };
   };
 
@@ -2647,7 +2656,7 @@ function SubmittedCalendarScreenWide({
                       info.tone === "avoid"
                           ? " — 피하는 게 좋은 날"
                           : ""
-                      }, ${info.availLabel}/${totalPeople}명 가능`
+                      }, 가능 ${info.availText}명 · 불가 ${info.busyText}명`
                     : ""
                 }`}
                 className={cn(
@@ -2666,15 +2675,9 @@ function SubmittedCalendarScreenWide({
                   )}
                 </span>
                 {info && (
-                  <span
-                    className={cn(
-                      "text-[10px] font-semibold leading-none sm:text-[11px] sm:leading-tight",
-                      info.warn
-                        ? "rounded-full bg-white/85 px-1 py-px text-red-600"
-                        : "opacity-80",
-                    )}
-                  >
-                    {info.availLabel}/{totalPeople}
+                  <span className="flex flex-col items-center gap-0.5 whitespace-nowrap text-[10px] font-semibold leading-none tabular-nums sm:items-start sm:text-[11px] sm:leading-tight">
+                    <span className="opacity-80">가능 {info.availText}</span>
+                    <span className="opacity-80">불가 {info.busyText}</span>
                   </span>
                 )}
               </button>
@@ -2689,10 +2692,12 @@ function SubmittedCalendarScreenWide({
     <div className="space-y-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-2 sm:relative sm:left-1/2 sm:w-[min(80rem,calc(100vw-4rem))] sm:-translate-x-1/2 sm:pb-8">
       <MobileHeaderTitle title="캘린더" hideBack={!onBack} onBack={onBack} />
       <div className="flex items-center justify-between gap-2">
-        {/* 케이스 선택 버튼 — 데모 컨트롤·탭하면 모달. */}
-        <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} />
-        <div className="hidden sm:block">
-          <h2 className="text-xl font-extrabold text-slate-900">캘린더</h2>
+        <div className="flex items-center gap-2">
+          <div className="hidden sm:block">
+            <h2 className="text-xl font-extrabold text-slate-900">캘린더</h2>
+          </div>
+          {/* 케이스 선택 버튼 — 데모 컨트롤·탭하면 모달. 캘린더 제목 바로 오른쪽에 붙인다. */}
+          <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} />
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
@@ -2714,7 +2719,7 @@ function SubmittedCalendarScreenWide({
       {/* 맥락형 해석 문장 — 결과 분포(대부분 가능/보통/바쁨/없음)에 따라 문구가 달라진다.
           캘린더는 최종 확정을 유도하지 않는다 — 결정은 참여자들이 제품 밖에서 한다. */}
       <div className="space-y-1 px-1">
-        <p className="break-keep text-sm font-bold text-slate-800">{contextual.headline}</p>
+        <p className="break-keep text-base font-bold text-slate-800 sm:text-lg">{contextual.headline}</p>
         <p className="break-keep text-sm text-slate-600">{contextual.comment}</p>
         {/* 특정 시간대 경고 — mostlyAvailable 은 첫 경고가 이미 코멘트에 있어 건너뛴다. */}
         {(contextual.context === "mostlyAvailable"
@@ -2728,14 +2733,6 @@ function SubmittedCalendarScreenWide({
             {warning.message}
           </p>
         ))}
-        <p className="break-keep text-xs text-slate-400">
-          이 추천안을 바탕으로 참여자들과 최종 회의 시간을 정해보세요.
-        </p>
-      </div>
-
-      {/* 범례 — 캘린더는 피해야 할 날만 색으로 알려준다. */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-slate-500">
-        <LegendDot className="bg-red-300" label="피하는 게 좋은 날" />
       </div>
 
       {/* PC: 달력(좌) + 참석 명단(우) 2열. 모바일: 원본과 동일한 세로 스택. */}
@@ -2745,7 +2742,20 @@ function SubmittedCalendarScreenWide({
         <div className="space-y-4">
           {/* 선택한 날짜의 참석 명단 패널 — 날짜 전체 요약을 보여준다. */}
           <Card className="space-y-3 !border-0 shadow-[0_12px_36px_rgba(15,23,42,0.12)]">
-            {selectedDate === null ? (
+            {lookupResult ? (
+              // 날짜·시간 검색을 하면 이 카드 내용이 검색 결과로 바뀐다(✕로 지우면 다시 선택 날짜 명단).
+              <div
+                ref={lookupResultRef}
+                key={`${lookupResult.startAt}-${lookupResult.endAt}`}
+                style={{ animationDuration: "0.6s" }}
+                className="animate-fade-up-blur motion-reduce:animate-none"
+              >
+                <AvailabilitySearchResultPanel
+                  result={lookupResult}
+                  onClear={() => setLookupResult(null)}
+                />
+              </div>
+            ) : selectedDate === null ? (
               <p className="text-sm text-slate-500">날짜를 누르면 참석자별 가능 여부를 볼 수 있어요.</p>
             ) : (
               <>
@@ -2763,7 +2773,7 @@ function SubmittedCalendarScreenWide({
             )}
           </Card>
 
-          {/* 날짜·시간 검색 — 추천 시간 화면을 거치지 않아도 캘린더에서 바로 확인한다. */}
+          {/* 날짜·시간 검색 — 여기엔 입력만 두고, 결과는 위 '선택 날짜 명단' 카드 내용을 대체해 보여준다. */}
           <Card className="space-y-3 !border-0 shadow-[0_12px_36px_rgba(15,23,42,0.12)]">
             <AvailabilityDateTimeLookup
               key={`calendar-lookup-${caseId}-${selectedDate ?? "none"}`}
@@ -2778,19 +2788,6 @@ function SubmittedCalendarScreenWide({
               initialDate={selectedDate ?? candidates[0]?.date ?? null}
               onResult={setLookupResult}
             />
-            {lookupResult && (
-              <div
-                ref={lookupResultRef}
-                key={`${lookupResult.startAt}-${lookupResult.endAt}`}
-                style={{ animationDuration: "0.6s" }}
-                className="relative animate-fade-up-blur rounded-2xl bg-slate-50 p-3 motion-reduce:animate-none"
-              >
-                <AvailabilitySearchResultPanel
-                  result={lookupResult}
-                  onClear={() => setLookupResult(null)}
-                />
-              </div>
-            )}
           </Card>
         </div>
       </div>

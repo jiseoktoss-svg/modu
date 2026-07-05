@@ -16,8 +16,12 @@
 // - 미응답(pending)은 컨텍스트가 아니라 문구 수식어로만 다룬다.
 // - 필수참석자가 빠지는 슬롯도 버리지 않고 평가에 남긴다(경고 문구의 재료).
 
-import { formatKoreanTime, isoToEpoch } from "@/lib/time";
+import { formatKoreanTime, isoToEpoch, kstWallToIso, parseHm } from "@/lib/time";
 import { generateSlots } from "./generateSlots";
+import type {
+  AvailabilityLookupBlock,
+  AvailabilityLookupParticipant,
+} from "./availabilityLookup";
 import type { SchedulerInput } from "./types";
 
 // ---- 타입 ----
@@ -74,6 +78,17 @@ export type ContextualWarning = {
   names: string[];
   message: string;
   level: "soft" | "hard";
+  /** 모든 날에 같은 시간대가 반복되면 하나로 묶은 경고("매일 …"). */
+  everyDay?: boolean;
+};
+
+/** 경고를 '실제 busy 시각'으로 만들기 위한 원본 데이터. 없으면 경고를 만들지 않는다.
+ *  블록 시각은 KST(+09:00) 벽시계 ISO 를 가정한다(데모 스냅샷·kstWallToIso 산출물). */
+export type WarningDetail = {
+  blocks: AvailabilityLookupBlock[];
+  participants: AvailabilityLookupParticipant[];
+  workdayStart: string;
+  workdayEnd: string;
 };
 
 /** 그룹의 안정적인 분류 — UI 필터가 label 문자열에 의존하지 않게 한다. */
@@ -291,17 +306,17 @@ export function classifyRankGroupKind(group: EvaluatedSlot[]): RankGroupKind {
 export function labelRankGroup(group: EvaluatedSlot[]): string {
   const first = group[0];
   if (first.isAllAvailable) {
-    return group.length > 1 ? "모두 참석할 수 있는 후보" : "가장 무난한 후보";
+    return group.length > 1 ? "모두 참석할 수 있는 날짜" : "가장 무난한 날짜";
   }
   if (first.isRequiredAllAvailable) {
     // 미응답자가 있으면 '필수참석자가 모두 가능'은 과장이다(필수 미응답이 섞여 있을 수 있음).
     if (first.pendingNames.length > 0) {
-      return "지금까지의 응답 기준 추천 후보";
+      return "지금까지의 응답 기준 추천 날짜";
     }
-    return group.length > 1 ? "필수참석자가 모두 가능한 후보" : "추천 후보";
+    return group.length > 1 ? "필수참석자가 모두 가능한 날짜" : "추천 날짜";
   }
   if (first.requiredBusyCount === 1) {
-    return "차선 후보";
+    return "차선 날짜";
   }
   return "피하는 게 좋은 시간";
 }
@@ -423,9 +438,9 @@ function buildAvoidReason(slot: EvaluatedSlot): string {
     return "필수참석자 1명이 참석하기 어려워요.";
   }
   if (slot.totalAvailable < slot.totalParticipants) {
-    return "다른 후보보다 참석할 수 있는 인원이 적어요.";
+    return "다른 날짜보다 참석할 수 있는 인원이 적어요.";
   }
-  return "이번 후보군에서는 우선순위가 낮은 시간이에요.";
+  return "이번 날짜 중에서는 우선순위가 낮은 시간이에요.";
 }
 
 export function buildCalendarMarks(
@@ -453,7 +468,7 @@ export function buildCalendarMarks(
         return {
           date,
           tone: "recommended" as const,
-          reason: "이 날의 가장 좋은 시간이 추천 후보예요.",
+          reason: "이 날이 추천 날짜예요.",
         };
       }
 
@@ -490,62 +505,123 @@ function formatNameList(names: string[]): string {
   return honored.join(", ");
 }
 
-/** 필수참석자가 빠지는 슬롯들을 경고로 변환한다. 같은 날짜·같은 명단·같은 수위의
- *  연속(인접·겹침) 슬롯은 하나의 시간대 경고로 합친다(실데이터의 30분 슬롯 나열 방지). */
-export function buildWarnings(slots: EvaluatedSlot[]): ContextualWarning[] {
-  const avoidSlots = slots
-    .filter((s) => s.requiredBusyCount >= 1)
-    .sort((a, b) => isoToEpoch(a.startAt) - isoToEpoch(b.startAt));
+/** 필수참석자의 '실제 busy 시각'을 경고로 만든다. 후보 슬롯 병합이 아니라 실제 불가 블록을
+ *  근무시간으로 클램프해 시각 그대로 쓴다(날짜·시간 검색과 일치). 모든 날에 같은 시간대(같은
+ *  사람)가 반복되면 "매일 …" 한 줄로 묶는다. detail 이 없으면(순수 슬롯 테스트) 경고를 만들지 않는다. */
+export function buildWarnings(
+  slots: EvaluatedSlot[],
+  detail?: WarningDetail,
+): ContextualWarning[] {
+  if (!detail) return [];
+  const { blocks, participants, workdayStart, workdayEnd } = detail;
 
-  type Merged = {
-    startAt: string;
-    endAt: string;
-    date: string;
-    names: string[];
-    level: "soft" | "hard";
-  };
-  const merged: Merged[] = [];
-  for (const slot of avoidSlots) {
-    const level: "soft" | "hard" = slot.isHardAvoid ? "hard" : "soft";
-    const namesKey = slot.requiredBusyNames.join("|");
-    const last = merged.at(-1);
-    if (
-      last &&
-      last.date === slot.date &&
-      last.level === level &&
-      last.names.join("|") === namesKey &&
-      isoToEpoch(slot.startAt) <= isoToEpoch(last.endAt)
-    ) {
-      if (isoToEpoch(slot.endAt) > isoToEpoch(last.endAt)) last.endAt = slot.endAt;
-    } else {
-      merged.push({
-        startAt: slot.startAt,
-        endAt: slot.endAt,
-        date: slot.date,
-        names: slot.requiredBusyNames,
-        level,
+  const requiredIds = new Set(
+    participants.filter((p) => p.attendanceType === "required").map((p) => p.id),
+  );
+  const nameById = new Map(participants.map((p) => [p.id, p.name] as const));
+  const orderById = new Map(participants.map((p, i) => [p.id, i] as const));
+  const workStartMin = parseHm(workdayStart);
+  const workEndMin = parseHm(workdayEnd);
+  const kstMin = (iso: string) => parseHm(iso.slice(11, 16));
+  const hhmm = (min: number) =>
+    `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+
+  // 날짜별 필수 busy 블록을 근무시간으로 클램프해 모은다.
+  const byDate = new Map<string, { id: string; s: number; e: number }[]>();
+  for (const b of blocks) {
+    if (b.status !== "busy" || !requiredIds.has(b.participantId)) continue;
+    const s = Math.max(kstMin(b.startAt), workStartMin);
+    const e = Math.min(kstMin(b.endAt), workEndMin);
+    if (s >= e) continue;
+    const date = b.startAt.slice(0, 10);
+    const list = byDate.get(date) ?? [];
+    list.push({ id: b.participantId, s, e });
+    byDate.set(date, list);
+  }
+
+  // 날짜별로 '같은 필수 인원 집합이 불가한 실제 구간'을 세그먼트로 나눈다.
+  type Interval = { date: string; startMin: number; endMin: number; ids: string[] };
+  const intervals: Interval[] = [];
+  for (const [date, list] of byDate) {
+    const bounds = [...new Set(list.flatMap((x) => [x.s, x.e]))].sort((a, b) => a - b);
+    let prev: Interval | null = null;
+    for (let i = 0; i < bounds.length - 1; i++) {
+      const s = bounds[i];
+      const e = bounds[i + 1];
+      const ids = list
+        .filter((x) => x.s <= s && e <= x.e)
+        .map((x) => x.id)
+        .sort((a, b) => (orderById.get(a) ?? 0) - (orderById.get(b) ?? 0));
+      if (ids.length === 0) {
+        prev = null;
+        continue;
+      }
+      if (prev && prev.ids.join("|") === ids.join("|") && prev.endMin === s) {
+        prev.endMin = e;
+      } else {
+        prev = { date, startMin: s, endMin: e, ids };
+        intervals.push(prev);
+      }
+    }
+  }
+  if (intervals.length === 0) return [];
+
+  const totalDates = new Set(slots.map((s) => s.date)).size;
+
+  // 같은 (필수 인원 집합, 시각)이면 날짜를 모아 '모든 날 반복'인지 판단한다.
+  type Group = { ids: string[]; startMin: number; endMin: number; dates: Set<string> };
+  const groups = new Map<string, Group>();
+  for (const iv of intervals) {
+    const key = `${iv.ids.join("|")}@${iv.startMin}-${iv.endMin}`;
+    const g = groups.get(key);
+    if (g) g.dates.add(iv.date);
+    else
+      groups.set(key, {
+        ids: iv.ids,
+        startMin: iv.startMin,
+        endMin: iv.endMin,
+        dates: new Set([iv.date]),
       });
+  }
+
+  const warnings: ContextualWarning[] = [];
+  for (const g of groups.values()) {
+    const names = g.ids.map((id) => nameById.get(id) ?? id);
+    const level: "soft" | "hard" = g.ids.length >= 2 ? "hard" : "soft";
+    const range = `${hhmm(g.startMin)}~${hhmm(g.endMin)}`;
+    const everyDay = totalDates >= 2 && g.dates.size >= totalDates;
+    if (everyDay) {
+      const rep = [...g.dates].sort()[0];
+      warnings.push({
+        startAt: kstWallToIso(rep, g.startMin),
+        endAt: kstWallToIso(rep, g.endMin),
+        date: rep,
+        names,
+        level,
+        everyDay: true,
+        message: `매일 ${range}은 필수참석자인 ${formatNameList(names)}이 참석하기 어려워요. 이 시간은 피해주세요.`,
+      });
+    } else {
+      for (const date of [...g.dates].sort()) {
+        const [, m, d] = date.split("-").map(Number);
+        warnings.push({
+          startAt: kstWallToIso(date, g.startMin),
+          endAt: kstWallToIso(date, g.endMin),
+          date,
+          names,
+          level,
+          message: `${m}월 ${d}일 ${range}에는 필수참석자인 ${formatNameList(names)}이 참석하기 어려워요. 이 시간은 피해주세요.`,
+        });
+      }
     }
   }
 
-  return merged
-    .map((w) => {
-      const [, m, d] = w.date.split("-").map(Number);
-      const start = formatKoreanTime(w.startAt);
-      const end = formatKoreanTime(w.endAt);
-      const label =
-        isoToEpoch(w.endAt) - isoToEpoch(w.startAt) > 60 * 60000
-          ? `${m}월 ${d}일 ${start}~${end}`
-          : `${m}월 ${d}일 ${start}`;
-      return {
-        ...w,
-        message: `${label}에는 필수참석자인 ${formatNameList(w.names)}이 참석하기 어려워요. 이 시간은 피해주세요.`,
-      };
-    })
-    .sort((a, b) => {
-      if (a.level !== b.level) return a.level === "hard" ? -1 : 1;
-      return isoToEpoch(a.startAt) - isoToEpoch(b.startAt);
-    });
+  // hard 먼저, 반복(매일) 먼저, 그다음 이른 시간 순.
+  return warnings.sort((a, b) => {
+    if (a.level !== b.level) return a.level === "hard" ? -1 : 1;
+    if (!!a.everyDay !== !!b.everyDay) return a.everyDay ? -1 : 1;
+    return isoToEpoch(a.startAt) - isoToEpoch(b.startAt);
+  });
 }
 
 export function buildNarrative(args: {
@@ -561,7 +637,7 @@ export function buildNarrative(args: {
 
   if (slots.length === 0) {
     return {
-      headline: "아직 보여줄 후보가 없어요.",
+      headline: "아직 보여줄 날짜가 없어요.",
       comment: "회의 기간 안에 고를 수 있는 시간이 없어요. 기간을 확인해 주세요.",
     };
   }
@@ -573,7 +649,9 @@ export function buildNarrative(args: {
   if (context === "mostlyAvailable") {
     headline = "대부분 날짜에 모든 인원이 참석할 수 있어요.";
     const worst = warnings[0];
-    if (worst) {
+    if (worst && worst.everyDay) {
+      comment = `단, 매일 ${formatKoreanTime(worst.startAt)}~${formatKoreanTime(worst.endAt)}에는 필수참석자인 ${formatNameList(worst.names)}이 참석하기 어려우니 그 시간만 피하면 어느 날짜든 괜찮아요.`;
+    } else if (worst) {
       const [, m, d] = worst.date.split("-").map(Number);
       comment = `단, ${m}월 ${d}일 ${formatKoreanTime(worst.startAt)}에는 필수참석자인 ${formatNameList(worst.names)}이 참석하기 어려우니 이 시간은 피해주세요.`;
     } else if (redSlots.length > 0) {
@@ -590,28 +668,28 @@ export function buildNarrative(args: {
       comment = "특별히 피해야 할 시간은 많지 않아요. 편한 시간을 골라도 괜찮아요.";
     }
   } else if (context === "normal") {
-    headline = "몇 개의 좋은 후보가 보여요.";
+    headline = "몇 개의 좋은 날짜가 보여요.";
     comment =
       recommendedSlots.length > 0
-        ? "추천 후보로 묶인 시간 중에서 고르면 무난해요."
-        : "후보 대부분이 비슷하게 좋아요. 어느 시간을 골라도 무난해요.";
+        ? "추천 날짜 중에서 고르면 무난해요."
+        : "날짜 대부분이 비슷하게 좋아요. 어느 시간을 골라도 무난해요.";
     // 필수 경고가 없어도 상대적 빨강(인원 부족)이 있으면 빨간색의 의미를 설명해 준다.
     const hasRelativeRed = redSlots.some((slot) => slot.requiredBusyCount === 0);
     if (warnings.length > 0) {
       comment += " 빨간색으로 표시된 시간은 필수참석자가 참석하기 어려워 피하는 게 좋아요.";
     } else if (hasRelativeRed) {
-      comment += " 빨간색으로 표시된 시간은 다른 후보보다 참석할 수 있는 인원이 적어요.";
+      comment += " 빨간색으로 표시된 시간은 다른 날짜보다 참석할 수 있는 인원이 적어요.";
     }
   } else if (context === "busyPeriod") {
     headline = "이번 기간은 다들 바빠서 모든 인원이 맞는 시간이 많지 않아요.";
     if (best.isRequiredAllAvailable) {
-      comment = `그래도 ${formatSlotTimeLabel(best)}이 가장 나은 후보예요. 필수참석자는 모두 참석할 수 있고, 전체 ${best.totalParticipants}명 중 ${best.totalAvailable}명이 참석할 수 있어요.`;
+      comment = `그래도 ${formatSlotTimeLabel(best)}이 가장 나은 날짜예요. 필수참석자는 모두 참석할 수 있고, 전체 ${best.totalParticipants}명 중 ${best.totalAvailable}명이 참석할 수 있어요.`;
     } else {
-      comment = `아쉽지만 ${formatSlotTimeLabel(best)}이 가장 나은 차선 후보예요. 다만 필수참석자인 ${formatNameList(best.requiredBusyNames)}이 참석하기 어려워요.`;
+      comment = `아쉽지만 ${formatSlotTimeLabel(best)}이 가장 나은 차선 날짜예요. 다만 필수참석자인 ${formatNameList(best.requiredBusyNames)}이 참석하기 어려워요.`;
     }
   } else {
     headline = "이번 기간에는 필수참석자가 모두 참석할 수 있는 시간이 없어요.";
-    comment = `기간을 조금 넓히는 게 좋아요. 아쉽지만 굳이 고르면 ${formatSlotTimeLabel(best)}이 가장 덜 어려운 후보예요. 다만 필수참석자인 ${formatNameList(best.requiredBusyNames)}이 참석하기 어려워요.`;
+    comment = `기간을 조금 넓히는 게 좋아요. 아쉽지만 굳이 고르면 ${formatSlotTimeLabel(best)}이 가장 덜 어려운 날짜예요. 다만 필수참석자인 ${formatNameList(best.requiredBusyNames)}이 참석하기 어려워요.`;
   }
 
   // 미응답은 컨텍스트가 아니라 잠정 결과 수식어로만 붙인다.
@@ -624,13 +702,16 @@ export function buildNarrative(args: {
 
 // ---- 최종 결과 ----
 
-export function buildContextualScheduleResult(slots: EvaluatedSlot[]): ContextualScheduleResult {
+export function buildContextualScheduleResult(
+  slots: EvaluatedSlot[],
+  detail?: WarningDetail,
+): ContextualScheduleResult {
   const context = classifyContext(slots);
   const groups = groupMeaningfulRanks(slots);
   const recommendedSlots = pickRecommendedSlots(context, groups, slots);
   const redSlots = pickRedSlots(context, groups, slots);
   const calendarMarks = buildCalendarMarks(slots, recommendedSlots, redSlots);
-  const warnings = buildWarnings(slots);
+  const warnings = buildWarnings(slots, detail);
 
   const pendingNames = [...new Set(slots.flatMap((s) => s.pendingNames))];
   const hasPending = pendingNames.length > 0;

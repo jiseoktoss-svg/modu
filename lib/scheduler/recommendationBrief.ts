@@ -261,9 +261,9 @@ export function buildRecommendationBrief(args: {
       ];
       if (slot.requiredBusyNames.length > 0) {
         recordNames(slot.requiredBusyNames, slot.requiredBusyNames); // 모두 필수참석자
-        primarySentence = `굳이 고르면 ${timeLabel}이 가장 덜 어려운 후보예요. 다만 필수참석자인 ${formatNameList(slot.requiredBusyNames)}이 참석하기 어려워요.`;
+        primarySentence = `굳이 고르면 ${timeLabel}이 가장 덜 어려운 날짜예요. 다만 필수참석자인 ${formatNameList(slot.requiredBusyNames)}이 참석하기 어려워요.`;
       } else {
-        primarySentence = `그래도 ${timeLabel}이 가장 나은 후보예요. 전체 ${slot.totalParticipants}명 중 ${slot.totalAvailable}명이 참석할 수 있어요.`;
+        primarySentence = `그래도 ${timeLabel}이 가장 나은 날짜예요. 전체 ${slot.totalParticipants}명 중 ${slot.totalAvailable}명이 참석할 수 있어요.`;
       }
     } else {
       primaryItems = [];
@@ -290,11 +290,11 @@ export function buildRecommendationBrief(args: {
       const exception = worstSummary.exceptionRanges[0];
       recordNames(exception.names, exception.requiredNames);
       // 예외 범위는 busy 시각이 아니라 '겹치는 후보 슬롯의 병합'이라 실제보다 넓게 보일 수 있다
-      // — "겹치는 회의는"으로 회의 기준임을 분명히 한다.
+      // — 그래서 확정처럼 말하지 않고 "그 시간을 피해서 확인해보세요"로 참고용임을 알린다.
       avoidSentence = `다만 ${worstAvoid.label} ${formatKoreanTimeRange(
         exception.startAt,
         exception.endAt,
-      )}에 겹치는 회의는 ${formatNameList(exception.names)}이 참석하기 어려워요. 그 시간을 피해서 확인해보세요.`;
+      )} 시간에는 ${formatNameList(exception.names)}이 참석하기 어려워요. 그 시간을 피해서 확인해보세요.`;
     } else if (worstAvoid.detail.includes("필수참석자 여러 명")) {
       avoidSentence = `${worstAvoid.label}은 필수참석자 여러 명이 참석하기 어려워 피하는 게 좋아요.`;
     } else if (worstAvoid.detail.includes("필수참석자")) {
@@ -313,7 +313,7 @@ export function buildRecommendationBrief(args: {
       avoidSentence = `다만 ${dateLabel(withException.date)} ${formatKoreanTimeRange(
         exception.startAt,
         exception.endAt,
-      )}에 겹치는 회의는 ${formatNameList(exception.names)}이 참석하기 어려워요. 그 시간을 피해서 확인해보세요.`;
+      )} 시간에는 ${formatNameList(exception.names)}이 참석하기 어려워요. 그 시간을 피해서 확인해보세요.`;
     }
   }
 

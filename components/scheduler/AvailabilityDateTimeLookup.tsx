@@ -32,7 +32,7 @@ type AvailabilityDateTimeLookupProps = {
   lunchEnd: string;
   /** 초기 선택 날짜. 없으면 첫 후보 날짜. */
   initialDate?: string | null;
-  /** 확인 결과. 날짜/시간을 바꾸면 이전 결과 무효화를 위해 null 로 호출된다. */
+  /** 확인 결과. `검색하기`를 눌렀을 때만 갱신되고, 날짜/시간만 바꿔서는 이전 결과가 유지된다. */
   onResult: (result: AvailabilityLookupResult | null) => void;
   className?: string;
 };
@@ -140,10 +140,7 @@ export function AvailabilityDateTimeLookup({
             variant="menu"
             aria-label="확인할 시간 선택"
             value={timeHm}
-            onValueChange={(next) => {
-              setTimeHm(next);
-              onResult(null); // 조건이 바뀌면 이전 결과는 더 이상 유효하지 않다.
-            }}
+            onValueChange={setTimeHm}
             options={
               timeOptions.length > 0
                 ? timeOptions.map((hm) => ({ value: hm, label: hm }))
@@ -173,7 +170,6 @@ export function AvailabilityDateTimeLookup({
         selected={new Set(date ? [date] : [])}
         onToggle={(ds) => {
           setDate(ds);
-          onResult(null); // 조건이 바뀌면 이전 결과는 더 이상 유효하지 않다.
           setModalOpen(false);
         }}
         tone="pref"

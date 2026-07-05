@@ -3,7 +3,7 @@
 // 후보 시간 생성은 generateSlots 를 재사용해 근무시간·회의 길이·점심 제외 규칙이
 // 추천 엔진과 어긋나지 않게 한다. 조회 전용 — 확정/투표 기능이 아니다.
 
-import { formatKoreanTimeRange, isoToEpoch } from "@/lib/time";
+import { formatKoreanTimeRange, isoToEpoch, kstWallToIso, parseHm } from "@/lib/time";
 import { generateSlots } from "./generateSlots";
 import {
   lookupAvailabilityAtTime,
@@ -50,47 +50,117 @@ function formatNameList(names: string[]): string {
   return honored.join(", ");
 }
 
-/** 불가 인원이 있는 슬롯들을 예외 구간으로 병합한다 — 같은 명단·같은 수위의
- *  연속(인접·겹침) 슬롯은 하나로 묶는다(30분 슬롯 나열 방지, buildWarnings 와 동일 발상). */
-function buildExceptionRanges(results: AvailabilityLookupResult[]): DateAvailabilityException[] {
-  const issues = results
-    .filter((r) => r.busyNames.length > 0)
-    .sort((a, b) => isoToEpoch(a.startAt) - isoToEpoch(b.startAt));
+/** 참석자의 '실제 busy 시각'을 그대로 예외 구간으로 만든다.
+ *  후보 슬롯을 병합하면 회의 길이만큼 앞뒤로 넓어져 날짜·시간 검색과 어긋난다
+ *  (예: 14:00~15:00 불가인데 2시간 회의면 12:30~16:30으로 보임) — 실제 불가 블록을
+ *  근무시간으로 클램프한 뒤, 블록 경계로 타임라인을 나눠 '같은 사람들이 불가한 구간'끼리만
+ *  묶어 실제 시각을 보여준다. 이러면 검색 결과와 항상 일치한다. */
+function buildExceptionRanges(
+  blocks: AvailabilityLookupBlock[],
+  participants: AvailabilityLookupParticipant[],
+  date: string,
+  workdayStart: string,
+  workdayEnd: string,
+): DateAvailabilityException[] {
+  const order = new Map(participants.map((p, i) => [p.id, i] as const));
+  const workStartIso = kstWallToIso(date, parseHm(workdayStart));
+  const workEndIso = kstWallToIso(date, parseHm(workdayEnd));
+  const workStartE = isoToEpoch(workStartIso);
+  const workEndE = isoToEpoch(workEndIso);
 
-  const merged: DateAvailabilityException[] = [];
-  for (const r of issues) {
-    const reason: DateAvailabilityException["reason"] =
-      r.requiredBusyNames.length > 0 ? "requiredBusy" : "optionalBusy";
+  // busy 블록만, 근무시간과 겹치는 부분으로 클램프한다. (avoid/preferred 는 참석 가능으로 본다)
+  type Busy = {
+    id: string;
+    name: string;
+    required: boolean;
+    startE: number;
+    endE: number;
+    startIso: string;
+    endIso: string;
+  };
+  const busy: Busy[] = [];
+  for (const b of blocks) {
+    if (b.status !== "busy") continue;
+    const idx = order.get(b.participantId);
+    if (idx === undefined) continue;
+    const p = participants[idx];
+    const rawStartE = isoToEpoch(b.startAt);
+    const rawEndE = isoToEpoch(b.endAt);
+    const startE = Math.max(rawStartE, workStartE);
+    const endE = Math.min(rawEndE, workEndE);
+    if (startE >= endE) continue; // 근무시간과 안 겹침
+    busy.push({
+      id: p.id,
+      name: p.name,
+      required: p.attendanceType === "required",
+      startE,
+      endE,
+      startIso: startE === rawStartE ? b.startAt : workStartIso,
+      endIso: endE === rawEndE ? b.endAt : workEndIso,
+    });
+  }
+  if (busy.length === 0) return [];
+
+  // 모든 블록 경계(에폭→iso)로 타임라인을 나눈다.
+  const boundIso = new Map<number, string>();
+  for (const x of busy) {
+    boundIso.set(x.startE, x.startIso);
+    boundIso.set(x.endE, x.endIso);
+  }
+  const bounds = [...boundIso.keys()].sort((a, b) => a - b);
+
+  type Seg = { startE: number; endE: number; ids: string[]; key: string };
+  const segments: Seg[] = [];
+  for (let i = 0; i < bounds.length - 1; i++) {
+    const startE = bounds[i];
+    const endE = bounds[i + 1];
+    const ids = busy
+      .filter((x) => x.startE <= startE && endE <= x.endE)
+      .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
+      .map((x) => x.id);
+    if (ids.length === 0) continue; // 아무도 불가하지 않은 빈 구간
+    segments.push({ startE, endE, ids, key: ids.join("|") });
+  }
+
+  // 같은 사람 집합이 연속되면 한 구간으로 병합한다.
+  const merged: Seg[] = [];
+  for (const seg of segments) {
     const last = merged.at(-1);
-    if (
-      last &&
-      last.reason === reason &&
-      last.names.join("|") === r.busyNames.join("|") &&
-      isoToEpoch(r.startAt) <= isoToEpoch(last.endAt)
-    ) {
-      if (isoToEpoch(r.endAt) > isoToEpoch(last.endAt)) last.endAt = r.endAt;
+    if (last && last.key === seg.key && last.endE === seg.startE) {
+      last.endE = seg.endE;
     } else {
-      merged.push({
-        startAt: r.startAt,
-        endAt: r.endAt,
-        names: r.busyNames,
-        requiredNames: r.requiredBusyNames,
-        optionalNames: r.optionalBusyNames,
-        reason,
-      });
+      merged.push({ ...seg });
     }
   }
 
-  // 필수 불가 구간을 먼저(심각한 순), 그 안에서는 이른 시간 순.
-  return merged.sort((a, b) => {
-    if (a.reason !== b.reason) return a.reason === "requiredBusy" ? -1 : 1;
-    return isoToEpoch(a.startAt) - isoToEpoch(b.startAt);
-  });
+  const byId = new Map(busy.map((x) => [x.id, x] as const));
+  return merged
+    .map((m) => {
+      const people = m.ids.map((id) => byId.get(id)!);
+      const requiredNames = people.filter((x) => x.required).map((x) => x.name);
+      const optionalNames = people.filter((x) => !x.required).map((x) => x.name);
+      return {
+        startAt: boundIso.get(m.startE)!,
+        endAt: boundIso.get(m.endE)!,
+        names: people.map((x) => x.name),
+        requiredNames,
+        optionalNames,
+        reason: (requiredNames.length > 0
+          ? "requiredBusy"
+          : "optionalBusy") as DateAvailabilityException["reason"],
+      };
+    })
+    // 필수 불가 구간을 먼저(심각한 순), 그 안에서는 이른 시간 순.
+    .sort((a, b) => {
+      if (a.reason !== b.reason) return a.reason === "requiredBusy" ? -1 : 1;
+      return isoToEpoch(a.startAt) - isoToEpoch(b.startAt);
+    });
 }
 
 export function buildDateAvailabilitySummary(
   date: string,
   results: AvailabilityLookupResult[],
+  exceptionRanges: DateAvailabilityException[],
 ): DateAvailabilitySummary {
   const totalSlots = results.length;
   const allSlotsAllAvailable =
@@ -110,8 +180,6 @@ export function buildDateAvailabilitySummary(
     (r) => r.requiredBusyNames.length === 0 && r.optionalBusyNames.length > 0,
   );
   const pendingSlots = results.filter((r) => r.hasPending);
-
-  const exceptionRanges = buildExceptionRanges(results);
 
   // ---- 문구 ----
   let headline = "";
@@ -138,17 +206,16 @@ export function buildDateAvailabilitySummary(
       headline = "이 날은 일부 시간에 필수참석자가 참석하기 어려워요.";
       const worst = exceptionRanges.find((x) => x.reason === "requiredBusy");
       if (worst) {
-        // 예외 범위는 busy 시각이 아니라 '겹치는 후보 슬롯의 병합'이라 실제보다 넓게
-        // 보일 수 있다 — "겹치는 회의는"으로 회의 기준임을 분명히 한다.
-        comment = `${formatKoreanTimeRange(worst.startAt, worst.endAt)}에 겹치는 회의는 ${formatNameList(
+        // 예외는 참석자의 실제 busy 시각이라 날짜·시간 검색 결과와 그대로 일치한다.
+        comment = `${formatKoreanTimeRange(worst.startAt, worst.endAt)} 시간에는 ${formatNameList(
           worst.requiredNames,
-        )}이 참석하기 어려우니 피하는 게 좋아요.`;
+        )}이 참석하기 어려우니 회의는 피하는 게 좋아요.`;
       }
     } else if (allAvailableSlots.length > 0) {
       headline = "이 날은 대부분 시간에 모든 인원이 참석할 수 있어요.";
       const first = exceptionRanges[0];
       if (first) {
-        comment = `다만 ${formatKoreanTimeRange(first.startAt, first.endAt)}에 겹치는 회의는 ${formatNameList(
+        comment = `다만 ${formatKoreanTimeRange(first.startAt, first.endAt)} 시간에는 ${formatNameList(
           first.names,
         )}이 참석하기 어려워요.`;
       }
@@ -210,5 +277,13 @@ export function summarizeDateAvailability(args: {
     }),
   );
 
-  return buildDateAvailabilitySummary(args.date, results);
+  const exceptionRanges = buildExceptionRanges(
+    args.blocks,
+    args.participants,
+    args.date,
+    args.workdayStart,
+    args.workdayEnd,
+  );
+
+  return buildDateAvailabilitySummary(args.date, results, exceptionRanges);
 }

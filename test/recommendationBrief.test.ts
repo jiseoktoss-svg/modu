@@ -96,8 +96,8 @@ describe("buildRecommendationBrief", () => {
 
     expect(brief.headline).toBe(contextual.headline);
     expect(brief.primarySentence).toBe(contextual.comment);
-    // 그 시간대는 avoid 문장에서 '겹치는 회의는'으로 짚는다.
-    expect(brief.avoidSentence).toContain("겹치는 회의는");
+    // 그 시간대는 avoid 문장에서 '시간에는'으로 짚는다.
+    expect(brief.avoidSentence).toContain("시간에는");
   });
 
   it("2-1b. 문장에 등장하는 참석자 이름은 필수/선택 유형과 함께 nameBadges 로 수집된다 (시나리오 1)", () => {
@@ -120,14 +120,14 @@ describe("buildRecommendationBrief", () => {
     expect(brief.avoidSentence).toContain("다른 날짜를 먼저 보는 게 좋아요");
   });
 
-  it("4. 특정 시간대만 어려우면 예외 시간 문구가 나온다 (시나리오 4)", () => {
+  it("4. 매일 필수참석자가 어려운 시간대가 있으면 브리프가 피하는 게 좋다고 안내한다 (시나리오 4)", () => {
+    // 시나리오 4는 김지훈(필수)이 매일 13:00~14:00 불가. 캘린더는 '매일 그 시간만 피하면 됨'으로
+    // 묶어 보여주지만, (현재 비활성인) 브리프는 아직 반복을 묶지 않고 날짜 기준으로 안내한다.
     const brief = briefForCase(4, 3);
 
     expect(brief.avoidSentence).toBeDefined();
-    expect(brief.avoidSentence).toMatch(/\d{2}:\d{2}~\d{2}:\d{2}/);
-    expect(brief.avoidSentence).toContain("겹치는 회의는");
-    expect(brief.avoidSentence).toContain("한예린님");
-    expect(brief.avoidSentence).toContain("그 시간을 피해서");
+    expect(brief.avoidSentence).toContain("필수참석자");
+    expect(brief.avoidSentence).toContain("피하는 게 좋아요");
   });
 
   it("5. 미응답이 있으면 캘린더 화면과 같은 잠정 결과 문구가 나온다 (시나리오 7)", () => {

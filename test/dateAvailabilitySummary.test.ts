@@ -49,11 +49,12 @@ describe("summarizeDateAvailability", () => {
     expect(summary.headline).toContain("대부분 시간에 모든 인원이 참석할 수 있어요");
     expect(summary.comment).toContain("한예린님");
 
-    // 60분 회의 기준 13:30/14:00/14:30 시작 슬롯이 겹친다 → 13:30~15:30 하나로 병합.
+    // 예외는 후보 슬롯 병합이 아니라 '실제 busy 시각' 그대로 — 한예린 14:00~15:00 블록이
+    // 그대로 한 구간이 된다(회의 길이만큼 넓어지지 않음 → 검색 결과와 일치).
     expect(summary.exceptionRanges).toHaveLength(1);
     expect(summary.exceptionRanges[0].reason).toBe("optionalBusy");
-    expect(summary.exceptionRanges[0].startAt).toBe(at("13:30"));
-    expect(summary.exceptionRanges[0].endAt).toBe(at("15:30"));
+    expect(summary.exceptionRanges[0].startAt).toBe(at("14:00"));
+    expect(summary.exceptionRanges[0].endAt).toBe(at("15:00"));
   });
 
   it("3. 일부 시간에 필수참석자가 불가능하면 requiredIssueSlots 에 잡히고 강하게 경고한다", () => {
