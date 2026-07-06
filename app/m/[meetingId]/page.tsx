@@ -25,10 +25,10 @@ export default async function ParticipantPage({
   return (
     <div className="flex min-h-dvh flex-col bg-white/95">
       <SiteHeader />
-      <main className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col px-4 pt-4 sm:px-6 sm:pt-8">
+      <main className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col px-4 pt-4 sm:px-6 sm:pt-6">
         {meeting.confirmedSlotId ? (
           <>
-            <MobileHeaderTitle title="확정된 회의" />
+            <MobileHeaderTitle title="확정된 회의" hideBack />
             <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
               {meeting.title}
             </h1>

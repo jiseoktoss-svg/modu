@@ -12,6 +12,10 @@ import { cn } from "@/lib/cn";
 // 장면 4 워드마크(15.15s + 0.55s)까지 끝난 뒤 CTA 페이드인.
 const INTRO_DURATION_MS = 16_100;
 
+// 같은 세션에서 이미 한 번 열었는지 표시 — 재방문(새로고침·뒤로가기) 시 CTA를 처음부터 노출한다.
+// (모션은 첫 진입·재방문 모두 항상 새로 재생한다.)
+const INTRO_PLAYED_KEY = "modu:landing-intro-played";
+
 type Phase = "pending" | "playing" | "done";
 
 const KEYFRAMES = `
@@ -197,7 +201,7 @@ function Wordmark() {
     <>
       <div
         style={{
-          fontSize: 46,
+          fontSize: 60,
           fontWeight: 800,
           letterSpacing: "-0.03em",
           background: "linear-gradient(120deg, #194aa0 0%, #2272eb 45%, #64a8ff 100%)",
@@ -208,7 +212,7 @@ function Wordmark() {
       >
         modu
       </div>
-      <div style={{ marginTop: 10, fontSize: 17, fontWeight: 700, color: "#334155" }}>
+      <div style={{ marginTop: 10, fontSize: 22, fontWeight: 700, color: "#334155" }}>
         가장 나은 시간을 찾아드려요
       </div>
     </>
@@ -682,14 +686,35 @@ function MotionScenes() {
 
 export function LandingIntro() {
   const [phase, setPhase] = useState<Phase>("pending");
+  // 같은 세션에서 이미 한 번 연 적 있으면(새로고침·뒤로가기 복귀) CTA를 처음부터 노출한다.
+  const [ctaAlwaysShown, setCtaAlwaysShown] = useState(false);
 
   const finish = useCallback(() => {
     setPhase("done");
   }, []);
 
-  // 새로고침을 포함해 페이지가 열릴 때마다 처음부터 재생한다(저감 모션만 마지막 장면 + CTA 바로 표시).
+  // 모션은 첫 진입·재방문 모두 항상 새로 재생한다(저감 모션만 마지막 장면 바로 표시).
+  // 세션 플래그는 CTA를 처음부터 띄울지만 결정한다:
+  //  - 첫 진입: 모션이 끝난 뒤 CTA 노출
+  //  - 재방문(새로고침·뒤로가기): 모션과 무관하게 CTA 상시 노출
   useEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    let alreadyOpened = false;
+    try {
+      alreadyOpened = window.sessionStorage.getItem(INTRO_PLAYED_KEY) === "1";
+    } catch {
+      // 사생활 모드 등으로 storage 접근이 막히면 첫 진입처럼 다룬다.
+    }
+    setCtaAlwaysShown(alreadyOpened);
+
+    // 이후 재방문부터 CTA를 상시 노출하도록 표시를 남긴다.
+    try {
+      window.sessionStorage.setItem(INTRO_PLAYED_KEY, "1");
+    } catch {
+      // 접근 불가면 무시(첫 진입 동작 유지).
+    }
+
     setPhase(reduced ? "done" : "playing");
   }, []);
 
@@ -699,7 +724,7 @@ export function LandingIntro() {
     return () => clearTimeout(timer);
   }, [phase, finish]);
 
-  const ctaShown = phase === "done";
+  const ctaShown = ctaAlwaysShown || phase === "done";
 
   return (
     <>
@@ -709,14 +734,16 @@ export function LandingIntro() {
         <div
           role="img"
           aria-label="modu 사용 흐름을 보여주는 인트로 애니메이션 — 어려운 시간만 알려주면 응답을 모아 해석해서 가장 나은 시간을 찾아드려요"
-          className="relative w-full overflow-hidden rounded-3xl bg-white"
+          className="relative w-full overflow-hidden rounded-3xl bg-white/95"
           style={{ height: "clamp(500px, calc(100dvh - 240px), 560px)" }}
         >
           {phase === "playing" && <MotionScenes />}
 
           {phase === "done" && (
-            <div className="flex h-full items-center justify-center">
-              <div className="text-center">
+            // 모션 마지막 장면의 워드마크와 '동일한' 래퍼(340px 중앙 컬럼 + top:50% 중앙배치)로
+            // 배치해, 모션 종료 후에도 텍스트 위치가 픽셀 단위로 일치하게 한다.
+            <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 340, transform: "translateX(-50%)" }}>
+              <div style={{ position: "absolute", left: 0, right: 0, top: "50%", transform: "translateY(-50%)", textAlign: "center" }}>
                 <Wordmark />
               </div>
             </div>

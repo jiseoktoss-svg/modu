@@ -59,11 +59,10 @@ describe("buildRecommendationBrief", () => {
 
     expect(cases.get(1)?.contextual.context).toBe("mostlyAvailable");
     expect(cases.get(3)?.contextual.context).toBe("normal");
-    expect(cases.get(5)?.contextual.context).toBe("busyPeriod");
-    expect(cases.get(6)?.contextual.context).toBe("noGoodOption");
+    expect(cases.get(5)?.contextual.context).toBe("mostlyAvailable");
+    expect(cases.get(6)?.contextual.context).toBe("mostlyAvailable");
 
-    expect(cases.get(5)?.contextual.context).not.toBe("mostlyAvailable");
-    expect(cases.get(6)?.contextual.context).not.toBe("mostlyAvailable");
+    // 미응답(시나리오 7)은 잠정 결과라 '대부분 가능'으로 과장하지 않는다.
     expect(cases.get(7)?.contextual.context).not.toBe("mostlyAvailable");
 
     cases.forEach(({ contextual, brief }) => {

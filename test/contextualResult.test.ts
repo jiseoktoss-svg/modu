@@ -112,25 +112,24 @@ describe("contextualResult", () => {
     expect(result.calendarMarks.filter((m) => m.tone === "recommended")).toHaveLength(0);
   });
 
-  it("4. 넓은 기간이어도 시나리오 5는 자동 전원 가능 후보로 희석되지 않는다", () => {
+  it("4. 시나리오 5는 대부분 가능하고 필수 1명 어려운 날만 avoid 로 표시된다", () => {
     const slots = adaptDemoCaseToEvaluatedSlots(caseById(5), upcomingWeekdays(8));
     const result = buildContextualScheduleResult(slots);
 
-    expect(result.context).toBe("busyPeriod");
-    expect(result.context).not.toBe("mostlyAvailable");
+    // 나머지 평일이 전원 가능 후보로 채워져 '대부분 가능'으로 분류된다(캘린더와 일치).
+    expect(result.context).toBe("mostlyAvailable");
+    // 최상위 추천처럼 과장하지 않는다.
     expect(result.calendarMarks.filter((m) => m.tone === "recommended")).toHaveLength(0);
-    // 시나리오 5의 필수 어려움 인원 중 한 명이 문구에 나와야 한다.
-    expect(
-      ["김지훈", "이서연", "박민준"].some((name) => result.comment.includes(`${name}님`)),
-    ).toBe(true);
+    // 필수 1명이 빠지는 케이스 슬롯 3개만 avoid 로 표시된다.
+    expect(result.calendarMarks.filter((m) => m.tone === "avoid")).toHaveLength(3);
   });
 
-  it("5. busyPeriod 에서 필수참석자가 빠지는 후보는 avoid 톤으로 칠한다 (시나리오 5)", () => {
+  it("5. 시나리오 5의 필수 1명 어려운 날은 좁은 기간에서도 avoid 로 표시된다", () => {
     const slots = adaptDemoCaseToEvaluatedSlots(caseById(5), upcomingWeekdays(6));
     const result = buildContextualScheduleResult(slots);
 
-    expect(result.context).toBe("busyPeriod");
-    // 시나리오 5는 모든 후보가 필수 1명씩 빠진다 — recommended 는 필수 전원 가능 후보에만 쓴다.
+    // 좁은 기간이라 '대부분 가능'까진 아니어도 나쁜 기간(busyPeriod)은 아니다.
+    expect(result.context).toBe("normal");
     expect(result.calendarMarks.filter((m) => m.tone === "recommended")).toHaveLength(0);
     // 케이스와 무관하게 필수참석자가 빠지는 후보일은 피하는 날로 표시한다.
     expect(result.calendarMarks.filter((m) => m.tone === "avoid")).toHaveLength(3);
@@ -159,8 +158,14 @@ describe("contextualResult", () => {
     expect(recommended[0].date).toBe(d[0]);
   });
 
-  it("6. noGoodOption 에서는 recommended 톤 없이 기간을 넓히는 문구가 나온다 (시나리오 6)", () => {
-    const slots = adaptDemoCaseToEvaluatedSlots(caseById(6), upcomingWeekdays(3));
+  it("6. noGoodOption 에서는 recommended 톤 없이 기간을 넓히는 문구가 나온다", () => {
+    // 최선 후보조차 필수 2명 이상이 빠지는 합성 기간(시나리오 6은 이제 mostlyAvailable 이라 합성으로 검증).
+    const d = upcomingWeekdays(3);
+    const slots = [
+      makeSlot({ date: d[0], startHm: "10:00", requiredBusyNames: ["김지훈", "이서연"] }),
+      makeSlot({ date: d[1], startHm: "10:00", requiredBusyNames: ["박민준", "최수아"] }),
+      makeSlot({ date: d[2], startHm: "10:00", requiredBusyNames: ["김지훈", "박민준"] }),
+    ];
     const result = buildContextualScheduleResult(slots);
 
     expect(result.context).toBe("noGoodOption");

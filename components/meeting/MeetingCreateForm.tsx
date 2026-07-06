@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { useFormStatus } from "react-dom";
+import { useRouter } from "next/navigation";
 import { createMeeting } from "@/app/actions/meetings";
 import { MobileHeaderTitle } from "@/components/layout/MobileHeaderTitle";
 import { MobileStickyAction } from "@/components/layout/MobileStickyAction";
@@ -254,6 +255,7 @@ export function MeetingCreateForm({
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
   const [draftReady, setDraftReady] = useState(false);
+  const router = useRouter();
 
   // step: 하단에 표시 중인 입력 단계. maxStep: 지금까지 도달한 가장 먼 단계.
   const [step, setStep] = useState(0);
@@ -718,12 +720,13 @@ export function MeetingCreateForm({
 
       {/* 상단: 입력에 따라 완성되는 안내 문장 */}
       {!confirming && (
-      <div className="flex-1 pt-4 sm:pt-8">
+      <div className="flex-1 pt-4 sm:pt-6">
         <MobileHeaderTitle
           title="회의 만들기"
-          onBack={step > 0 ? handleStepBack : undefined}
+          // step 0(회의명)에서 뒤로가기 = 메인 페이지로. 그 외 단계는 이전 단계로.
+          onBack={step > 0 ? handleStepBack : () => router.push("/")}
         />
-        <p className="hidden text-sm font-medium text-slate-400 sm:block">회의 만들기</p>
+        <p className="hidden text-sm font-medium text-slate-400">회의 만들기</p>
         <div
           aria-live="polite"
           className="break-keep text-left text-2xl leading-relaxed text-slate-800 sm:mt-3 sm:text-3xl sm:leading-relaxed"
@@ -1071,10 +1074,10 @@ export function MeetingCreateForm({
 
       {confirming && (
         <>
-          <div className="flex-1 pt-4 sm:pt-8">
+          <div className="flex-1 pt-4 sm:pt-6">
             {/* 확인 화면 뒤로가기: 마지막 입력 단계(참석자)로 복귀 */}
             <MobileHeaderTitle title="회의 확인" onBack={() => setConfirming(false)} />
-            <p className="hidden text-sm font-medium text-slate-400 sm:block">회의 확인</p>
+            <p className="hidden text-sm font-medium text-slate-400">회의 확인</p>
             {/* 글자가 읽는 순서대로 좌→우 잉크처럼 칠해지는 등장(공용 CharFillSentence).
                 채움이 끝나기 전에는 키워드 호버·클릭을 막는다.
                 retainCharSpans: 문장이 길어(7절) 완료 순간 DOM 교체 번쩍임이 보여서

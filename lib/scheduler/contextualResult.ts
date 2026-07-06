@@ -113,6 +113,8 @@ export type ContextualScheduleResult = {
 
   headline: string;
   comment: string;
+  /** 코멘트에서 '등'으로 생략된 나머지 날짜(마우스 호버 툴팁용). 생략이 없으면 undefined. */
+  overflowDates?: string[];
 
   rankGroups: RankGroup[];
   calendarMarks: CalendarMark[];
@@ -632,7 +634,7 @@ export function buildNarrative(args: {
   warnings: ContextualWarning[];
   hasPending: boolean;
   pendingNames: string[];
-}): { headline: string; comment: string } {
+}): { headline: string; comment: string; overflowDates?: string[] } {
   const { context, slots, recommendedSlots, redSlots, warnings, hasPending, pendingNames } = args;
 
   if (slots.length === 0) {
@@ -645,6 +647,7 @@ export function buildNarrative(args: {
   const best = [...slots].sort(compareSlots)[0];
   let headline = "";
   let comment = "";
+  let overflowDates: string[] | undefined;
 
   if (context === "mostlyAvailable") {
     headline = "대부분 날짜에 모든 인원이 참석할 수 있어요.";
@@ -664,21 +667,33 @@ export function buildNarrative(args: {
       });
       const suffix = redDates.length > 3 ? " 등" : "";
       comment = `${labels.join(", ")}${suffix}은 일부 인원이 참석하기 어려워요. 전원이 가능한 다른 날짜를 먼저 보는 게 좋아요.`;
+      // '등'에 마우스를 올리면 생략된 나머지 날짜를 툴팁으로 볼 수 있게 노출한다.
+      if (redDates.length > 3) {
+        overflowDates = redDates.slice(3).map((date) => {
+          const [, m, d] = date.split("-").map(Number);
+          return `${m}월 ${d}일`;
+        });
+      }
     } else {
       comment = "특별히 피해야 할 시간은 많지 않아요. 편한 시간을 골라도 괜찮아요.";
     }
   } else if (context === "normal") {
-    headline = "몇 개의 좋은 날짜가 보여요.";
-    comment =
-      recommendedSlots.length > 0
-        ? "추천 날짜 중에서 고르면 무난해요."
-        : "날짜 대부분이 비슷하게 좋아요. 어느 시간을 골라도 무난해요.";
-    // 필수 경고가 없어도 상대적 빨강(인원 부족)이 있으면 빨간색의 의미를 설명해 준다.
     const hasRelativeRed = redSlots.some((slot) => slot.requiredBusyCount === 0);
     if (warnings.length > 0) {
-      comment += " 빨간색으로 표시된 시간은 필수참석자가 참석하기 어려워 피하는 게 좋아요.";
+      // 필수참석자가 빠지는 날이 있으면 '피하면 좋은 날짜' 관점으로 안내한다(추천 문구 생략).
+      headline = "피하면 좋은 날짜가 있어요.";
+      comment = "빨간색으로 표시된 시간은 필수참석자가 참석하기 어려워 피하는 게 좋아요.";
     } else if (hasRelativeRed) {
-      comment += " 빨간색으로 표시된 시간은 다른 날짜보다 참석할 수 있는 인원이 적어요.";
+      // 선택참석자만 빠지는 날도 캘린더에 빨강으로 표시되므로 같은 톤으로 안내한다.
+      headline = "피하면 좋은 날짜가 있어요.";
+      comment = "빨간색으로 표시된 시간은 다른 날짜보다 참석할 수 있는 인원이 적어요.";
+    } else {
+      // 피할 날짜가 딱히 없으면 기존 긍정 문구를 유지한다.
+      headline = "몇 개의 좋은 날짜가 보여요.";
+      comment =
+        recommendedSlots.length > 0
+          ? "추천 날짜 중에서 고르면 무난해요."
+          : "날짜 대부분이 비슷하게 좋아요. 어느 시간을 골라도 무난해요.";
     }
   } else if (context === "busyPeriod") {
     headline = "이번 기간은 다들 바빠서 모든 인원이 맞는 시간이 많지 않아요.";
@@ -697,7 +712,7 @@ export function buildNarrative(args: {
     headline = `아직 ${pendingNames.length}명이 응답하지 않아 잠정 결과예요. ${headline}`;
   }
 
-  return { headline, comment };
+  return { headline, comment, overflowDates };
 }
 
 // ---- 최종 결과 ----
@@ -716,7 +731,7 @@ export function buildContextualScheduleResult(
   const pendingNames = [...new Set(slots.flatMap((s) => s.pendingNames))];
   const hasPending = pendingNames.length > 0;
 
-  const { headline, comment } = buildNarrative({
+  const { headline, comment, overflowDates } = buildNarrative({
     context,
     slots,
     recommendedSlots,
@@ -732,6 +747,7 @@ export function buildContextualScheduleResult(
     pendingNames,
     headline,
     comment,
+    overflowDates,
     rankGroups: groups.map((group) => ({
       kind: classifyRankGroupKind(group),
       label: labelRankGroup(group),

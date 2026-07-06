@@ -44,8 +44,8 @@ export default async function ConfirmedPage({
   return (
     <div className="min-h-dvh bg-white/95">
       <SiteHeader />
-      <main className="mx-auto w-full max-w-2xl px-4 pb-10 pt-4 sm:px-6 sm:pt-10">
-        <MobileHeaderTitle title="확정된 회의" />
+      <main className="mx-auto w-full max-w-2xl px-4 pb-10 pt-4 sm:px-6 sm:pt-6">
+        <MobileHeaderTitle title="확정된 회의" hideBack />
         {slot ? (
           <ConfirmedMeetingSummary
             meeting={meeting}

@@ -136,8 +136,8 @@ export const DEMO_CASES: DemoCase[] = [
   },
   {
     id: 5,
-    title: "필수참석자 1명이 어려운 날짜들",
-    situation: "몇몇 날짜는 어느 시간을 골라도 필수참석자 1명이 참석하기 어려워요.",
+    title: "일부 날짜에 필수참석자 1명이 빠짐",
+    situation: "몇몇 날짜는 특정 시간에 필수참석자 1명이 참석하기 어려워요.",
     judgment:
       "그런 날짜는 '필수 1명 어려움' 그룹으로 분리해 보여주고, 최상위 추천처럼 과장하지 않아요. 누가 어려운지 이름과 함께 설명해요.",
     banner: {
@@ -146,7 +146,6 @@ export const DEMO_CASES: DemoCase[] = [
     },
     submitted: 6,
     pendingNames: [],
-    fillRemainingDates: false,
     slots: [
       { dateIndex: 0, startMin: H(10), busy: [0] },
       { dateIndex: 3, startMin: H(14), busy: [1] },
@@ -155,17 +154,16 @@ export const DEMO_CASES: DemoCase[] = [
   },
   {
     id: 6,
-    title: "필수참석자 2명 이상이 어려움",
-    situation: "날짜 대부분에서 필수참석자 2명 이상이 참석하기 어려워요.",
+    title: "일부 날짜에 필수참석자 2명 이상이 빠짐",
+    situation: "몇몇 날짜는 특정 시간에 필수참석자 2명 이상이 참석하기 어려워요.",
     judgment:
-      "그런 날짜는 피하면 좋은 시간으로 강하게 표시하고, 회의 기간을 조금 넓히는 게 좋다고 안내해요.",
+      "그런 날짜는 '피하면 좋은 시간'으로 강하게 표시하고, 누가 어려운지 이름과 함께 보여줘요.",
     banner: {
       tone: "danger",
-      text: "빨간 날짜는 필수참석자 여러 명이 참석하기 어려워요. 기간을 조금 넓히는 게 좋아요.",
+      text: "빨간 날짜는 필수참석자 여러 명이 참석하기 어려워요. 그 날짜는 피하는 게 좋아요.",
     },
     submitted: 6,
     pendingNames: [],
-    fillRemainingDates: false,
     slots: [
       { dateIndex: 1, startMin: H(14), busy: [0, 1] },
       { dateIndex: 4, startMin: H(10), busy: [2, 3] },

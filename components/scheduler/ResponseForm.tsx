@@ -485,7 +485,15 @@ function useIsMobile() {
 }
 
 // '?' 아이콘을 누르면 설명 툴팁을 토글로 보여준다(모바일에서도 동작하도록 hover 가 아닌 click).
-function HelpTooltip({ text, label = "도움말" }: { text: string; label?: string }) {
+function HelpTooltip({
+  text,
+  label = "도움말",
+  below = false,
+}: {
+  text: string;
+  label?: string;
+  below?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const tipId = useId();
   const isMobile = useIsMobile();
@@ -545,7 +553,10 @@ function HelpTooltip({ text, label = "도움말" }: { text: string; label?: stri
               <span
                 id={tipId}
                 role="tooltip"
-                className="absolute bottom-full left-0 mb-2 z-40 w-[25rem] max-w-[calc(100vw-2rem)] whitespace-normal break-keep rounded-lg bg-slate-800 px-3 py-2 text-xs font-medium leading-relaxed text-white shadow-lg"
+                className={cn(
+                  "absolute left-0 z-40 w-[25rem] max-w-[calc(100vw-2rem)] whitespace-normal break-keep rounded-lg bg-slate-800 px-3 py-2 text-xs font-medium leading-relaxed text-white shadow-lg",
+                  below ? "top-full mt-2" : "bottom-full mb-2",
+                )}
               >
                 {text}
               </span>
@@ -720,7 +731,7 @@ export function ResponseForm(props: Props) {
     new Set([...participants.map((p) => p.role.trim()).filter(Boolean), "프로덕트 디자이너"]),
   );
   const IDENTITY_HELP_TEXT =
-    "참석자 명단에 있는 분만 응답할 수 있도록 본인 확인을 해요. 입력한 이름·직무가 명단과 일치하면 다음 단계로 넘어가요. 이름에 서지석, 직무에 프로덕트 디자이너를 입력하면 명단과 상관없이 통과할 수 있어요.";
+    "참석자 명단의 이름·직무가 일치하면 응답할 수 있어요. 데모에선 '서지석 / 프로덕트 디자이너'로 명단과 상관없이 통과할 수 있어요.";
   // 본인확인 빌더: 0=이름, 1=직무(마지막).
   const IDENTITY_LAST_STEP = 1;
   const formValid = (s: number) =>
@@ -737,8 +748,11 @@ export function ResponseForm(props: Props) {
     `${personName}님, 회의가 어려운 날짜가 있나요?`,
     "특별히 이 날 이 시간엔 회의가 어려운 경우가 있나요?",
   ];
-  const AVAIL_HELP_TEXT =
-    "외근, 점심 직후, 집중 업무처럼 회의가 부담스러운 시간도 함께 표시해 주세요.";
+  // 단계별 툴팁: 0=어려운 날짜(하루 전체 불가), 1=특별히 어려운 시간대(그날은 가능하나 특정 시간만 불가).
+  const AVAIL_HELP_TEXTS = [
+    "외근이나 휴가처럼 해당 날짜 전체가 회의 불가능한 날을 골라주세요.",
+    "해당 날짜에 회의는 가능하지만 불가능한 시간이 있으면 그 시간을 골라주세요.",
+  ];
   // 주말 제외 선택 가능한 날짜 수 — 전부 '어려움'으로 고르면 날짜 나열 대신 기간 전체 문구를 쓴다.
   const selectableDateCount = useMemo(
     () =>
@@ -1417,7 +1431,7 @@ export function ResponseForm(props: Props) {
           <div className="flex-1">
             {/* 뒤로가기: 가능 시간 입력(마지막 단계)으로 복귀 */}
             <MobileHeaderTitle title="입력 확인" onBack={() => setStep("availability")} />
-            <p className="hidden text-sm font-medium text-slate-400 sm:block">입력 확인</p>
+            <p className="hidden text-sm font-medium text-slate-400">입력 확인</p>
             {/* 글자가 읽는 순서대로 좌→우 잉크처럼 칠해지는 등장(공용 CharFillSentence).
                 채움이 끝나기 전에는 키워드 호버·클릭을 막는다. */}
             <div className={cn(!reviewFillDone && "pointer-events-none")}>
@@ -1526,7 +1540,7 @@ export function ResponseForm(props: Props) {
                 }
               }}
             />
-            <p className="hidden text-sm font-medium text-slate-400 sm:block">본인 확인</p>
+            <p className="hidden text-sm font-medium text-slate-400">본인 확인</p>
             <div
               aria-live="polite"
               className="break-keep text-left text-2xl leading-relaxed text-slate-800 sm:mt-3 sm:text-3xl sm:leading-relaxed"
@@ -1641,7 +1655,7 @@ export function ResponseForm(props: Props) {
             }
           }}
         />
-        <p className="hidden text-sm font-medium text-slate-400 sm:block">가능 시간</p>
+        <p className="hidden text-sm font-medium text-slate-400">가능 시간</p>
         <div
           aria-live="polite"
           className="break-keep text-left text-2xl leading-relaxed text-slate-800 sm:mt-3 sm:text-3xl sm:leading-relaxed"
@@ -1707,7 +1721,7 @@ export function ResponseForm(props: Props) {
           {/* 하단 입력 타이틀: 회의 만들기(2번) 하단 Label 과 동일 서식(text-lg + mb-1.5). */}
           <div className="mb-1.5 flex items-center gap-1.5">
             <Label className="mb-0 text-lg">{AVAIL_QUESTIONS[availStep]}</Label>
-            <HelpTooltip text={AVAIL_HELP_TEXT} />
+            <HelpTooltip text={AVAIL_HELP_TEXTS[availStep]} />
           </div>
           <div>
             {availStep === 0 && (
@@ -2107,6 +2121,8 @@ function WaitingScreen({
   onEdit: () => void;
 }) {
   const WAIT_SECONDS = 7; // 실제 서비스에서는 응답 마감 시각까지의 남은 시간으로 대체.
+  // 데모 안내 툴팁: 실제 응답 마감 시간 대신 짧은 카운트다운을 강제한다는 설명.
+  const WAITING_HELP_TEXT = `데모 버전에서는 빠른 확인을 위해 회의 만들기에서 정한 응답 마감 시간 대신 ${WAIT_SECONDS}초 카운트다운으로 넘어가요.`;
   const total = Math.max(1, totalParticipants);
   const [remaining, setRemaining] = useState(WAIT_SECONDS);
   // 응답률(데모): 내 응답 1건에서 시작해 마감 전에 전원 응답으로 수렴한다.
@@ -2156,7 +2172,10 @@ function WaitingScreen({
         <div className="relative animate-fade-up-blur" style={{ animationDuration: "0.6s" }}>
           {/* 응답 제출을 마친 화면 — 뒤로가기 없이 타이틀만(수정은 '내 응답 수정하기'로). */}
           <MobileHeaderTitle title="응답 완료" hideBack />
-          <p className="hidden text-sm font-medium text-slate-400 sm:block">응답 완료</p>
+          <div className="hidden items-center gap-1.5 sm:flex">
+            <p className="text-sm font-medium text-slate-400">응답 완료</p>
+            <HelpTooltip text={WAITING_HELP_TEXT} label="데모 안내" below />
+          </div>
           <h1 className="break-keep text-2xl font-extrabold leading-snug tracking-tight text-slate-900 sm:mt-3 sm:text-3xl sm:leading-snug">
             이제 모두가 응답하면
             <br />
@@ -2468,6 +2487,30 @@ function isWeekendDateStr(dateStr: string): boolean {
 // 회의 캘린더(done) 화면. (순위 농도 방식의 구버전 SubmittedCalendarScreen 은 삭제 — git 히스토리 참고)
 // PC 전용: ① 이 화면만 페이지 폭을 넓게 씀(뷰포트 기준 브레이크아웃)
 // ② 월간 달력 + 명단 패널 2열 배치. 색은 피해야 할 날(빨강)만 강조하고 나머지는 중립으로 둔다.
+// '모두의 날짜' 코멘트 — '등'으로 생략된 날짜가 있으면 '등'에 마우스 호버 시 나머지 날짜를 툴팁으로 보여준다.
+// (마우스 호버 기준이라 모바일에는 툴팁이 뜨지 않는다.)
+function ResultComment({ comment, overflowDates }: { comment: string; overflowDates?: string[] }) {
+  const idx = comment.indexOf("등");
+  if (!overflowDates || overflowDates.length === 0 || idx === -1) {
+    return <p className="break-keep text-sm text-slate-600">{comment}</p>;
+  }
+  return (
+    <p className="break-keep text-sm text-slate-600">
+      {comment.slice(0, idx)}
+      <span className="group relative inline-block font-semibold">
+        등
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute left-1/2 top-full z-40 mt-1.5 w-max max-w-[18rem] -translate-x-1/2 whitespace-normal break-keep rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs font-medium leading-relaxed text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
+        >
+          {overflowDates.join(", ")}
+        </span>
+      </span>
+      {comment.slice(idx + 1)}
+    </p>
+  );
+}
+
 function SubmittedCalendarScreenWide({
   caseId,
   onSelectCase,
@@ -2512,6 +2555,12 @@ function SubmittedCalendarScreenWide({
   const [monthIdx, setMonthIdx] = useState(() =>
     Math.max(0, candidates[0] ? monthIndexOf(candidates[0].date) : 0),
   );
+  // '모두의 날짜' 화면(데스크톱)에서만 헤더 폭을 본문(80rem)에 맞춘다(globals.css data-wide-header 규칙).
+  useEffect(() => {
+    document.documentElement.setAttribute("data-wide-header", "");
+    return () => document.documentElement.removeAttribute("data-wide-header");
+  }, []);
+
   // 케이스가 바뀌면 1순위 날짜를 다시 선택하고 그 달로 이동한다.
   useEffect(() => {
     const top = candidates[0]?.date ?? null;
@@ -2690,11 +2739,11 @@ function SubmittedCalendarScreenWide({
   return (
     // 이 화면만 특별히 넓게: 부모(max-w-2xl)를 뷰포트 기준으로 벗어나 가운데 정렬(PC 전용).
     <div className="space-y-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-2 sm:relative sm:left-1/2 sm:w-[min(80rem,calc(100vw-4rem))] sm:-translate-x-1/2 sm:pb-8">
-      <MobileHeaderTitle title="캘린더" hideBack={!onBack} onBack={onBack} />
+      <MobileHeaderTitle title="모두의 날짜" hideBack={!onBack} onBack={onBack} />
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <div className="hidden sm:block">
-            <h2 className="text-xl font-extrabold text-slate-900">캘린더</h2>
+            <h2 className="text-xl font-extrabold text-slate-900">모두의 날짜</h2>
           </div>
           {/* 케이스 선택 버튼 — 데모 컨트롤·탭하면 모달. 캘린더 제목 바로 오른쪽에 붙인다. */}
           <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} />
@@ -2720,7 +2769,7 @@ function SubmittedCalendarScreenWide({
           캘린더는 최종 확정을 유도하지 않는다 — 결정은 참여자들이 제품 밖에서 한다. */}
       <div className="space-y-1 px-1">
         <p className="break-keep text-base font-bold text-slate-800 sm:text-lg">{contextual.headline}</p>
-        <p className="break-keep text-sm text-slate-600">{contextual.comment}</p>
+        <ResultComment comment={contextual.comment} overflowDates={contextual.overflowDates} />
         {/* 특정 시간대 경고 — mostlyAvailable 은 첫 경고가 이미 코멘트에 있어 건너뛴다. */}
         {(contextual.context === "mostlyAvailable"
           ? contextual.warnings.slice(1, 3)

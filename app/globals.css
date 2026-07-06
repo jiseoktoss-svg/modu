@@ -55,6 +55,14 @@
     }
   }
 
+  /* '모두의 날짜'(캘린더) 화면에서만 데스크톱 헤더 폭을 본문(80rem)에 맞춘다.
+     SubmittedCalendarScreenWide 가 마운트되는 동안 <html data-wide-header> 가 켜진다. */
+  @media (min-width: 640px) {
+    html[data-wide-header] .modu-mobile-header > div {
+      max-width: min(80rem, calc(100vw - 4rem)) !important;
+    }
+  }
+
   @media (min-width: 640px) {
     .modu-mobile-sticky-action {
       position: static;

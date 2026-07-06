@@ -30,6 +30,8 @@ export function SiteHeader({ mobileLogo = false, mobileHidden = false }: SiteHea
           >
             modu
           </Link>
+          {/* 모바일 헤더 전용 슬롯 — MobileHeaderTitle 이 [뒤로가기 + 타이틀]을 포털로 채운다.
+              데스크톱에서는 뒤로가기+타이틀을 각 화면 본문 상단에 인라인으로 그린다. */}
           {!mobileLogo && (
             <div
               id="modu-mobile-header-slot"
