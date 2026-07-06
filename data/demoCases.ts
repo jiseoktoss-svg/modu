@@ -86,16 +86,34 @@ export const DEMO_CASES: DemoCase[] = [
   },
   {
     id: 2,
-    title: "일부 선택참석자만 어려운 날이 있음",
-    situation: "대부분 날짜는 전원이 참석할 수 있지만, 몇몇 날짜는 선택참석자 1~2명이 참석하기 어려워요.",
+    title: "6명 모두 일정이 빽빽함",
+    situation:
+      "6명 모두 하루 중 회의가 어려운 시간이 있고, 이번 기간에는 전원이 동시에 비는 시간이 거의 없어요.",
     judgment:
-      "전원이 가능한 날이 충분히 많으면 일부 인원이 빠지는 날은 피하면 좋은 날로 표시해요. 필수참석자는 모두 가능하다는 점도 함께 보여줘요.",
+      "전원 가능처럼 포장하지 않고, 필수참석자 충돌이 가장 적고 참석 가능 인원이 많은 차선 날짜를 먼저 보여줘요. 반복적으로 막히는 시간대는 상단 경고로 짚어줘요.",
+    banner: {
+      tone: "danger",
+      text: "모두 바쁜 기간이라 최적의 한 날짜보다 '덜 어려운 날짜'와 '피해야 할 시간'을 함께 봐야 해요.",
+    },
     submitted: 6,
     pendingNames: [],
+    fillRemainingDates: false,
     slots: [
-      { dateIndex: 1, startMin: H(14), busy: [4] },
-      { dateIndex: 4, startMin: H(10), busy: [5] },
-      { dateIndex: 6, startMin: H(16), busy: [4, 5] },
+      { dateIndex: 0, startMin: H(10), busy: [0, 4] },
+      { dateIndex: 1, startMin: H(11), busy: [1, 4] },
+      { dateIndex: 2, startMin: H(13), busy: [2] },
+      { dateIndex: 3, startMin: H(14), busy: [2] },
+      { dateIndex: 4, startMin: H(15), busy: [3] },
+      { dateIndex: 5, startMin: H(16), busy: [3, 5] },
+      { dateIndex: 6, startMin: H(17), busy: [5] },
+    ],
+    recurringBusy: [
+      { startMin: H(9), endMin: H(11), who: [0] },
+      { startMin: H(10), endMin: H(12), who: [4] },
+      { startMin: H(11), endMin: H(13), who: [1] },
+      { startMin: H(13), endMin: H(15), who: [2] },
+      { startMin: H(15), endMin: H(17), who: [3] },
+      { startMin: H(16), endMin: H(18), who: [5] },
     ],
   },
   {

@@ -54,10 +54,11 @@ function briefForCase(id: number, days: number) {
 describe("buildRecommendationBrief", () => {
   it("0. 데모 케이스별 상황이 context와 headline에 다르게 드러난다", () => {
     const cases = new Map(
-      [1, 3, 5, 6, 7].map((id) => [id, analysisForCase(id, 8)]),
+      [1, 2, 3, 5, 6, 7].map((id) => [id, analysisForCase(id, 8)]),
     );
 
     expect(cases.get(1)?.contextual.context).toBe("mostlyAvailable");
+    expect(cases.get(2)?.contextual.context).toBe("busyPeriod");
     expect(cases.get(3)?.contextual.context).toBe("normal");
     expect(cases.get(5)?.contextual.context).toBe("mostlyAvailable");
     expect(cases.get(6)?.contextual.context).toBe("mostlyAvailable");
@@ -110,13 +111,15 @@ describe("buildRecommendationBrief", () => {
     expect(brief.avoidSentence).toContain("정우진님");
   });
 
-  it("3. 피하면 좋은 날짜가 있으면 avoidSentence 에 나온다 (시나리오 2)", () => {
-    const brief = briefForCase(2, 8);
+  it("3. 모두 바쁜 시나리오 2는 차선 날짜와 필수참석자 경고를 보여준다", () => {
+    const { contextual, brief } = analysisForCase(2, 8);
 
+    expect(contextual.context).toBe("busyPeriod");
+    expect(brief.primarySentence).toContain("가장 나은 날짜");
     expect(brief.avoidItems.length).toBeGreaterThanOrEqual(1);
     expect(brief.avoidSentence).toBeDefined();
-    expect(brief.avoidSentence).toContain("일부 인원이 참석하기 어려워");
-    expect(brief.avoidSentence).toContain("다른 날짜를 먼저 보는 게 좋아요");
+    expect(brief.avoidSentence).toContain("필수참석자");
+    expect(brief.avoidSentence).toContain("피하는 게 좋아요");
   });
 
   it("4. 매일 필수참석자가 어려운 시간대가 있으면 브리프가 피하는 게 좋다고 안내한다 (시나리오 4)", () => {
