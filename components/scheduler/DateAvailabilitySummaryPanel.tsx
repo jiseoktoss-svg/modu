@@ -14,6 +14,79 @@ type DateAvailabilitySummaryPanelProps = {
   summary: DateAvailabilitySummary;
 };
 
+function formatNameList(names: string[]): string {
+  const honored = names.map((name) => `${name}님`);
+  if (honored.length <= 1) return honored.join("");
+  if (honored.length === 2) return `${honored[0]}과 ${honored[1]}`;
+  return honored.join(", ");
+}
+
+function bestSlotDetails(bestSlot: NonNullable<DateAvailabilitySummary["bestSlot"]>) {
+  const attendance =
+    !bestSlot.hasPending && bestSlot.totalAvailable === bestSlot.totalParticipants
+      ? "모든 인원이 참석할 수 있어요."
+      : bestSlot.hasPending
+        ? `응답한 사람 기준으로 ${bestSlot.totalAvailable}명이 참석할 수 있어요.`
+        : `전체 ${bestSlot.totalParticipants}명 중 ${bestSlot.totalAvailable}명이 참석할 수 있어요.`;
+
+  let required = "필수참석자는 모두 참석할 수 있어요.";
+  if (bestSlot.requiredBusyNames.length > 0) {
+    required = `다만 필수참석자인 ${formatNameList(
+      bestSlot.requiredBusyNames,
+    )}이 참석하기 어려워요.`;
+  } else if (bestSlot.requiredPendingNames.length > 0) {
+    required = `필수참석자 ${bestSlot.requiredPendingNames.length}명이 아직 응답하지 않았어요.`;
+  }
+
+  return { attendance, required };
+}
+
+function formatTimeRangeList(ranges: DateAvailabilitySummary["exceptionRanges"]) {
+  return [...ranges]
+    .sort((a, b) => a.startAt.localeCompare(b.startAt))
+    .map((range) => formatKoreanTimeRange(range.startAt, range.endAt))
+    .join(", ");
+}
+
+function buildBestTimeCopy(summary: DateAvailabilitySummary) {
+  const bestSlot = summary.bestSlot;
+  if (!bestSlot) return null;
+
+  if (summary.allSlotsAllAvailable) {
+    return {
+      headline: "이 날은 모든 시간이 괜찮아요.",
+      attendance: null,
+      required: null,
+      hasRequiredIssue: false,
+    };
+  }
+
+  const unavailableSlotCount = summary.totalSlots - summary.allAvailableSlots.length;
+  const hasMoreAvailableSlots = summary.allAvailableSlots.length > unavailableSlotCount;
+  if (summary.exceptionRanges.length > 0 && hasMoreAvailableSlots) {
+    return {
+      headline: `이 날은 대부분 시간이 괜찮아요. 다만 ${formatTimeRangeList(
+        summary.exceptionRanges,
+      )}만 피해주세요.`,
+      attendance: null,
+      required: null,
+      hasRequiredIssue: false,
+    };
+  }
+
+  const best = bestSlotDetails(bestSlot);
+  const pendingPrefix = bestSlot.hasPending ? "응답한 사람 기준으로 " : "";
+  return {
+    headline: `${pendingPrefix}이 날은 ${formatKoreanTimeRange(
+      bestSlot.startAt,
+      bestSlot.endAt,
+    )}이 가장 나은 시간이에요.`,
+    attendance: best.attendance,
+    required: best.required,
+    hasRequiredIssue: bestSlot.requiredBusyNames.length > 0,
+  };
+}
+
 export function DateAvailabilitySummaryPanel({ summary }: DateAvailabilitySummaryPanelProps) {
   const allSlots = [
     ...summary.allAvailableSlots,
@@ -34,11 +107,31 @@ export function DateAvailabilitySummaryPanel({ summary }: DateAvailabilitySummar
   );
   // 예외가 없는 날만 가능 명단 칩을 보여준다(예외가 있으면 시간대별로 명단이 달라진다).
   const showAvailableChips = sampleSlot !== null && summary.exceptionRanges.length === 0;
+  const bestTimeCopy = buildBestTimeCopy(summary);
 
   return (
     <div className="space-y-3">
-      {/* 코멘트(summary.comment, slate-600 부연 문장)는 노출하지 않고 헤드라인만 남긴다. */}
-      <p className="break-keep text-sm font-bold text-slate-800">{summary.headline}</p>
+      {bestTimeCopy ? (
+        <div className="space-y-1">
+          <p className="text-[11px] font-bold text-brand-600">가장 나은 시간</p>
+          <p className="break-keep text-sm font-bold text-slate-900">{bestTimeCopy.headline}</p>
+          {bestTimeCopy.attendance && (
+            <p className="break-keep text-sm text-slate-600">{bestTimeCopy.attendance}</p>
+          )}
+          {bestTimeCopy.required && (
+            <p
+              className={cn(
+                "break-keep text-sm",
+                bestTimeCopy.hasRequiredIssue ? "font-semibold text-red-600" : "text-slate-600",
+              )}
+            >
+              {bestTimeCopy.required}
+            </p>
+          )}
+        </div>
+      ) : (
+        <p className="break-keep text-sm font-bold text-slate-800">{summary.headline}</p>
+      )}
 
       {summary.exceptionRanges.length > 0 && (
         <div className="rounded-xl border border-red-200 bg-red-50 p-2.5">

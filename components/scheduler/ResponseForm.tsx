@@ -63,15 +63,18 @@ import { RecommendationBriefSentence } from "@/components/scheduler/Recommendati
 import type { AvailabilityLookupResult } from "@/lib/scheduler/availabilityLookup";
 import {
   summarizeDateAvailability,
-  type DateAvailabilitySummary,
 } from "@/lib/scheduler/dateAvailabilitySummary";
 import { buildRecommendationBrief } from "@/lib/scheduler/recommendationBrief";
 import { adaptDemoCaseToEvaluatedSlots } from "@/data/demoCaseAdapter";
 import {
   buildContextualScheduleResult,
   type CalendarMark,
-  type CalendarTone,
 } from "@/lib/scheduler/contextualResult";
+import {
+  rankDateAvailabilitySummaries,
+  type CalendarDateQuality,
+  type CalendarDateQualityTier,
+} from "@/lib/scheduler/calendarDateQuality";
 
 interface Props {
   meetingId: string;
@@ -2467,12 +2470,11 @@ function ResultScreen({
   );
 }
 
-// 추천결과 캘린더(와이드) 셀 톤: 캘린더는 피해야 할 날만 신호로 보여준다.
-// 빨강 = 피하는 게 좋은 날, 나머지는 중립. recommended 톤은 내부 메타데이터로만 다룬다.
-const TONE_CELL: Record<CalendarTone, string> = {
-  recommended: "bg-slate-50 text-slate-700 hover:bg-slate-100",
-  avoid: "bg-red-100 font-semibold text-red-700",
-  none: "bg-slate-50 text-slate-700 hover:bg-slate-100",
+const ACTIVE_DATE_CELL_CLASS = "bg-slate-50 text-slate-700 hover:bg-slate-100";
+const QUALITY_DOT_CLASS: Record<CalendarDateQualityTier, string> = {
+  high: "bg-blue-400",
+  medium: "bg-amber-300",
+  low: "bg-rose-400",
 };
 
 function isWeekendDateStr(dateStr: string): boolean {
@@ -2483,6 +2485,25 @@ function isWeekendDateStr(dateStr: string): boolean {
 
 // (참석 명단 칩 UI 는 AvailabilitySearchResultPanel 의 NameGroup 으로 통합 —
 //  날짜 패널은 DateAvailabilitySummaryPanel 이 담당한다.)
+
+function CalendarQualityDots({ quality }: { quality: CalendarDateQuality }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="mt-1 flex h-3 items-center gap-1 sm:mt-2 sm:h-4"
+    >
+      {[0, 1, 2].map((index) => (
+        <span
+          key={index}
+          className={cn(
+            "h-1.5 w-1.5 rounded-full sm:h-2 sm:w-2",
+            index < quality.filledDots ? QUALITY_DOT_CLASS[quality.tier] : "bg-slate-200",
+          )}
+        />
+      ))}
+    </span>
+  );
+}
 
 // 회의 캘린더(done) 화면. (순위 농도 방식의 구버전 SubmittedCalendarScreen 은 삭제 — git 히스토리 참고)
 // PC 전용: ① 이 화면만 페이지 폭을 넓게 씀(뷰포트 기준 브레이크아웃)
@@ -2653,8 +2674,10 @@ function SubmittedCalendarScreenWide({
     });
     return map;
   }, [dates, durationMinutes, workdayStart, workdayEnd, lunchStart, lunchEnd, snapshot]);
-  // 선택한 날짜가 빨간 날이면 왜 피하는 게 좋은지(mark.reason)를 패널 상단에서 바로 알려준다.
-  const selectedMark = selectedDate ? markByDate.get(selectedDate) : undefined;
+  const dateQualityByDate = useMemo(
+    () => rankDateAvailabilitySummaries(fallbackSummaryByDate),
+    [fallbackSummaryByDate],
+  );
   const [lookupResult, setLookupResult] = useState<AvailabilityLookupResult | null>(null);
   const lookupResultRef = useRef<HTMLDivElement>(null);
 
@@ -2680,45 +2703,22 @@ function SubmittedCalendarScreenWide({
     return () => document.removeEventListener("keydown", onKey);
   }, [isMobile, overlayOpen]);
 
-  const availabilityLabelForDate = (summary: DateAvailabilitySummary) => {
-    const byStart = new Map<string, AvailabilityLookupResult>();
-    [
-      ...summary.allAvailableSlots,
-      ...summary.requiredIssueSlots,
-      ...summary.optionalIssueSlots,
-      ...summary.pendingSlots,
-    ].forEach((slot) => byStart.set(slot.startAt, slot));
-    const slots = [...byStart.values()];
-    if (slots.length === 0) return null;
-    // 하루에 후보 슬롯이 여러 개여도 범위 대신 숫자 하나만 보여준다 —
-    // 가장 빠듯한 슬롯(가능 최소 = 불가 최대. 가능+불가+미응답=전체라 둘은 같은 슬롯) 기준.
-    return {
-      // 미응답(pending)은 '불가'가 아니라 별도라서 busy 만 센다(상세 패널의 '미응답'과 일치).
-      availText: `${Math.min(...slots.map((slot) => slot.totalAvailable))}`,
-      busyText: `${Math.max(...slots.map((slot) => slot.totalBusy))}`,
-    };
-  };
-
-  // 날짜 셀 공통 계산 — 캘린더는 피해야 할 날만 빨강으로 표시하고, 숫자는 날짜 전체 범위로 보여준다.
+  // 날짜 셀 공통 계산 — 셀 안에는 세부 숫자 대신 전체 기간 안의 상대 추천도를 점 3개로 보여준다.
   const cellInfo = (dateStr: string) => {
-    const summary = fallbackSummaryByDate.get(dateStr);
-    const availability = summary ? availabilityLabelForDate(summary) : null;
-    if (!availability) return null;
+    const quality = dateQualityByDate.get(dateStr);
+    if (!quality) return null;
     const mark = markByDate.get(dateStr);
-    const displayTone: CalendarTone = mark?.tone === "avoid" ? "avoid" : "none";
     return {
-      tone: displayTone,
-      cellClass: TONE_CELL[displayTone],
-      availText: availability.availText,
-      busyText: availability.busyText,
+      quality,
+      isAvoid: mark?.tone === "avoid",
     };
   };
 
-  // 월간 달력 카드. 모바일/PC 모두 날짜 신호와 참석 가능 인원만 보여준다.
+  // 월간 달력 카드. 모바일/PC 모두 날짜 신호를 상대 추천도 점 3개로 보여준다.
   const monthCard = () =>
     month && (
       // 모바일: 달력만 좌우 여백을 최대로 줄인다(-mx-4 로 본문 px-4 를 상쇄해 화면 폭까지 넓힘 + 내부 px 최소). PC 는 종전대로.
-      <Card className="border-none -mx-4 px-1 sm:mx-0 sm:px-3">
+      <Card className="border-none -mx-4 px-1 !shadow-none sm:mx-0 sm:px-3 sm:!shadow-sm">
         <CalendarGrid
           month={month}
           canPrev={safeMonthIdx > 0}
@@ -2745,17 +2745,15 @@ function SubmittedCalendarScreenWide({
                   isDeadline ? " — 회의 마감일" : ""
                 }${
                   info
-                    ? `${
-                      info.tone === "avoid"
-                          ? " — 피하는 게 좋은 날"
-                          : ""
-                      }, 가능 ${info.availText}명 · 불가 ${info.busyText}명`
+                    ? `, ${info.quality.label}${
+                        info.isAvoid ? ", 피하는 게 좋은 날" : ""
+                      }, 추천도 원 3개 중 ${info.quality.filledDots}개 표시`
                     : ""
                 }`}
                 className={cn(
                   "relative flex aspect-square flex-col items-center justify-center gap-1 rounded-lg text-sm leading-none transition motion-reduce:transition-none",
                   "sm:aspect-auto sm:h-24 sm:items-start sm:justify-start sm:gap-1 sm:p-2 sm:text-left sm:leading-tight",
-                  !info ? "cursor-default text-slate-300" : info.cellClass,
+                  !info ? "cursor-default text-slate-300" : ACTIVE_DATE_CELL_CLASS,
                   isSelected && "modu-cell-pop z-10",
                 )}
               >
@@ -2769,12 +2767,7 @@ function SubmittedCalendarScreenWide({
                     </span>
                   )}
                 </span>
-                {info && (
-                  <span className="flex flex-col items-center gap-0.5 whitespace-nowrap text-[11px] font-semibold leading-none tabular-nums sm:items-start sm:leading-tight">
-                    <span className="opacity-80">가능 {info.availText}</span>
-                    <span className="opacity-80">불가 {info.busyText}</span>
-                  </span>
-                )}
+                {info && <CalendarQualityDots quality={info.quality} />}
               </button>
             );
           }}
@@ -2798,12 +2791,6 @@ function SubmittedCalendarScreenWide({
   ) : (
     <>
       <p className="text-base font-bold text-slate-900">{formatKoreanDateLabel(selectedDate)}</p>
-      {/* 빨간 날짜를 눌렀을 때 왜 피하는 게 좋은지 명시(상대적 인원 부족 포함) */}
-      {selectedMark?.tone === "avoid" && selectedMark.reason && (
-        <p className="break-keep rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-600">
-          {selectedMark.reason}
-        </p>
-      )}
       {dateSummary && <DateAvailabilitySummaryPanel summary={dateSummary} />}
     </>
   );
@@ -2873,7 +2860,7 @@ function SubmittedCalendarScreenWide({
           {!isMobile && rosterCard}
 
           {/* 날짜·시간 검색 — 여기엔 입력만 두고, 결과는 '선택 날짜 명단' 카드 내용을 대체해 보여준다. */}
-          <Card className="space-y-3 !border-0 shadow-[0_16px_40px_rgba(15,23,42,0.20)]">
+          <Card className="space-y-3 !border-0 !shadow-none sm:!shadow-[0_16px_40px_rgba(15,23,42,0.20)]">
             <AvailabilityDateTimeLookup
               key={`calendar-lookup-${caseId}-${selectedDate ?? "none"}`}
               dates={dates}

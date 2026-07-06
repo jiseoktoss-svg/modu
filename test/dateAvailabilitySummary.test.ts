@@ -62,6 +62,20 @@ describe("summarizeDateAvailability", () => {
     expect(summary.comment).not.toContain("Alex님과 Alex님");
   });
 
+  it("1-2. 날짜 안의 가장 나은 시간은 필수 충돌이 적고 참석 가능 인원이 많은 가장 이른 슬롯이다", () => {
+    const summary = summarizeDateAvailability({
+      ...BASE,
+      blocks: [
+        { participantId: "r1", startAt: at("09:00"), endAt: at("11:00"), status: "busy" },
+        { participantId: "o1", startAt: at("11:00"), endAt: at("18:00"), status: "busy" },
+      ],
+    });
+
+    expect(summary.bestSlot?.startAt).toBe(at("11:00"));
+    expect(summary.bestSlot?.requiredBusyNames).toEqual([]);
+    expect(summary.bestSlot?.totalAvailable).toBe(5);
+  });
+
   it("2. 일부 시간만 선택참석자가 불가능하면 optionalIssueSlots 에 잡히고 예외 구간으로 병합된다", () => {
     const summary = summarizeDateAvailability({
       ...BASE,

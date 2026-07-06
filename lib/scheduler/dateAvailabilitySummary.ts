@@ -35,6 +35,7 @@ export type DateAvailabilitySummary = {
   requiredIssueSlots: AvailabilityLookupResult[];
   optionalIssueSlots: AvailabilityLookupResult[];
   pendingSlots: AvailabilityLookupResult[];
+  bestSlot: AvailabilityLookupResult | null;
 
   headline: string;
   comment: string;
@@ -158,6 +159,28 @@ function buildExceptionRanges(
     });
 }
 
+function compareDateAvailabilitySlots(
+  a: AvailabilityLookupResult,
+  b: AvailabilityLookupResult,
+): number {
+  if (a.requiredBusyNames.length !== b.requiredBusyNames.length) {
+    return a.requiredBusyNames.length - b.requiredBusyNames.length;
+  }
+  if (a.requiredPendingNames.length !== b.requiredPendingNames.length) {
+    return a.requiredPendingNames.length - b.requiredPendingNames.length;
+  }
+  if (a.totalAvailable !== b.totalAvailable) {
+    return b.totalAvailable - a.totalAvailable;
+  }
+  if (a.totalBusy !== b.totalBusy) {
+    return a.totalBusy - b.totalBusy;
+  }
+  if (a.totalPending !== b.totalPending) {
+    return a.totalPending - b.totalPending;
+  }
+  return isoToEpoch(a.startAt) - isoToEpoch(b.startAt);
+}
+
 export function buildDateAvailabilitySummary(
   date: string,
   results: AvailabilityLookupResult[],
@@ -181,6 +204,7 @@ export function buildDateAvailabilitySummary(
     (r) => r.requiredBusyNames.length === 0 && r.optionalBusyNames.length > 0,
   );
   const pendingSlots = results.filter((r) => r.hasPending);
+  const bestSlot = results.length > 0 ? [...results].sort(compareDateAvailabilitySlots)[0] : null;
 
   // ---- 문구 ----
   let headline = "";
@@ -242,6 +266,7 @@ export function buildDateAvailabilitySummary(
     requiredIssueSlots,
     optionalIssueSlots,
     pendingSlots,
+    bestSlot,
     headline,
     comment,
     exceptionRanges,

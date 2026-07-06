@@ -44,7 +44,7 @@ function analysisForCase(id: number, days: number) {
     }),
   );
   const brief = buildRecommendationBrief({ contextual, summaries });
-  return { contextual, brief };
+  return { contextual, brief, summaries };
 }
 
 function briefForCase(id: number, days: number) {
@@ -120,6 +120,18 @@ describe("buildRecommendationBrief", () => {
     expect(brief.avoidSentence).toBeDefined();
     expect(brief.avoidSentence).toContain("필수참석자");
     expect(brief.avoidSentence).toContain("피하는 게 좋아요");
+  });
+
+  it("3-1. 모두 바쁜 시나리오 2의 날짜 상세 추천 시간이 한 시간으로 고정되지 않는다", () => {
+    const { summaries } = analysisForCase(2, 8);
+    const bestStartTimes = summaries
+      .map((summary) => summary.bestSlot?.startAt.slice(11, 16))
+      .filter((time): time is string => time !== undefined);
+
+    expect(bestStartTimes.length).toBeGreaterThan(1);
+    expect(new Set(bestStartTimes).size).toBeGreaterThan(1);
+    expect(bestStartTimes.every((time) => time === "17:00")).toBe(false);
+    expect(summaries.every((summary) => summary.allSlotsAllAvailable)).toBe(false);
   });
 
   it("4. 매일 필수참석자가 어려운 시간대가 있으면 브리프가 피하는 게 좋다고 안내한다 (시나리오 4)", () => {

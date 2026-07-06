@@ -34,6 +34,12 @@ type DemoSlot = {
   // 등급/그룹은 buildCaseCandidates 가 우선순위 로직으로 도출한다(하드코딩 안 함).
 };
 
+type DemoBusyBlock = {
+  startMin: number;
+  endMin: number;
+  who: number[];
+};
+
 export type DemoCase = {
   id: number;
   title: string;
@@ -48,7 +54,9 @@ export type DemoCase = {
   extraBusy?: { dateIndex: number; startMin: number; endMin: number; who: number[] }[];
   /** 매일 반복되는 불가 시간대(특정 시간만 늘 어려운 경우). 모든 날짜의 스냅샷 블록에 들어간다.
    *  후보(전원 가능 채움)에는 넣지 않아 날짜 톤은 '가능'으로 두고, 상단 경고에서 '매일 …'로 짚는다. */
-  recurringBusy?: { startMin: number; endMin: number; who: number[] }[];
+  recurringBusy?: DemoBusyBlock[];
+  /** 날짜별로 회전시키는 하루 busy 프로필. 후보 순위가 아니라 날짜 상세/시간 검색의 재료다. */
+  dailyBusyPatterns?: DemoBusyBlock[][];
   /** 케이스 슬롯이 없는 나머지 미래 평일을 전원 가능 후보로 채울지 여부. 기본값은 true. */
   fillRemainingDates?: boolean;
   /** 자동으로 채우는 전원 가능 후보의 최대 개수. fillRemainingDates:false이면 무시된다. */
@@ -61,6 +69,7 @@ const H = (h: number) => h * 60;
 const SPREAD_PATTERN_MIN_DATES = 10;
 const SPREAD_PATTERN_EVERY_WEEKDAYS = 7;
 const SPREAD_PATTERN_MAX_SLOTS = 12;
+const ISSUE_START_VARIANTS = [H(10), H(14), H(11), H(15), H(13), H(16), H(9), H(12)];
 
 // 데모 캘린더가 샘플 데이터처럼 보이지 않도록, 피하면 좋은 날은 앞쪽에 몰지 않고
 // 회의 기간 안에서 띄엄띄엄 배치한다. dateIndex 는 미래 평일 목록 기준이다.
@@ -82,6 +91,14 @@ export const DEMO_CASES: DemoCase[] = [
       { dateIndex: 0, startMin: H(14), busy: [] },
       { dateIndex: 2, startMin: H(10), busy: [] },
       { dateIndex: 5, startMin: H(15), busy: [4, 5] },
+    ],
+    dailyBusyPatterns: [
+      [],
+      [{ startMin: H(13), endMin: H(14), who: [4] }],
+      [{ startMin: H(16), endMin: H(17), who: [5] }],
+      [],
+      [{ startMin: H(11), endMin: H(12), who: [4, 5] }],
+      [{ startMin: H(9), endMin: H(10), who: [5] }],
     ],
   },
   {
@@ -107,13 +124,50 @@ export const DEMO_CASES: DemoCase[] = [
       { dateIndex: 5, startMin: H(16), busy: [3, 5] },
       { dateIndex: 6, startMin: H(17), busy: [5] },
     ],
-    recurringBusy: [
-      { startMin: H(9), endMin: H(11), who: [0] },
-      { startMin: H(10), endMin: H(12), who: [4] },
-      { startMin: H(11), endMin: H(13), who: [1] },
-      { startMin: H(13), endMin: H(15), who: [2] },
-      { startMin: H(15), endMin: H(17), who: [3] },
-      { startMin: H(16), endMin: H(18), who: [5] },
+    recurringBusy: [{ startMin: H(13), endMin: H(14), who: [2] }],
+    dailyBusyPatterns: [
+      [
+        { startMin: H(10), endMin: H(12), who: [1] },
+        { startMin: H(14), endMin: H(16), who: [3] },
+        { startMin: H(15), endMin: H(18), who: [0] },
+        { startMin: H(9), endMin: H(11), who: [4] },
+        { startMin: H(12), endMin: H(13), who: [5] },
+      ],
+      [
+        { startMin: H(9), endMin: H(10) + 30, who: [0] },
+        { startMin: H(11) + 30, endMin: H(13), who: [1] },
+        { startMin: H(14), endMin: H(18), who: [3] },
+        { startMin: H(10), endMin: H(12), who: [4] },
+        { startMin: H(15), endMin: H(17), who: [5] },
+      ],
+      [
+        { startMin: H(9), endMin: H(10) + 30, who: [0] },
+        { startMin: H(10) + 30, endMin: H(12), who: [1] },
+        { startMin: H(14), endMin: H(18), who: [3] },
+        { startMin: H(11) + 30, endMin: H(13), who: [4] },
+        { startMin: H(15), endMin: H(17), who: [5] },
+      ],
+      [
+        { startMin: H(9), endMin: H(11), who: [0] },
+        { startMin: H(11), endMin: H(13), who: [1] },
+        { startMin: H(15), endMin: H(18), who: [3] },
+        { startMin: H(9) + 30, endMin: H(11) + 30, who: [4] },
+        { startMin: H(13) + 30, endMin: H(15), who: [5] },
+      ],
+      [
+        { startMin: H(9), endMin: H(11), who: [0] },
+        { startMin: H(11), endMin: H(13), who: [1] },
+        { startMin: H(14), endMin: H(16), who: [3] },
+        { startMin: H(15) + 30, endMin: H(17), who: [4] },
+        { startMin: H(10), endMin: H(12), who: [5] },
+      ],
+      [
+        { startMin: H(9), endMin: H(11) + 30, who: [0] },
+        { startMin: H(12) + 30, endMin: H(13), who: [1] },
+        { startMin: H(14), endMin: H(18), who: [3] },
+        { startMin: H(15), endMin: H(17), who: [4] },
+        { startMin: H(11), endMin: H(12) + 30, who: [5] },
+      ],
     ],
   },
   {
@@ -134,6 +188,14 @@ export const DEMO_CASES: DemoCase[] = [
       { dateIndex: 4, startMin: H(10), busy: [0] },
       // 필수 2명(이서연·박민준) 어려움 → 피하면 좋은 시간
       { dateIndex: 6, startMin: H(15), busy: [1, 2] },
+    ],
+    dailyBusyPatterns: [
+      [{ startMin: H(9), endMin: H(10), who: [4] }],
+      [{ startMin: H(15), endMin: H(16), who: [5] }],
+      [{ startMin: H(11), endMin: H(12), who: [0] }],
+      [],
+      [{ startMin: H(14), endMin: H(15), who: [4, 5] }],
+      [{ startMin: H(16), endMin: H(17), who: [1] }],
     ],
   },
   {
@@ -169,6 +231,14 @@ export const DEMO_CASES: DemoCase[] = [
       { dateIndex: 3, startMin: H(14), busy: [1] },
       { dateIndex: 5, startMin: H(11), busy: [2, 5] },
     ],
+    dailyBusyPatterns: [
+      [],
+      [{ startMin: H(15), endMin: H(16), who: [4] }],
+      [{ startMin: H(9), endMin: H(10), who: [0] }],
+      [{ startMin: H(16), endMin: H(17), who: [5] }],
+      [],
+      [{ startMin: H(13), endMin: H(14), who: [1] }],
+    ],
   },
   {
     id: 6,
@@ -186,6 +256,14 @@ export const DEMO_CASES: DemoCase[] = [
       { dateIndex: 1, startMin: H(14), busy: [0, 1] },
       { dateIndex: 4, startMin: H(10), busy: [2, 3] },
       { dateIndex: 6, startMin: H(15), busy: [0, 1, 4] },
+    ],
+    dailyBusyPatterns: [
+      [{ startMin: H(9), endMin: H(10), who: [0, 1] }],
+      [{ startMin: H(16), endMin: H(17), who: [4, 5] }],
+      [],
+      [{ startMin: H(11), endMin: H(12), who: [2, 3] }],
+      [{ startMin: H(15), endMin: H(16), who: [0, 2] }],
+      [],
     ],
   },
   {
@@ -205,6 +283,14 @@ export const DEMO_CASES: DemoCase[] = [
       { dateIndex: 5, startMin: H(10), busy: [] },
       { dateIndex: 1, startMin: H(14), busy: [4] },
       { dateIndex: 4, startMin: H(15), busy: [1] },
+    ],
+    dailyBusyPatterns: [
+      [{ startMin: H(11), endMin: H(12), who: [4] }],
+      [],
+      [{ startMin: H(16), endMin: H(17), who: [1] }],
+      [{ startMin: H(9), endMin: H(10), who: [0] }],
+      [],
+      [{ startMin: H(13), endMin: H(14), who: [2, 4] }],
     ],
   },
 ];
@@ -290,6 +376,13 @@ function spreadPatternIndexes(dateCount: number, count: number, seed: number, us
   return indexes;
 }
 
+function varyIssueSlotForDate(c: DemoCase, slot: DemoSlot, dateIndex: number, ordinal: number) {
+  if (slot.busy.length === 0) return slot;
+  const variantIndex =
+    (c.id * 11 + slot.dateIndex * 3 + dateIndex + ordinal) % ISSUE_START_VARIANTS.length;
+  return { ...slot, startMin: ISSUE_START_VARIANTS[variantIndex], dateIndex };
+}
+
 function buildCaseSlotsForDates(c: DemoCase, demoDates: string[]): DemoSlot[] {
   const dateCount = demoDates.length;
   if (dateCount <= SPREAD_PATTERN_MIN_DATES) return c.slots;
@@ -319,7 +412,7 @@ function buildCaseSlotsForDates(c: DemoCase, demoDates: string[]): DemoSlot[] {
   const indexes = spreadPatternIndexes(dateCount, spreadCount, c.id, used);
   indexes.forEach((dateIndex, i) => {
     const source = issueSlots[i % issueSlots.length];
-    slots.push({ ...source, dateIndex });
+    slots.push(varyIssueSlotForDate(c, source, dateIndex, i));
   });
 
   return slots.sort((a, b) => {
@@ -471,24 +564,12 @@ export function buildCaseSnapshot(c: DemoCase, dates: string[]): CaseSnapshot {
   if (dates.length > 0) {
     const demoDates = resolveDemoDates(dates);
     const caseSlots = buildCaseSlotsForDates(c, demoDates);
-    for (const slot of caseSlots) {
-      const { startAt, endAt } = slotTimes(demoDates, slot);
-      for (const i of slot.busy) {
-        const p = DEMO_PEOPLE[i];
-        if (!p) continue;
-        const key = `${p.id}|${startAt}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        blocks.push({ participantId: p.id, startAt, endAt, status: "busy" });
-      }
-    }
-    // 후보 슬롯으로 표현할 수 없는 추가 busy(외근 등 하루 전체) — 날짜 요약·검색용.
-    for (const extra of c.extraBusy ?? []) {
-      const di = Math.max(0, Math.min(extra.dateIndex, demoDates.length - 1));
-      const date = demoDates[di] ?? demoDates[0];
-      const startAt = kstWallToIso(date, extra.startMin);
-      const endAt = kstWallToIso(date, extra.endMin);
-      for (const i of extra.who) {
+    const explicitWindowsByDate = new Map<string, { startMin: number; endMin: number }[]>();
+
+    const pushBusy = (date: string, startMin: number, endMin: number, who: number[]) => {
+      const startAt = kstWallToIso(date, startMin);
+      const endAt = kstWallToIso(date, endMin);
+      for (const i of who) {
         const p = DEMO_PEOPLE[i];
         if (!p) continue;
         const key = `${p.id}|${startAt}|${endAt}`;
@@ -496,20 +577,45 @@ export function buildCaseSnapshot(c: DemoCase, dates: string[]): CaseSnapshot {
         seen.add(key);
         blocks.push({ participantId: p.id, startAt, endAt, status: "busy" });
       }
+    };
+    const reserveWindow = (date: string, startMin: number, endMin: number) => {
+      const windows = explicitWindowsByDate.get(date) ?? [];
+      windows.push({ startMin, endMin });
+      explicitWindowsByDate.set(date, windows);
+    };
+    const overlapsReservedWindow = (date: string, startMin: number, endMin: number) =>
+      (explicitWindowsByDate.get(date) ?? []).some(
+        (window) => startMin < window.endMin && window.startMin < endMin,
+      );
+
+    for (const slot of caseSlots) {
+      const di = Math.max(0, Math.min(slot.dateIndex, demoDates.length - 1));
+      const date = demoDates[di] ?? demoDates[0];
+      const endMin = slot.startMin + SLOT_DURATION_MIN;
+      reserveWindow(date, slot.startMin, endMin);
+      pushBusy(date, slot.startMin, endMin, slot.busy);
+    }
+    // 후보 슬롯으로 표현할 수 없는 추가 busy(외근 등 하루 전체) — 날짜 요약·검색용.
+    for (const extra of c.extraBusy ?? []) {
+      const di = Math.max(0, Math.min(extra.dateIndex, demoDates.length - 1));
+      const date = demoDates[di] ?? demoDates[0];
+      pushBusy(date, extra.startMin, extra.endMin, extra.who);
+    }
+    // 실제 서비스처럼 날짜마다 하루 안의 바쁨 모양이 조금씩 다르게 보이도록 회전시킨다.
+    const patterns = c.dailyBusyPatterns ?? [];
+    if (patterns.length > 0) {
+      demoDates.forEach((date, di) => {
+        const pattern = patterns[(di + c.id) % patterns.length];
+        for (const block of pattern) {
+          if (overlapsReservedWindow(date, block.startMin, block.endMin)) continue;
+          pushBusy(date, block.startMin, block.endMin, block.who);
+        }
+      });
     }
     // 매일 반복되는 불가(특정 시간대가 늘 어려운 경우) — 모든 날짜에 같은 블록을 넣는다.
     for (const rec of c.recurringBusy ?? []) {
       for (const date of demoDates) {
-        const startAt = kstWallToIso(date, rec.startMin);
-        const endAt = kstWallToIso(date, rec.endMin);
-        for (const i of rec.who) {
-          const p = DEMO_PEOPLE[i];
-          if (!p) continue;
-          const key = `${p.id}|${startAt}|${endAt}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          blocks.push({ participantId: p.id, startAt, endAt, status: "busy" });
-        }
+        pushBusy(date, rec.startMin, rec.endMin, rec.who);
       }
     }
   }
