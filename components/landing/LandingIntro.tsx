@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { StartMeetingButton } from "@/components/meeting/StartMeetingButton";
 import { cn } from "@/lib/cn";
 
@@ -15,6 +15,11 @@ const INTRO_DURATION_MS = 16_100;
 // 같은 세션에서 이미 한 번 열었는지 표시 — 재방문(새로고침·뒤로가기) 시 CTA를 처음부터 노출한다.
 // (모션은 첫 진입·재방문 모두 항상 새로 재생한다.)
 const INTRO_PLAYED_KEY = "modu:landing-intro-played";
+
+// 모션 아트보드 고정 좌표계 크기(px). 장면들이 이 안에서 절대 좌표로 배치되므로,
+// 실제 무대(카드) 크기에 맞춰 비율 그대로 축소(scale)해 어떤 화면에서도 스크롤 없이 전부 보이게 한다.
+const ARTBOARD_W = 340;
+const ARTBOARD_H = 500;
 
 type Phase = "pending" | "playing" | "done";
 
@@ -689,6 +694,12 @@ export function LandingIntro() {
   // 같은 세션에서 이미 한 번 연 적 있으면(새로고침·뒤로가기 복귀) CTA를 처음부터 노출한다.
   const [ctaAlwaysShown, setCtaAlwaysShown] = useState(false);
 
+  const stageRef = useRef<HTMLDivElement>(null);
+  const ctaRef = useRef<HTMLDivElement>(null);
+  // 모션 아트보드 축소 배율(무대 크기에 맞춤)과 하단 고정 CTA 실제 높이.
+  const [artboardScale, setArtboardScale] = useState(1);
+  const [ctaHeight, setCtaHeight] = useState(140);
+
   const finish = useCallback(() => {
     setPhase("done");
   }, []);
@@ -724,47 +735,95 @@ export function LandingIntro() {
     return () => clearTimeout(timer);
   }, [phase, finish]);
 
+  // 하단 고정 CTA의 실제 높이만큼 본문 아래 공간을 확보해, 모션 무대가 CTA에 가리지 않게 한다.
+  useEffect(() => {
+    const el = ctaRef.current;
+    if (!el) return;
+    const update = () => setCtaHeight(el.offsetHeight);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // 모션 아트보드(340×500 고정 좌표계)를 무대 크기에 맞춰 비율 그대로 축소한다.
+  // 폭·높이 중 더 빡빡한 쪽에 맞추고, 데스크톱에서 원본보다 커지지 않도록 1을 상한으로 둔다.
+  // 무대 높이는 dvh·CTA 높이 변화(주소창 열림/닫힘 포함)에 따라 바뀌며 ResizeObserver 가 다시 계산한다.
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const update = () => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (w <= 0 || h <= 0) return;
+      setArtboardScale(Math.min(w / ARTBOARD_W, h / ARTBOARD_H, 1));
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const ctaShown = ctaAlwaysShown || phase === "done";
 
   return (
     <>
       <style>{KEYFRAMES}</style>
 
-      <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center px-4 pb-40 pt-6 sm:px-6 sm:pb-44">
+      <main
+        className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col px-4 pt-4 sm:px-6"
+        style={{ paddingBottom: ctaHeight }}
+      >
+        {/* 모션 무대: 남은 세로 공간을 채우고, 아트보드(340×500 고정 좌표계)를
+            비율 그대로 축소해 어떤 화면에서도 스크롤 없이 전부 들어오게 한다. */}
         <div
+          ref={stageRef}
           role="img"
           aria-label="modu 사용 흐름을 보여주는 인트로 애니메이션 — 어려운 시간만 알려주면 응답을 모아 해석해서 가장 나은 시간을 찾아드려요"
-          className="relative w-full overflow-hidden rounded-3xl bg-white/95"
-          style={{ height: "clamp(500px, calc(100dvh - 240px), 560px)" }}
+          className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden rounded-3xl bg-white/95"
         >
-          {phase === "playing" && <MotionScenes />}
+          <div
+            style={{
+              position: "relative",
+              flex: "0 0 auto",
+              width: ARTBOARD_W,
+              height: ARTBOARD_H,
+              transform: `scale(${artboardScale})`,
+              transformOrigin: "center",
+            }}
+          >
+            {phase === "playing" && <MotionScenes />}
 
-          {phase === "done" && (
-            // 모션 마지막 장면의 워드마크와 '동일한' 래퍼(340px 중앙 컬럼 + top:50% 중앙배치)로
-            // 배치해, 모션 종료 후에도 텍스트 위치가 픽셀 단위로 일치하게 한다.
-            <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 340, transform: "translateX(-50%)" }}>
+            {phase === "done" && (
+              // 모션 마지막 장면의 워드마크와 '동일한' 중앙배치(아트보드 top:50%)로 둬서
+              // 모션 종료 후에도 텍스트 위치가 일치하게 한다.
               <div style={{ position: "absolute", left: 0, right: 0, top: "50%", transform: "translateY(-50%)", textAlign: "center" }}>
                 <Wordmark />
               </div>
-            </div>
+            )}
+          </div>
+        </div>
+
+        {/* scene4 캡션 — 아트보드 아래 고정 높이 슬롯(재생 여부와 무관하게 레이아웃 안정) */}
+        <div className="flex h-11 shrink-0 items-center justify-center">
+          {phase === "playing" && (
+            <p
+              className="text-center text-[19px] font-extrabold text-slate-700"
+              style={{
+                animation:
+                  "mi-fade-up 0.55s ease-out 13s both, mi-scene-out 0.25s ease 14.4s forwards",
+                opacity: 0,
+              }}
+            >
+              최적의 시간을 알려드려요
+            </p>
           )}
         </div>
-        {phase === "playing" && (
-          <p
-            className="mt-3 text-center text-[19px] font-extrabold text-slate-700"
-            style={{
-              animation:
-                "mi-fade-up 0.55s ease-out 13s both, mi-scene-out 0.25s ease 14.4s forwards",
-              opacity: 0,
-            }}
-          >
-            최적의 시간을 알려드려요
-          </p>
-        )}
       </main>
 
       {/* 하단 고정 CTA — 인트로가 끝나야 페이드인. PC·모바일 공통, CTA 아래에는 아무것도 두지 않는다. */}
       <div
+        ref={ctaRef}
         aria-hidden={!ctaShown}
         className={cn(
           "fixed inset-x-0 bottom-0 z-20 bg-white px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-4 transition-opacity duration-500",

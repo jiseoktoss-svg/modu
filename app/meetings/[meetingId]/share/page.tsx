@@ -47,10 +47,9 @@ export default async function SharePage({
 
   return (
     <div className="flex min-h-dvh flex-col bg-white/95">
-      {/* 모바일: 완료 화면이라 헤더(뒤로가기 포함)를 노출하지 않는다. 데스크톱은 유지. */}
-      <SiteHeader mobileHidden />
+      {/* 모바일에도 로고 헤더를 노출한다(뒤로가기 없이 로고만 — 완료 화면이라 이탈 동선은 두지 않음). 데스크톱도 로고 유지. */}
+      <SiteHeader mobileLogo />
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 sm:px-6">
-        <MobileHeaderTitle title="회의 만들기" hideBack />
         <MeetingCreatedPanel meeting={meeting} participants={participants} />
       </main>
     </div>

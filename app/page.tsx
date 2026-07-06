@@ -5,7 +5,7 @@ import { LandingIntro } from "@/components/landing/LandingIntro";
 // 재생·건너뛰기·재방문 스킵·CTA 게이팅은 LandingIntro 가 담당한다.
 export default function LandingPage() {
   return (
-    <div className="flex min-h-dvh flex-col bg-white/95">
+    <div className="flex h-dvh flex-col overflow-hidden bg-white/95">
       <SiteHeader mobileLogo />
       <LandingIntro />
     </div>

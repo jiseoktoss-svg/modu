@@ -2487,16 +2487,39 @@ function isWeekendDateStr(dateStr: string): boolean {
 // 회의 캘린더(done) 화면. (순위 농도 방식의 구버전 SubmittedCalendarScreen 은 삭제 — git 히스토리 참고)
 // PC 전용: ① 이 화면만 페이지 폭을 넓게 씀(뷰포트 기준 브레이크아웃)
 // ② 월간 달력 + 명단 패널 2열 배치. 색은 피해야 할 날(빨강)만 강조하고 나머지는 중립으로 둔다.
+// 해석 문장(코멘트·경고)에서 강조할 키워드 — 날짜(N월 N일)·시간(HH:MM, HH:MM~HH:MM)·이름(○○님)을 굵게.
+// 순수 표시용 정규식 하이라이트라 문구 생성 로직(contextualResult)은 건드리지 않는다.
+const HIGHLIGHT_KEYWORD_RE =
+  /(\d{1,2}월\s*\d{1,2}일|\d{1,2}:\d{2}~\d{1,2}:\d{2}|\d{1,2}:\d{2}|[가-힣]{2,4}님)/g;
+
+function highlightKeywords(text: string): ReactNode[] {
+  const parts: ReactNode[] = [];
+  let last = 0;
+  HIGHLIGHT_KEYWORD_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = HIGHLIGHT_KEYWORD_RE.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index));
+    parts.push(
+      <strong key={`${match.index}-${match[0]}`} className="font-bold">
+        {match[0]}
+      </strong>,
+    );
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
 // '모두의 날짜' 코멘트 — '등'으로 생략된 날짜가 있으면 '등'에 마우스 호버 시 나머지 날짜를 툴팁으로 보여준다.
-// (마우스 호버 기준이라 모바일에는 툴팁이 뜨지 않는다.)
+// (마우스 호버 기준이라 모바일에는 툴팁이 뜨지 않는다.) 날짜·시간·이름 키워드는 굵게 강조한다.
 function ResultComment({ comment, overflowDates }: { comment: string; overflowDates?: string[] }) {
   const idx = comment.indexOf("등");
   if (!overflowDates || overflowDates.length === 0 || idx === -1) {
-    return <p className="break-keep text-sm text-slate-600">{comment}</p>;
+    return <p className="break-keep text-sm text-slate-600">{highlightKeywords(comment)}</p>;
   }
   return (
     <p className="break-keep text-sm text-slate-600">
-      {comment.slice(0, idx)}
+      {highlightKeywords(comment.slice(0, idx))}
       <span className="group relative inline-block font-semibold">
         등
         <span
@@ -2506,7 +2529,7 @@ function ResultComment({ comment, overflowDates }: { comment: string; overflowDa
           {overflowDates.join(", ")}
         </span>
       </span>
-      {comment.slice(idx + 1)}
+      {highlightKeywords(comment.slice(idx + 1))}
     </p>
   );
 }
@@ -2555,6 +2578,9 @@ function SubmittedCalendarScreenWide({
   const [monthIdx, setMonthIdx] = useState(() =>
     Math.max(0, candidates[0] ? monthIndexOf(candidates[0].date) : 0),
   );
+  const isMobile = useIsMobile();
+  // 모바일: 날짜를 탭하면 명단 카드를 바텀시트 모달로 띄운다(열림 여부). 초기 로드에는 닫힘.
+  const [overlayOpen, setOverlayOpen] = useState(false);
   // '모두의 날짜' 화면(데스크톱)에서만 헤더 폭을 본문(80rem)에 맞춘다(globals.css data-wide-header 규칙).
   useEffect(() => {
     document.documentElement.setAttribute("data-wide-header", "");
@@ -2565,6 +2591,7 @@ function SubmittedCalendarScreenWide({
   useEffect(() => {
     const top = candidates[0]?.date ?? null;
     setSelectedDate(top);
+    setOverlayOpen(false);
     if (top) setMonthIdx(Math.max(0, monthIndexOf(top)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseId]);
@@ -2636,10 +2663,22 @@ function SubmittedCalendarScreenWide({
   }, [caseId, selectedDate]);
 
   useEffect(() => {
-    if (lookupResult) {
+    // 데스크톱: 우측 열 검색 결과를 보이게 스크롤. 모바일은 바텀시트 모달로 띄우므로 페이지 스크롤 불필요.
+    if (lookupResult && !isMobile) {
       lookupResultRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
-  }, [lookupResult]);
+  }, [lookupResult, isMobile]);
+
+  // 모바일 명단 모달: 열려 있는 동안 배경 스크롤 잠금 + Esc 로 닫기.
+  useScrollLock(isMobile && overlayOpen);
+  useEffect(() => {
+    if (!(isMobile && overlayOpen)) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOverlayOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [isMobile, overlayOpen]);
 
   const availabilityLabelForDate = (summary: DateAvailabilitySummary) => {
     const byStart = new Map<string, AvailabilityLookupResult>();
@@ -2678,7 +2717,8 @@ function SubmittedCalendarScreenWide({
   // 월간 달력 카드. 모바일/PC 모두 날짜 신호와 참석 가능 인원만 보여준다.
   const monthCard = () =>
     month && (
-      <Card className="border-none px-2 sm:px-3">
+      // 모바일: 달력만 좌우 여백을 최대로 줄인다(-mx-4 로 본문 px-4 를 상쇄해 화면 폭까지 넓힘 + 내부 px 최소). PC 는 종전대로.
+      <Card className="border-none -mx-4 px-1 sm:mx-0 sm:px-3">
         <CalendarGrid
           month={month}
           canPrev={safeMonthIdx > 0}
@@ -2695,7 +2735,11 @@ function SubmittedCalendarScreenWide({
                 key={cell.key}
                 type="button"
                 disabled={!info}
-                onClick={() => setSelectedDate(cell.date)}
+                onClick={() => {
+                  // 모바일: 날짜를 탭하면 명단 바텀시트 모달을 연다.
+                  if (isMobile) setOverlayOpen(true);
+                  setSelectedDate(cell.date);
+                }}
                 aria-pressed={isSelected}
                 aria-label={`${month.m}월 ${cell.day}일${
                   isDeadline ? " — 회의 마감일" : ""
@@ -2709,22 +2753,24 @@ function SubmittedCalendarScreenWide({
                     : ""
                 }`}
                 className={cn(
-                  "relative flex aspect-square flex-col items-center justify-center gap-0.5 rounded-lg text-sm leading-none transition motion-reduce:transition-none",
+                  "relative flex aspect-square flex-col items-center justify-center gap-1 rounded-lg text-sm leading-none transition motion-reduce:transition-none",
                   "sm:aspect-auto sm:h-24 sm:items-start sm:justify-start sm:gap-1 sm:p-2 sm:text-left sm:leading-tight",
                   !info ? "cursor-default text-slate-300" : info.cellClass,
                   isSelected && "modu-cell-pop z-10",
                 )}
               >
-                <span className="flex items-center gap-1 leading-none sm:w-full">
+                <span className="flex items-center gap-0.5 leading-none sm:w-full sm:gap-1">
                   <span>{cell.day}</span>
                   {isDeadline && (
                     <span className="whitespace-nowrap text-[8px] font-extrabold leading-none text-slate-500 sm:rounded-full sm:bg-slate-100 sm:px-1.5 sm:py-0.5 sm:text-[10px]">
-                      회의 마감일
+                      {/* 모바일 좁은 셀에서 넘치지 않게 '마감'으로 축약, PC 는 '회의 마감일' 전체. */}
+                      <span className="sm:hidden">마감</span>
+                      <span className="hidden sm:inline">회의 마감일</span>
                     </span>
                   )}
                 </span>
                 {info && (
-                  <span className="flex flex-col items-center gap-0.5 whitespace-nowrap text-[10px] font-semibold leading-none tabular-nums sm:items-start sm:text-[11px] sm:leading-tight">
+                  <span className="flex flex-col items-center gap-0.5 whitespace-nowrap text-[11px] font-semibold leading-none tabular-nums sm:items-start sm:leading-tight">
                     <span className="opacity-80">가능 {info.availText}</span>
                     <span className="opacity-80">불가 {info.busyText}</span>
                   </span>
@@ -2735,6 +2781,39 @@ function SubmittedCalendarScreenWide({
         />
       </Card>
     );
+
+  // 선택한 날짜의 참석 명단 내용(모바일=바텀시트 모달 본문 / PC=우측 열 카드).
+  // 날짜·시간 검색을 하면 이 내용이 검색 결과로 바뀐다(✕로 지우면 다시 선택 날짜 명단).
+  const rosterContent = lookupResult ? (
+    <div
+      ref={lookupResultRef}
+      key={`${lookupResult.startAt}-${lookupResult.endAt}`}
+      style={{ animationDuration: "0.6s" }}
+      className="animate-fade-up-blur motion-reduce:animate-none"
+    >
+      <AvailabilitySearchResultPanel result={lookupResult} onClear={() => setLookupResult(null)} />
+    </div>
+  ) : selectedDate === null ? (
+    <p className="text-sm text-slate-500">날짜를 누르면 참석자별 가능 여부를 볼 수 있어요.</p>
+  ) : (
+    <>
+      <p className="text-base font-bold text-slate-900">{formatKoreanDateLabel(selectedDate)}</p>
+      {/* 빨간 날짜를 눌렀을 때 왜 피하는 게 좋은지 명시(상대적 인원 부족 포함) */}
+      {selectedMark?.tone === "avoid" && selectedMark.reason && (
+        <p className="break-keep rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-600">
+          {selectedMark.reason}
+        </p>
+      )}
+      {dateSummary && <DateAvailabilitySummaryPanel summary={dateSummary} />}
+    </>
+  );
+
+  // PC 우측 열 카드(모바일은 위 rosterContent 를 바텀시트 모달로 띄운다).
+  const rosterCard = (
+    <Card className="space-y-3 !border-0 shadow-[0_16px_40px_rgba(15,23,42,0.20)]">
+      {rosterContent}
+    </Card>
+  );
 
   return (
     // 이 화면만 특별히 넓게: 부모(max-w-2xl)를 뷰포트 기준으로 벗어나 가운데 정렬(PC 전용).
@@ -2766,8 +2845,9 @@ function SubmittedCalendarScreenWide({
       </div>
 
       {/* 맥락형 해석 문장 — 결과 분포(대부분 가능/보통/바쁨/없음)에 따라 문구가 달라진다.
-          캘린더는 최종 확정을 유도하지 않는다 — 결정은 참여자들이 제품 밖에서 한다. */}
-      <div className="space-y-1 px-1">
+          캘린더는 최종 확정을 유도하지 않는다 — 결정은 참여자들이 제품 밖에서 한다.
+          모바일에서 날짜를 탭하면 명단은 바텀시트 모달로 뜨고, 이 문장·달력은 그대로 유지된다. */}
+      <div className="space-y-2 px-1">
         <p className="break-keep text-base font-bold text-slate-800 sm:text-lg">{contextual.headline}</p>
         <ResultComment comment={contextual.comment} overflowDates={contextual.overflowDates} />
         {/* 특정 시간대 경고 — mostlyAvailable 은 첫 경고가 이미 코멘트에 있어 건너뛴다. */}
@@ -2779,7 +2859,7 @@ function SubmittedCalendarScreenWide({
             key={`${warning.startAt}-${warning.level}`}
             className="break-keep text-xs font-medium text-red-500"
           >
-            {warning.message}
+            {highlightKeywords(warning.message)}
           </p>
         ))}
       </div>
@@ -2789,41 +2869,11 @@ function SubmittedCalendarScreenWide({
         <div className="space-y-4">{monthCard()}</div>
 
         <div className="space-y-4">
-          {/* 선택한 날짜의 참석 명단 패널 — 날짜 전체 요약을 보여준다. */}
-          <Card className="space-y-3 !border-0 shadow-[0_12px_36px_rgba(15,23,42,0.12)]">
-            {lookupResult ? (
-              // 날짜·시간 검색을 하면 이 카드 내용이 검색 결과로 바뀐다(✕로 지우면 다시 선택 날짜 명단).
-              <div
-                ref={lookupResultRef}
-                key={`${lookupResult.startAt}-${lookupResult.endAt}`}
-                style={{ animationDuration: "0.6s" }}
-                className="animate-fade-up-blur motion-reduce:animate-none"
-              >
-                <AvailabilitySearchResultPanel
-                  result={lookupResult}
-                  onClear={() => setLookupResult(null)}
-                />
-              </div>
-            ) : selectedDate === null ? (
-              <p className="text-sm text-slate-500">날짜를 누르면 참석자별 가능 여부를 볼 수 있어요.</p>
-            ) : (
-              <>
-                <p className="text-base font-bold text-slate-900">
-                  {formatKoreanDateLabel(selectedDate)}
-                </p>
-                {/* 빨간 날짜를 눌렀을 때 왜 피하는 게 좋은지 명시(상대적 인원 부족 포함) */}
-                {selectedMark?.tone === "avoid" && selectedMark.reason && (
-                  <p className="break-keep rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-600">
-                    {selectedMark.reason}
-                  </p>
-                )}
-                {dateSummary && <DateAvailabilitySummaryPanel summary={dateSummary} />}
-              </>
-            )}
-          </Card>
+          {/* 명단 카드: PC 는 우측 열에 그대로, 모바일은 위 해석문장 자리에서 대체 표시하므로 여기선 그리지 않는다. */}
+          {!isMobile && rosterCard}
 
-          {/* 날짜·시간 검색 — 여기엔 입력만 두고, 결과는 위 '선택 날짜 명단' 카드 내용을 대체해 보여준다. */}
-          <Card className="space-y-3 !border-0 shadow-[0_12px_36px_rgba(15,23,42,0.12)]">
+          {/* 날짜·시간 검색 — 여기엔 입력만 두고, 결과는 '선택 날짜 명단' 카드 내용을 대체해 보여준다. */}
+          <Card className="space-y-3 !border-0 shadow-[0_16px_40px_rgba(15,23,42,0.20)]">
             <AvailabilityDateTimeLookup
               key={`calendar-lookup-${caseId}-${selectedDate ?? "none"}`}
               dates={dates}
@@ -2835,11 +2885,52 @@ function SubmittedCalendarScreenWide({
               lunchStart={lunchStart}
               lunchEnd={lunchEnd}
               initialDate={selectedDate ?? candidates[0]?.date ?? null}
-              onResult={setLookupResult}
+              onResult={(r) => {
+                setLookupResult(r);
+                if (isMobile && r) setOverlayOpen(true);
+              }}
             />
           </Card>
         </div>
       </div>
+
+      {/* 모바일 명단 바텀시트 모달 — 날짜 탭/검색 시 rosterContent 를 아래에서 올라오는 시트로 띄운다.
+          해석문장·달력은 그대로 두고 상세만 덮는다. 배경 딤 탭·Esc·상단 그래버 탭으로 닫는다.
+          포털(document.body)로 빼는 이유: 이 화면 래퍼의 sm:-translate-x-1/2 transform 이 fixed 자식을 가두기 때문(모바일엔 transform 없지만 패턴 통일). */}
+      {isMobile &&
+        overlayOpen &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <>
+            <div
+              className="fixed inset-0 z-40 bg-slate-900/40 animate-fade-in motion-reduce:animate-none"
+              onClick={() => setOverlayOpen(false)}
+              aria-hidden="true"
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="선택한 날짜 상세"
+              className="fixed inset-x-0 bottom-0 z-50 flex max-h-[85dvh] flex-col rounded-t-2xl bg-white pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_-12px_44px_rgba(15,23,42,0.28)] animate-sheet-up motion-reduce:animate-none"
+            >
+              {/* 우측 상단 닫기 아이콘 — 프로젝트 아이콘 세트(TossFace ✕, Emoji 컴포넌트)를 쓴다(SVG 직접 그리지 않음). 배경 딤·Esc 로도 닫힘. */}
+              <div className="flex shrink-0 items-center justify-end px-2 pt-2 pb-1">
+                <button
+                  type="button"
+                  onClick={() => setOverlayOpen(false)}
+                  aria-label="닫기"
+                  className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+                >
+                  <Emoji symbol="✕" size={16} />
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 pb-2">
+                {rosterContent}
+              </div>
+            </div>
+          </>,
+          document.body,
+        )}
     </div>
   );
 }

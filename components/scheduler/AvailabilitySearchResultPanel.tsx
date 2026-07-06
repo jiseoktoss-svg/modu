@@ -38,12 +38,13 @@ export function NameGroup({
 }) {
   if (names.length === 0) return null;
   const styles = {
-    green: { box: "border-green-200 bg-green-50", head: "text-green-700", chip: "text-green-800" },
-    red: { box: "border-red-200 bg-red-50", head: "text-red-700", chip: "text-red-800" },
-    slate: { box: "border-slate-200 bg-slate-50", head: "text-slate-500", chip: "text-slate-600" },
+    green: { box: "bg-green-50", head: "text-green-700", chip: "text-green-800" },
+    red: { box: "bg-red-50", head: "text-red-700", chip: "text-red-800" },
+    slate: { box: "bg-slate-50", head: "text-slate-500", chip: "text-slate-600" },
   }[tone];
   return (
-    <div className={cn("rounded-xl border p-2", styles.box)}>
+    // 테두리 없이 배경 톤만으로 구분한다(가능/불가능/미응답 영역 공통).
+    <div className={cn("rounded-xl p-2", styles.box)}>
       <p className={cn("mb-1.5 px-0.5 text-[11px] font-bold", styles.head)}>
         {label} {names.length}명
       </p>
@@ -159,7 +160,7 @@ export function AvailabilitySearchResultPanel({
       <NameGroup tone="slate" label="미응답" names={result.pendingNames} requiredNames={requiredNames} />
 
       <p className="px-0.5 text-[11px] text-slate-400">
-        이름 옆 &lsquo;필수/선택&rsquo;은 참석 유형이에요. 검색 결과는 참고용이에요.
+        검색 결과는 참고용이에요.
       </p>
     </div>
   );
