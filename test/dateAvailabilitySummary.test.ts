@@ -37,6 +37,31 @@ describe("summarizeDateAvailability", () => {
     expect(summary.exceptionRanges).toHaveLength(0);
   });
 
+  it("1-1. 같은 참가자의 겹친 busy 블록은 예외 구간 이름에 한 번만 들어간다", () => {
+    const summary = summarizeDateAvailability({
+      ...BASE,
+      participants: [
+        {
+          id: "r1",
+          name: "Alex",
+          role: "PM",
+          attendanceType: "required",
+          responseStatus: "submitted",
+        },
+      ],
+      blocks: [
+        { participantId: "r1", startAt: at("09:00"), endAt: at("11:00"), status: "busy" },
+        { participantId: "r1", startAt: at("10:00"), endAt: at("11:00"), status: "busy" },
+      ],
+    });
+
+    expect(summary.exceptionRanges.length).toBeGreaterThan(0);
+    expect(
+      summary.exceptionRanges.every((range) => range.names.length === new Set(range.names).size),
+    ).toBe(true);
+    expect(summary.comment).not.toContain("Alex님과 Alex님");
+  });
+
   it("2. 일부 시간만 선택참석자가 불가능하면 optionalIssueSlots 에 잡히고 예외 구간으로 병합된다", () => {
     const summary = summarizeDateAvailability({
       ...BASE,

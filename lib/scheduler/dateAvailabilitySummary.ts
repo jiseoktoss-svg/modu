@@ -118,8 +118,9 @@ function buildExceptionRanges(
       .filter((x) => x.startE <= startE && endE <= x.endE)
       .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
       .map((x) => x.id);
-    if (ids.length === 0) continue; // 아무도 불가하지 않은 빈 구간
-    segments.push({ startE, endE, ids, key: ids.join("|") });
+    const uniqueIds = [...new Set(ids)];
+    if (uniqueIds.length === 0) continue; // 아무도 불가하지 않은 빈 구간
+    segments.push({ startE, endE, ids: uniqueIds, key: uniqueIds.join("|") });
   }
 
   // 같은 사람 집합이 연속되면 한 구간으로 병합한다.

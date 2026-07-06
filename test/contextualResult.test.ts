@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCalendarMarks,
   buildContextualScheduleResult,
+  buildWarnings,
   evaluateAllSlots,
   type EvaluatedSlot,
 } from "@/lib/scheduler/contextualResult";
@@ -76,6 +77,48 @@ function makeSlot(over: {
 // ---- 테스트 ----
 
 describe("contextualResult", () => {
+  it("0. 같은 참가자의 겹친 busy 블록은 경고 문구에서 이름을 한 번만 보여준다", () => {
+    const date = "2026-07-09";
+    const warnings = buildWarnings(
+      [makeSlot({ date, startHm: "10:00", requiredBusyNames: ["Alex"] })],
+      {
+        participants: [
+          {
+            id: "r1",
+            name: "Alex",
+            role: "PM",
+            attendanceType: "required",
+            responseStatus: "submitted",
+          },
+        ],
+        blocks: [
+          {
+            participantId: "r1",
+            startAt: `${date}T09:00:00+09:00`,
+            endAt: `${date}T11:00:00+09:00`,
+            status: "busy",
+          },
+          {
+            participantId: "r1",
+            startAt: `${date}T10:00:00+09:00`,
+            endAt: `${date}T11:00:00+09:00`,
+            status: "busy",
+          },
+        ],
+        workdayStart: "09:00",
+        workdayEnd: "18:00",
+      },
+    );
+
+    expect(warnings.length).toBeGreaterThan(0);
+    expect(warnings.every((warning) => warning.names.length === new Set(warning.names).size)).toBe(
+      true,
+    );
+    expect(warnings.map((warning) => warning.message).join("\n")).not.toContain(
+      "Alex님과 Alex님",
+    );
+  });
+
   it("1. pending 은 context 가 아니라 잠정 결과 수식어로 처리된다 (시나리오 7)", () => {
     const slots = adaptDemoCaseToEvaluatedSlots(caseById(7), upcomingWeekdays(3));
     const result = buildContextualScheduleResult(slots);

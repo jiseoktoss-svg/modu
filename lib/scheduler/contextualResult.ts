@@ -554,14 +554,15 @@ export function buildWarnings(
         .filter((x) => x.s <= s && e <= x.e)
         .map((x) => x.id)
         .sort((a, b) => (orderById.get(a) ?? 0) - (orderById.get(b) ?? 0));
-      if (ids.length === 0) {
+      const uniqueIds = [...new Set(ids)];
+      if (uniqueIds.length === 0) {
         prev = null;
         continue;
       }
-      if (prev && prev.ids.join("|") === ids.join("|") && prev.endMin === s) {
+      if (prev && prev.ids.join("|") === uniqueIds.join("|") && prev.endMin === s) {
         prev.endMin = e;
       } else {
-        prev = { date, startMin: s, endMin: e, ids };
+        prev = { date, startMin: s, endMin: e, ids: uniqueIds };
         intervals.push(prev);
       }
     }

@@ -71,6 +71,7 @@ export function DateAvailabilitySummaryPanel({ summary }: DateAvailabilitySummar
                   <AttendeeNameBadge
                     key={name}
                     name={name}
+                    className="bg-white shadow-sm"
                     attendanceType={
                       exception.requiredNames.includes(name) ? "required" : "optional"
                     }
