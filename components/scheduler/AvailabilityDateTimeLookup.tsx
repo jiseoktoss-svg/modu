@@ -152,7 +152,7 @@ export function AvailabilityDateTimeLookup({
 
       <TDSButton
         type="button"
-        tone="secondary"
+        tone="primary"
         size="md"
         display="block"
         disabled={!canLookup}

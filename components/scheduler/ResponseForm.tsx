@@ -1379,9 +1379,12 @@ export function ResponseForm(props: Props) {
 
   if (step === "loading") {
     return (
-      <Card className="mx-auto max-w-2xl">
-        <p className="text-sm text-slate-500">불러오는 중...</p>
-      </Card>
+      <div className="flex flex-1 items-center justify-center">
+        <p className="flex items-center gap-1.5 text-sm text-slate-500">
+          <span>회의 내용 불러오는 중</span>
+          <DotWave />
+        </p>
+      </div>
     );
   }
 
@@ -2547,13 +2550,20 @@ function ResultComment({ comment, overflowDates }: { comment: string; overflowDa
   );
 }
 
-// ---- 데모 유저용 캘린더 코치마크(최초 1회) ----
+// ---- 데모 유저용 캘린더 코치마크 ----
 // 스포트라이트(딤+구멍) + 말풍선. 화면 래퍼가 sm:-translate-x-1/2 transform 을 쓰므로
 // fixed 자식이 갇히지 않게 document.body 로 포털한다(§9.5 함정).
+// 첫 진입은 최초 1회, 새로고침(reload)하면 매번 다시 띄운다.
 const CALENDAR_COACH_KEY = "modu:coach:calendar:v1";
-const CALENDAR_COACH_FORCE_REPLAY_KEY = "modu:coach:calendar:force-replay";
 
-type CalendarCoachStep = { targets: string[]; body: string };
+type CalendarCoachStep = {
+  targets: string[];
+  body: string;
+  // 모바일 전용 문구(있으면 모바일에서 이걸 쓴다).
+  bodyMobile?: string;
+  // true 면 모바일에서 이 단계를 건너뛴다(모바일은 해당 UI가 모달로 대체됨).
+  pcOnly?: boolean;
+};
 
 // targets: 첫 번째로 존재하는 [data-coach] 요소에 앵커한다(예: ④는 PC=roster, 모바일=calendar).
 const CALENDAR_COACH_STEPS: CalendarCoachStep[] = [
@@ -2574,23 +2584,39 @@ const CALENDAR_COACH_STEPS: CalendarCoachStep[] = [
   {
     targets: ["roster", "calendar"],
     body: "날짜를 누르면 그날 누가 가능한지, 어떤 시간대를 피하면 좋은지 자세히 볼 수 있어요.",
+    // 모바일은 명단 상세가 바텀시트 모달로 떠서 앵커할 카드가 없다 → 이 단계는 PC 전용.
+    pcOnly: true,
   },
   {
     targets: ["lookup"],
     body: "특정 날짜·시간이 되는지 궁금하면 여기서 바로 확인할 수 있어요.",
+    // 모바일: ④가 빠지는 대신, 날짜 탭·검색 시 상세가 모달로 열린다는 안내를 덧붙인다.
+    bodyMobile:
+      "특정 날짜·시간이 되는지 궁금하면 여기서 바로 확인할 수 있어요. 날짜를 누르거나 검색하면 상세 내용이 아래에서 올라오는 창으로 열려요.",
   },
 ];
 
 function CalendarCoachMarks({ onClose }: { onClose: () => void }) {
-  const steps = CALENDAR_COACH_STEPS;
+  const isMobile = useIsMobile();
+  // 모바일: pcOnly 단계(④ 명단 상세 — 모바일은 모달로 대체)를 빼고, bodyMobile 이 있으면
+  // 모바일 전용 문구를 쓴다. → 모바일은 1·2·3·5 노출.
+  const steps = useMemo(
+    () =>
+      CALENDAR_COACH_STEPS.filter((s) => !(isMobile && s.pcOnly)).map((s) => ({
+        ...s,
+        body: isMobile && s.bodyMobile ? s.bodyMobile : s.body,
+      })),
+    [isMobile],
+  );
   const [index, setIndex] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
-  const step = steps[index];
-  const isLast = index === steps.length - 1;
+  const safeIndex = Math.min(index, steps.length - 1);
+  const step = steps[safeIndex];
+  const isLast = safeIndex === steps.length - 1;
 
   // 현재 스텝 타깃 측정 + 화면 중앙으로 스크롤. 리사이즈/스크롤 시 스포트라이트가 따라오게 갱신.
   useEffect(() => {
-    const targets = steps[index].targets;
+    const targets = steps[safeIndex].targets;
     const findTarget = (): HTMLElement | null => {
       for (const t of targets) {
         const el = document.querySelector<HTMLElement>(`[data-coach="${t}"]`);
@@ -2612,7 +2638,7 @@ function CalendarCoachMarks({ onClose }: { onClose: () => void }) {
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure, true);
     };
-  }, [steps, index]);
+  }, [steps, safeIndex]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -2624,8 +2650,8 @@ function CalendarCoachMarks({ onClose }: { onClose: () => void }) {
 
   if (typeof document === "undefined") return null;
 
-  const next = () => (isLast ? onClose() : setIndex((i) => i + 1));
-  const prev = () => setIndex((i) => Math.max(0, i - 1));
+  const next = () => (isLast ? onClose() : setIndex(safeIndex + 1));
+  const prev = () => setIndex(Math.max(0, safeIndex - 1));
 
   const PAD = 8;
   const vw = window.innerWidth;
@@ -2673,7 +2699,7 @@ function CalendarCoachMarks({ onClose }: { onClose: () => void }) {
         <p className="break-keep text-sm leading-relaxed text-slate-700">{step.body}</p>
         <div className="mt-4 flex items-center justify-between">
           <span className="text-xs font-semibold text-slate-400">
-            {index + 1} / {steps.length}
+            {safeIndex + 1} / {steps.length}
           </span>
           <div className="flex items-center gap-1.5">
             {index > 0 && (
@@ -2757,34 +2783,22 @@ function SubmittedCalendarScreenWide({
     return () => document.documentElement.removeAttribute("data-wide-header");
   }, []);
 
-  // 데모 유저용 캘린더 코치마크(최초 1회). 진입 애니메이션이 자리잡은 뒤 띄운다.
+  // 데모: 새로고침(F5·Ctrl+Shift+R·주소창 등 모든 reload)하면 코치마크를 다시 띄운다.
+  // 브라우저가 Ctrl+Shift+R 키다운을 페이지로 넘기지 않아 키 감지 방식은 못 쓰므로,
+  // Navigation Timing 의 reload 여부로 판정한다(첫 진입은 최초 1회만).
   const [coachOpen, setCoachOpen] = useState(false);
-  useEffect(() => {
-    const markForceReplay = (e: KeyboardEvent) => {
-      const isReloadKey = e.key.toLowerCase() === "r" || e.code === "KeyR";
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && isReloadKey) {
-        try {
-          window.localStorage.setItem(CALENDAR_COACH_FORCE_REPLAY_KEY, "1");
-        } catch {
-          /* storage 접근 불가 시 강제 재생 생략 */
-        }
-      }
-    };
-    window.addEventListener("keydown", markForceReplay, { capture: true });
-    return () => window.removeEventListener("keydown", markForceReplay, { capture: true });
-  }, []);
   useEffect(() => {
     let t: number | undefined;
     try {
-      const forceReplay = window.localStorage.getItem(CALENDAR_COACH_FORCE_REPLAY_KEY) === "1";
-      if (forceReplay) {
-        window.localStorage.removeItem(CALENDAR_COACH_FORCE_REPLAY_KEY);
-      }
-      if (forceReplay || !window.localStorage.getItem(CALENDAR_COACH_KEY)) {
+      const nav = performance.getEntriesByType("navigation")[0] as
+        | PerformanceNavigationTiming
+        | undefined;
+      const isReload = nav?.type === "reload";
+      if (isReload || !window.localStorage.getItem(CALENDAR_COACH_KEY)) {
         t = window.setTimeout(() => setCoachOpen(true), 450);
       }
     } catch {
-      /* localStorage 접근 불가 시 코치마크 생략 */
+      /* 접근 불가 시 코치마크 생략 */
     }
     return () => window.clearTimeout(t);
   }, []);
@@ -3045,9 +3059,6 @@ function SubmittedCalendarScreenWide({
         <div className="space-y-4">{monthCard()}</div>
 
         <div className="space-y-4">
-          {/* 명단 카드: PC 는 우측 열에 그대로, 모바일은 위 해석문장 자리에서 대체 표시하므로 여기선 그리지 않는다. */}
-          {!isMobile && rosterCard}
-
           {/* 날짜·시간 검색 — 여기엔 입력만 두고, 결과는 '선택 날짜 명단' 카드 내용을 대체해 보여준다. */}
           <Card data-coach="lookup" className="space-y-3 !border-0 !shadow-none sm:!shadow-[0_4px_16px_rgba(15,23,42,0.10)]">
             <AvailabilityDateTimeLookup
@@ -3067,6 +3078,9 @@ function SubmittedCalendarScreenWide({
               }}
             />
           </Card>
+
+          {/* 명단 카드: PC 는 우측 열에 그대로, 모바일은 위 해석문장 자리에서 대체 표시하므로 여기선 그리지 않는다. */}
+          {!isMobile && rosterCard}
         </div>
       </div>
 
