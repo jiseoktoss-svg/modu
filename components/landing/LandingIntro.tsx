@@ -215,7 +215,7 @@ function Wordmark() {
           color: "transparent",
         }}
       >
-        MODU
+        MOA
       </div>
       <div style={{ marginTop: 10, fontSize: 22, fontWeight: 700, color: "#334155" }}>
         고민할 시간에, 회의를.
@@ -782,7 +782,7 @@ export function LandingIntro() {
         <div
           ref={stageRef}
           role="img"
-          aria-label="modu 사용 흐름을 보여주는 인트로 애니메이션 — 어려운 시간만 알려주면 응답을 모아 해석해서 가장 나은 시간을 찾아드려요"
+          aria-label="MOA 사용 흐름을 보여주는 인트로 애니메이션 — 어려운 시간만 알려주면 응답을 모아 해석해서 가장 나은 시간을 찾아드려요"
           className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden rounded-3xl bg-white/95"
         >
           <div

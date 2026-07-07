@@ -15,11 +15,11 @@ export function buildIcs(meeting: Meeting, slot: ConfirmedSlot): string {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//modu//meeting scheduler//KO",
+    "PRODID:-//MOA//meeting scheduler//KO",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     "BEGIN:VEVENT",
-    `UID:${slot.id}@modu`,
+    `UID:${slot.id}@moa`,
     `DTSTAMP:${formatIcsUtc(slot.createdAt)}`,
     `DTSTART:${formatIcsUtc(slot.startAt)}`,
     `DTEND:${formatIcsUtc(slot.endAt)}`,

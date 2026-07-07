@@ -17,7 +17,7 @@ export function buildShareText(input: ShareTextInput): string {
     : "필수 참석자 중 일부는 아직 응답 전이라 바뀔 수 있어요.";
 
   const lines = [
-    "[modu] 회의 시간이 정해졌어요.",
+    "[MOA] 회의 시간이 정해졌어요.",
     `회의명: ${input.title}`,
     input.agenda ? `안건: ${input.agenda}` : null,
     input.location ? `장소: ${input.location}` : null,

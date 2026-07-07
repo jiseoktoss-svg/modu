@@ -58,7 +58,7 @@ export default async function ConfirmedPage({
           <Card className="space-y-3 text-center">
             <CardTitle>아직 확정 전이에요</CardTitle>
             <p className="text-sm text-slate-600">
-              이 회의는 아직 시간이 확정되지 않았어요. 현재 플로우에서는 modu가
+              이 회의는 아직 시간이 확정되지 않았어요. 현재 플로우에서는 MOA가
               회의 시간을 확정하지 않고, 추천안을 바탕으로 참여자들이 최종 시간을 정해요.
             </p>
             <div>
