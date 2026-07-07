@@ -215,10 +215,10 @@ function Wordmark() {
           color: "transparent",
         }}
       >
-        modu
+        MODU
       </div>
       <div style={{ marginTop: 10, fontSize: 22, fontWeight: 700, color: "#334155" }}>
-        가장 나은 시간을 찾아드려요
+        고민할 시간에, 회의를.
       </div>
     </>
   );
@@ -230,7 +230,7 @@ function MotionScenes() {
   return (
     <div style={{ position: "absolute", inset: 0 }}>
       {/* ════ 장면 1 · 타이핑 클로즈업 → 응답하기 (0 ~ 4.6s) ════ */}
-      <div style={{ position: "absolute", inset: 0, animation: "mi-scene-out 0.45s ease 4.2s both" }}>
+      <div style={{ position: "absolute", inset: 0, animation: "mi-scene-out 0.35s ease 4.2s both" }}>
         <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 340, transform: "translateX(-50%)" }}>
           <div
             style={{
@@ -651,7 +651,7 @@ function MotionScenes() {
               gap: 6,
             }}
           >
-            {CANDIDATE_DATES.map((date, i) => (
+            {CANDIDATE_DATES.slice(0, 8).map((date, i) => (
               <div
                 key={date}
                 style={{
@@ -683,6 +683,9 @@ function MotionScenes() {
               <Wordmark />
             </div>
           </div>
+
+          {/* 캡션 — 장면 2·3과 동일한 위치(bottom:24). 후보 리스트와 함께 위로 날아간다. */}
+          <SceneCaption text="최적의 시간을 알려드려요" delay={13} flyAt={14.4} />
         </div>
       </div>
     </div>
@@ -802,22 +805,6 @@ export function LandingIntro() {
               </div>
             )}
           </div>
-        </div>
-
-        {/* scene4 캡션 — 아트보드 아래 고정 높이 슬롯(재생 여부와 무관하게 레이아웃 안정) */}
-        <div className="flex h-11 shrink-0 items-center justify-center">
-          {phase === "playing" && (
-            <p
-              className="text-center text-[19px] font-extrabold text-slate-700"
-              style={{
-                animation:
-                  "mi-fade-up 0.55s ease-out 13s both, mi-scene-out 0.25s ease 14.4s forwards",
-                opacity: 0,
-              }}
-            >
-              최적의 시간을 알려드려요
-            </p>
-          )}
         </div>
       </main>
 
