@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 
 function BackIcon() {
   return (
-    <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
+    <svg viewBox="0 0 20 20" className="h-6 w-6" fill="none" aria-hidden="true">
       <path
         d="M12.5 4.5 7 10l5.5 5.5"
         stroke="currentColor"
@@ -46,13 +46,13 @@ export function MobileHeaderTitle({
       type="button"
       onClick={() => (onBack ? onBack() : router.back())}
       aria-label="뒤로 가기"
-      className="-ml-2 mr-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 sm:ml-0"
+      className="-ml-2 mr-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 sm:-ml-4"
     >
       <BackIcon />
     </button>
   );
   const titleText = (
-    <span className="truncate text-sm font-medium text-slate-400">{title}</span>
+    <span className="relative top-px truncate text-base font-medium text-slate-400">{title}</span>
   );
 
   return (

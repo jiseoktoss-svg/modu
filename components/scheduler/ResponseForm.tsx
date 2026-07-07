@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
@@ -2555,6 +2556,158 @@ function ResultComment({ comment, overflowDates }: { comment: string; overflowDa
   );
 }
 
+// ---- 데모 유저용 캘린더 코치마크(최초 1회) ----
+// 스포트라이트(딤+구멍) + 말풍선. 화면 래퍼가 sm:-translate-x-1/2 transform 을 쓰므로
+// fixed 자식이 갇히지 않게 document.body 로 포털한다(§9.5 함정).
+const CALENDAR_COACH_KEY = "modu:coach:calendar:v1";
+
+type CalendarCoachStep = { targets: string[]; body: string };
+
+// targets: 첫 번째로 존재하는 [data-coach] 요소에 앵커한다(예: ④는 PC=roster, 모바일=calendar).
+const CALENDAR_COACH_STEPS: CalendarCoachStep[] = [
+  {
+    targets: ["situation"],
+    body:
+      "지금 보는 달력은 응답별 케이스를 빠르게 확인하려고 만든 데모 화면이에요. 여기서는 응답이 실제로 저장되지 않고, 실 서비스에서는 저장되며 이 ‘상황’ 버튼도 보이지 않아요.",
+  },
+  {
+    targets: ["headline"],
+    body: "데이터를 해석하여 요약 내용을 정리해서 보여줘요.",
+  },
+  {
+    targets: ["calendar"],
+    body:
+      "날짜마다 추천도를 원으로 표시해요. 파란 원 3개일수록 먼저 보면 좋은 날, 빨간 원 1개는 피하는 게 좋아요.",
+  },
+  {
+    targets: ["roster", "calendar"],
+    body: "날짜를 누르면 그날 누가 가능한지, 어떤 시간대를 피하면 좋은지 자세히 볼 수 있어요.",
+  },
+  {
+    targets: ["lookup"],
+    body: "특정 날짜·시간이 되는지 궁금하면 여기서 바로 확인할 수 있어요.",
+  },
+];
+
+function CalendarCoachMarks({ onClose }: { onClose: () => void }) {
+  const steps = CALENDAR_COACH_STEPS;
+  const [index, setIndex] = useState(0);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const step = steps[index];
+  const isLast = index === steps.length - 1;
+
+  // 현재 스텝 타깃 측정 + 화면 중앙으로 스크롤. 리사이즈/스크롤 시 스포트라이트가 따라오게 갱신.
+  useEffect(() => {
+    const targets = steps[index].targets;
+    const findTarget = (): HTMLElement | null => {
+      for (const t of targets) {
+        const el = document.querySelector<HTMLElement>(`[data-coach="${t}"]`);
+        if (el) return el;
+      }
+      return null;
+    };
+    findTarget()?.scrollIntoView({ block: "center", behavior: "auto" });
+    const measure = () => {
+      const target = findTarget();
+      setRect(target ? target.getBoundingClientRect() : null);
+    };
+    measure();
+    const raf = requestAnimationFrame(measure);
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+    };
+  }, [steps, index]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  if (typeof document === "undefined") return null;
+
+  const next = () => (isLast ? onClose() : setIndex((i) => i + 1));
+  const prev = () => setIndex((i) => Math.max(0, i - 1));
+
+  const PAD = 8;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const CARD_W = Math.min(320, vw - 32);
+
+  let cardStyle: CSSProperties;
+  if (rect) {
+    const placeBelow = vh - rect.bottom > 200 || vh - rect.bottom >= rect.top;
+    const center = rect.left + rect.width / 2;
+    const left = Math.min(Math.max(16, center - CARD_W / 2), vw - 16 - CARD_W);
+    cardStyle = placeBelow
+      ? { top: rect.bottom + PAD + 8, left }
+      : { top: rect.top - PAD - 8, left, transform: "translateY(-100%)" };
+  } else {
+    cardStyle = { top: "50%", left: "50%", transform: "translate(-50%, -50%)" };
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100]">
+      {/* 딤 + 스포트라이트(구멍). 배경(구멍 포함) 클릭 시 다음 단계로. */}
+      <div className="absolute inset-0" onClick={next}>
+        {rect && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute rounded-xl ring-2 ring-white/70 transition-all duration-200 motion-reduce:transition-none"
+            style={{
+              top: rect.top - PAD,
+              left: rect.left - PAD,
+              width: rect.width + PAD * 2,
+              height: rect.height + PAD * 2,
+              boxShadow: "0 0 0 9999px rgba(15, 23, 42, 0.55)",
+            }}
+          />
+        )}
+      </div>
+      {/* 안내 말풍선 카드 */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="pointer-events-auto fixed z-[101] rounded-2xl bg-white p-4 shadow-[0_16px_48px_rgba(15,23,42,0.28)]"
+        style={{ ...cardStyle, width: CARD_W }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p className="break-keep text-sm leading-relaxed text-slate-700">{step.body}</p>
+        <div className="mt-4 flex items-center justify-between">
+          <span className="text-xs font-semibold text-slate-400">
+            {index + 1} / {steps.length}
+          </span>
+          <div className="flex items-center gap-1.5">
+            {index > 0 && (
+              <button
+                type="button"
+                onClick={prev}
+                className="rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-100"
+              >
+                이전
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={next}
+              className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-bold text-white transition-opacity hover:opacity-90"
+            >
+              {isLast ? "다 봤어요" : "다음"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function SubmittedCalendarScreenWide({
   caseId,
   onSelectCase,
@@ -2607,6 +2760,28 @@ function SubmittedCalendarScreenWide({
     document.documentElement.setAttribute("data-wide-header", "");
     return () => document.documentElement.removeAttribute("data-wide-header");
   }, []);
+
+  // 데모 유저용 캘린더 코치마크(최초 1회). 진입 애니메이션이 자리잡은 뒤 띄운다.
+  const [coachOpen, setCoachOpen] = useState(false);
+  useEffect(() => {
+    let t: number | undefined;
+    try {
+      if (!window.localStorage.getItem(CALENDAR_COACH_KEY)) {
+        t = window.setTimeout(() => setCoachOpen(true), 450);
+      }
+    } catch {
+      /* localStorage 접근 불가 시 코치마크 생략 */
+    }
+    return () => window.clearTimeout(t);
+  }, []);
+  const closeCoach = () => {
+    setCoachOpen(false);
+    try {
+      window.localStorage.setItem(CALENDAR_COACH_KEY, "1");
+    } catch {
+      /* 무시 */
+    }
+  };
 
   // 케이스가 바뀌면 1순위 날짜를 다시 선택하고 그 달로 이동한다.
   useEffect(() => {
@@ -2718,7 +2893,7 @@ function SubmittedCalendarScreenWide({
   const monthCard = () =>
     month && (
       // 모바일: 달력만 좌우 여백을 최대로 줄인다(-mx-4 로 본문 px-4 를 상쇄해 화면 폭까지 넓힘 + 내부 px 최소). PC 는 종전대로.
-      <Card className="border-none -mx-4 px-1 !shadow-none sm:mx-0 sm:px-3 sm:!shadow-sm">
+      <Card data-coach="calendar" className="border-none -mx-4 px-1 !shadow-none sm:mx-0 sm:px-3 sm:!shadow-sm">
         <CalendarGrid
           month={month}
           canPrev={safeMonthIdx > 0}
@@ -2797,7 +2972,7 @@ function SubmittedCalendarScreenWide({
 
   // PC 우측 열 카드(모바일은 위 rosterContent 를 바텀시트 모달로 띄운다).
   const rosterCard = (
-    <Card className="space-y-3 !border-0 shadow-[0_16px_40px_rgba(15,23,42,0.20)]">
+    <Card data-coach="roster" className="space-y-3 !border-0 !shadow-[0_4px_16px_rgba(15,23,42,0.10)]">
       {rosterContent}
     </Card>
   );
@@ -2806,13 +2981,16 @@ function SubmittedCalendarScreenWide({
     // 이 화면만 특별히 넓게: 부모(max-w-2xl)를 뷰포트 기준으로 벗어나 가운데 정렬(PC 전용).
     <div className="space-y-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-2 sm:relative sm:left-1/2 sm:w-[min(80rem,calc(100vw-4rem))] sm:-translate-x-1/2 sm:pb-8">
       <MobileHeaderTitle title="모두의 날짜" hideBack={!onBack} onBack={onBack} />
+      {coachOpen && <CalendarCoachMarks onClose={closeCoach} />}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <div className="hidden sm:block">
             <h2 className="text-xl font-extrabold text-slate-900">모두의 날짜</h2>
           </div>
           {/* 케이스 선택 버튼 — 데모 컨트롤·탭하면 모달. 캘린더 제목 바로 오른쪽에 붙인다. */}
-          <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} />
+          <span data-coach="situation" className="inline-flex">
+            <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} />
+          </span>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
@@ -2834,7 +3012,7 @@ function SubmittedCalendarScreenWide({
       {/* 맥락형 해석 문장 — 결과 분포(대부분 가능/보통/바쁨/없음)에 따라 문구가 달라진다.
           캘린더는 최종 확정을 유도하지 않는다 — 결정은 참여자들이 제품 밖에서 한다.
           모바일에서 날짜를 탭하면 명단은 바텀시트 모달로 뜨고, 이 문장·달력은 그대로 유지된다. */}
-      <div className="space-y-2 px-1">
+      <div className="space-y-2 px-1" data-coach="headline">
         <p className="break-keep text-base font-bold text-slate-800 sm:text-lg">{contextual.headline}</p>
         <ResultComment comment={contextual.comment} overflowDates={contextual.overflowDates} />
         {/* 특정 시간대 경고 — mostlyAvailable 은 첫 경고가 이미 코멘트에 있어 건너뛴다. */}
@@ -2860,7 +3038,7 @@ function SubmittedCalendarScreenWide({
           {!isMobile && rosterCard}
 
           {/* 날짜·시간 검색 — 여기엔 입력만 두고, 결과는 '선택 날짜 명단' 카드 내용을 대체해 보여준다. */}
-          <Card className="space-y-3 !border-0 !shadow-none sm:!shadow-[0_16px_40px_rgba(15,23,42,0.20)]">
+          <Card data-coach="lookup" className="space-y-3 !border-0 !shadow-none sm:!shadow-[0_4px_16px_rgba(15,23,42,0.10)]">
             <AvailabilityDateTimeLookup
               key={`calendar-lookup-${caseId}-${selectedDate ?? "none"}`}
               dates={dates}
