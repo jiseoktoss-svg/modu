@@ -130,6 +130,7 @@ export function CalendarModal({
   showSelectedChips = false,
   extra,
   ctaGlow = false,
+  animateMobileClose = true,
   onClose,
   onConfirm,
 }: {
@@ -150,6 +151,9 @@ export function CalendarModal({
   // 모바일 하단 CTA 경계 불빛: 스크롤 밖(아래)에 아직 확인하지 못한 칩이 있으면
   // 하단 경계 전체를 tone 색으로 깜빡여 알린다.
   ctaGlow?: boolean;
+  // 검색용 날짜 모달처럼 다른 바텀시트가 곧바로 뜰 수 있는 곳에서는
+  // 닫힘 애니메이션 동안 포털이 남아 겹치지 않도록 즉시 닫는다.
+  animateMobileClose?: boolean;
   onClose: () => void;
   onConfirm: () => void;
 }) {
@@ -161,7 +165,7 @@ export function CalendarModal({
     const reduce =
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (!isMobile || reduce) {
+    if (!isMobile || reduce || !animateMobileClose) {
       done();
       return;
     }
@@ -179,6 +183,13 @@ export function CalendarModal({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
+  // 닫히면(open=false) 닫힘 애니메이션 상태를 반드시 초기화한다.
+  // 초기화하지 않으면 다음에 열 때 fade-out 상태로 뜨거나, closeWith 의 `if (closing) return`
+  // 가드에 걸려 ✕/확인으로 다시 닫히지 않는 등 열림/닫힘 상태가 어긋난다(날짜 모달이 남아 겹침).
+  useEffect(() => {
+    if (!open) setClosing(false);
+  }, [open]);
 
   if (!open) return null;
 

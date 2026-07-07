@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 
@@ -29,10 +29,12 @@ export function MobileHeaderTitle({
   title,
   onBack,
   hideBack = false,
+  mobileRightAction,
 }: {
   title: string;
   onBack?: () => void;
   hideBack?: boolean;
+  mobileRightAction?: ReactNode;
 }) {
   const router = useRouter();
   const [slot, setSlot] = useState<HTMLElement | null>(null);
@@ -63,6 +65,9 @@ export function MobileHeaderTitle({
           <>
             {backButton}
             {titleText}
+            {mobileRightAction && (
+              <div className="ml-auto flex shrink-0 items-center pl-2">{mobileRightAction}</div>
+            )}
           </>,
           slot,
         )}

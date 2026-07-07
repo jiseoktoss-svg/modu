@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { flushSync } from "react-dom";
 import { CalendarModal } from "@/components/scheduler/CalendarModal";
 import { Emoji } from "@/components/ui/Emoji";
 import { Select } from "@/components/ui/Select";
@@ -107,7 +108,12 @@ export function AvailabilityDateTimeLookup({
     if (!date || !timeHm) return;
     const startAt = kstWallToIso(date, parseHm(timeHm));
     const endAt = new Date(isoToEpoch(startAt) + durationMinutes * 60000).toISOString();
-    onResult(lookupAvailabilityAtTime({ participants, blocks, startAt, endAt }));
+    const result = lookupAvailabilityAtTime({ participants, blocks, startAt, endAt });
+
+    // 검색 결과 바텀시트를 열기 전에 날짜 모달 닫힘을 먼저 커밋한다.
+    // 모바일에서 두 포털이 같은 프레임에 겹쳐 보이는 상태를 막는다.
+    flushSync(() => setModalOpen(false));
+    onResult(result);
   };
 
   return (
@@ -153,7 +159,7 @@ export function AvailabilityDateTimeLookup({
       <TDSButton
         type="button"
         tone="primary"
-        size="md"
+        size="xl"
         display="block"
         disabled={!canLookup}
         onClick={handleLookup}
@@ -173,6 +179,7 @@ export function AvailabilityDateTimeLookup({
           setModalOpen(false);
         }}
         tone="pref"
+        animateMobileClose={false}
         onClose={() => setModalOpen(false)}
         onConfirm={() => setModalOpen(false)}
       />

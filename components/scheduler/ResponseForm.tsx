@@ -2570,7 +2570,7 @@ const CALENDAR_COACH_STEPS: CalendarCoachStep[] = [
   {
     targets: ["situation"],
     body:
-      "지금 보는 달력은 응답별 케이스를 빠르게 확인하려고 만든 데모 화면이에요. 여기서는 응답이 실제로 저장되지 않고, 실 서비스에서는 저장되며 이 ‘상황’ 버튼도 보이지 않아요.",
+      "지금 보는 달력은 응답별 케이스를 빠르게 확인하려고 만든 데모 화면이에요. 여기서 노출되는 데이터는 실제 응답 데이터가 아니에요. 실 서비스에서는 응답 데이터가 저장되며 '상황' 버튼도 보이지 않아요.",
   },
   {
     targets: ["headline"],
@@ -2757,6 +2757,7 @@ function SubmittedCalendarScreenWide({
     [current, calendarDates],
   );
   const respondedCount = DEMO_PEOPLE.length - current.pendingNames.length;
+  const responseCountLabel = `${DEMO_PEOPLE.length}명 중 ${respondedCount}명 응답`;
 
   // 날짜 요약(조회 전용) — 케이스별 더미 응답 스냅샷으로 계산한다.
   const snapshot = useMemo(() => buildCaseSnapshot(current, calendarDates), [current, calendarDates]);
@@ -2930,7 +2931,7 @@ function SubmittedCalendarScreenWide({
   const monthCard = () =>
     month && (
       // 모바일: 달력만 좌우 여백을 최대로 줄인다(-mx-4 로 본문 px-4 를 상쇄해 화면 폭까지 넓힘 + 내부 px 최소). PC 는 종전대로.
-      <Card data-coach="calendar" className="border-none -mx-4 px-1 !shadow-none sm:mx-0 sm:px-3 sm:!shadow-sm">
+      <Card data-coach="calendar" className="border-none -mx-4 px-1 !py-2 !shadow-none sm:mx-0 sm:px-3 sm:!py-6 sm:!shadow-sm">
         <CalendarGrid
           month={month}
           canPrev={safeMonthIdx > 0}
@@ -2989,6 +2990,12 @@ function SubmittedCalendarScreenWide({
 
   // 선택한 날짜의 참석 명단 내용(모바일=바텀시트 모달 본문 / PC=우측 열 카드).
   // 날짜·시간 검색을 하면 이 내용이 검색 결과로 바뀐다(✕로 지우면 다시 선택 날짜 명단).
+  const clearLookupResult = () => setLookupResult(null);
+  const closeMobileOverlay = () => {
+    setOverlayOpen(false);
+    if (lookupResult) setLookupResult(null);
+  };
+
   const rosterContent = lookupResult ? (
     <div
       ref={lookupResultRef}
@@ -2996,7 +3003,10 @@ function SubmittedCalendarScreenWide({
       style={{ animationDuration: "0.6s" }}
       className="animate-fade-up-blur motion-reduce:animate-none"
     >
-      <AvailabilitySearchResultPanel result={lookupResult} onClear={() => setLookupResult(null)} />
+      <AvailabilitySearchResultPanel
+        result={lookupResult}
+        onClear={isMobile ? undefined : clearLookupResult}
+      />
     </div>
   ) : selectedDate === null ? (
     <p className="text-sm text-slate-500">날짜를 누르면 참석자별 가능 여부를 볼 수 있어요.</p>
@@ -3013,25 +3023,57 @@ function SubmittedCalendarScreenWide({
       {rosterContent}
     </Card>
   );
+  const renderLookupControls = () => (
+    <AvailabilityDateTimeLookup
+      key={`calendar-lookup-${caseId}-${selectedDate ?? "none"}`}
+      dates={calendarDates}
+      durationMinutes={durationMinutes}
+      participants={snapshot.participants}
+      blocks={snapshot.blocks}
+      workdayStart={workdayStart}
+      workdayEnd={workdayEnd}
+      lunchStart={lunchStart}
+      lunchEnd={lunchEnd}
+      initialDate={selectedDate ?? candidates[0]?.date ?? null}
+      onResult={(r) => {
+        setLookupResult(r);
+        if (isMobile && r) setOverlayOpen(true);
+      }}
+    />
+  );
 
   return (
     // 이 화면만 특별히 넓게: 부모(max-w-2xl)를 뷰포트 기준으로 벗어나 가운데 정렬(PC 전용).
-    <div className="space-y-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-2 sm:relative sm:left-1/2 sm:w-[min(80rem,calc(100vw-4rem))] sm:-translate-x-1/2 sm:pb-8">
-      <MobileHeaderTitle title="모두의 날짜" hideBack={!onBack} onBack={onBack} />
+    <div className="space-y-3 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-0 sm:relative sm:left-1/2 sm:w-[min(80rem,calc(100vw-4rem))] sm:-translate-x-1/2 sm:space-y-4 sm:pt-2 sm:pb-8">
+      <MobileHeaderTitle
+        title="캘린더"
+        hideBack={!onBack}
+        onBack={onBack}
+        mobileRightAction={
+          <div className="flex items-center gap-1.5">
+            <span data-coach="situation" className="inline-flex">
+              <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} />
+            </span>
+            <span className="whitespace-nowrap rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold leading-none text-slate-600">
+              {responseCountLabel}
+            </span>
+          </div>
+        }
+      />
       {coachOpen && <CalendarCoachMarks onClose={closeCoach} />}
-      <div className="flex items-center justify-between gap-2">
+      <div className="hidden items-center justify-between gap-2 sm:flex">
         <div className="flex items-center gap-2">
           <div className="hidden sm:block">
-            <h2 className="text-xl font-extrabold text-slate-900">모두의 날짜</h2>
+            <h2 className="text-base font-medium text-slate-400">캘린더</h2>
           </div>
           {/* 케이스 선택 버튼 — 데모 컨트롤·탭하면 모달. 캘린더 제목 바로 오른쪽에 붙인다. */}
-          <span data-coach="situation" className="inline-flex">
+          <span data-coach="situation" className="hidden sm:inline-flex">
             <FloatingCaseSelector caseId={caseId} onSelect={onSelectCase} />
           </span>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
-            {DEMO_PEOPLE.length}명 중 {respondedCount}명 응답
+            {responseCountLabel}
           </span>
           {onBack && (
             <button
@@ -3058,31 +3100,23 @@ function SubmittedCalendarScreenWide({
       <div className="space-y-4 sm:grid sm:grid-cols-[minmax(0,1fr)_24rem] sm:items-start sm:gap-5 sm:space-y-0">
         <div className="space-y-4">{monthCard()}</div>
 
-        <div className="space-y-4">
-          {/* 날짜·시간 검색 — 여기엔 입력만 두고, 결과는 '선택 날짜 명단' 카드 내용을 대체해 보여준다. */}
-          <Card data-coach="lookup" className="space-y-3 !border-0 !shadow-none sm:!shadow-[0_4px_16px_rgba(15,23,42,0.10)]">
-            <AvailabilityDateTimeLookup
-              key={`calendar-lookup-${caseId}-${selectedDate ?? "none"}`}
-              dates={calendarDates}
-              durationMinutes={durationMinutes}
-              participants={snapshot.participants}
-              blocks={snapshot.blocks}
-              workdayStart={workdayStart}
-              workdayEnd={workdayEnd}
-              lunchStart={lunchStart}
-              lunchEnd={lunchEnd}
-              initialDate={selectedDate ?? candidates[0]?.date ?? null}
-              onResult={(r) => {
-                setLookupResult(r);
-                if (isMobile && r) setOverlayOpen(true);
-              }}
-            />
+        <div className="hidden space-y-4 sm:block">
+          {/* 날짜·시간 검색 — 데스크톱은 우측 카드 안에 두고, 모바일은 하단 고정 CTA로 분리한다. */}
+          <Card
+            data-coach={isMobile ? undefined : "lookup"}
+            className="space-y-3 !border-0 sm:!shadow-[0_4px_16px_rgba(15,23,42,0.10)]"
+          >
+            {renderLookupControls()}
           </Card>
 
           {/* 명단 카드: PC 는 우측 열에 그대로, 모바일은 위 해석문장 자리에서 대체 표시하므로 여기선 그리지 않는다. */}
-          {!isMobile && rosterCard}
+          {rosterCard}
         </div>
       </div>
+
+      <MobileStickyAction className="mt-4 sm:hidden">
+        <div data-coach={isMobile ? "lookup" : undefined}>{renderLookupControls()}</div>
+      </MobileStickyAction>
 
       {/* 모바일 명단 바텀시트 모달 — 날짜 탭/검색 시 rosterContent 를 아래에서 올라오는 시트로 띄운다.
           해석문장·달력은 그대로 두고 상세만 덮는다. 배경 딤 탭·Esc·상단 그래버 탭으로 닫는다.
@@ -3094,7 +3128,7 @@ function SubmittedCalendarScreenWide({
           <>
             <div
               className="fixed inset-0 z-40 bg-slate-900/40 animate-fade-in motion-reduce:animate-none"
-              onClick={() => setOverlayOpen(false)}
+              onClick={closeMobileOverlay}
               aria-hidden="true"
             />
             <div
@@ -3107,7 +3141,7 @@ function SubmittedCalendarScreenWide({
               <div className="flex shrink-0 items-center justify-end px-2 pt-2 pb-1">
                 <button
                   type="button"
-                  onClick={() => setOverlayOpen(false)}
+                  onClick={closeMobileOverlay}
                   aria-label="닫기"
                   className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
                 >
