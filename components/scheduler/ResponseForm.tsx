@@ -56,6 +56,7 @@ import {
   DEMO_CASES,
   buildCaseCandidates,
   buildCaseSnapshot,
+  resolveDemoDates,
 } from "@/data/demoCases";
 import { AvailabilityDateTimeLookup } from "@/components/scheduler/AvailabilityDateTimeLookup";
 import { AvailabilitySearchResultPanel } from "@/components/scheduler/AvailabilitySearchResultPanel";
@@ -76,6 +77,7 @@ import {
   type CalendarDateQuality,
   type CalendarDateQualityTier,
 } from "@/lib/scheduler/calendarDateQuality";
+import { buildCalendarAlignedComment } from "@/lib/scheduler/calendarNarrative";
 
 interface Props {
   meetingId: string;
@@ -1918,30 +1920,15 @@ function CaseDescription({ caseId }: { caseId: number }) {
         상황 {current.id}. {current.title}
       </p>
       <div className="mt-2 space-y-1.5">
-        <p className="flex gap-1.5 break-keep text-sm text-slate-600">
-          <span className="shrink-0 font-bold text-slate-400">상황</span>
+        <p className="grid grid-cols-[3.25rem_minmax(0,1fr)] gap-1.5 break-keep text-sm text-slate-600">
+          <span className="font-bold text-slate-400">상황</span>
           <span>{current.situation}</span>
         </p>
-        <p className="flex gap-1.5 break-keep text-sm text-slate-700">
-          <span className="shrink-0 font-bold text-brand-600">솔루션</span>
+        <p className="grid grid-cols-[3.25rem_minmax(0,1fr)] gap-1.5 break-keep text-sm text-slate-700">
+          <span className="font-bold text-brand-600">솔루션</span>
           <span>{current.judgment}</span>
         </p>
       </div>
-      {current.banner && (
-        <p
-          className={cn(
-            "mt-2.5 break-keep rounded-xl px-2.5 py-2 text-xs font-bold",
-            // 2색 체계: caution 도 빨강 계열(danger 보다 옅게)로 — 앰버는 쓰지 않는다.
-            current.banner.tone === "danger"
-              ? "bg-red-50 text-red-700"
-              : current.banner.tone === "caution"
-                ? "bg-red-50/70 text-red-500"
-                : "bg-brand-50 text-brand-700",
-          )}
-        >
-          {current.banner.text}
-        </p>
-      )}
     </div>
   );
 }
@@ -2345,23 +2332,27 @@ function ResultScreen({
   onViewCalendar: () => void;
 }) {
   const current = DEMO_CASES.find((c) => c.id === caseId) ?? DEMO_CASES[0];
-  const candidates = useMemo(() => buildCaseCandidates(current, dates), [current, dates]);
+  const calendarDates = useMemo(() => resolveDemoDates(dates), [dates]);
+  const candidates = useMemo(
+    () => buildCaseCandidates(current, calendarDates),
+    [current, calendarDates],
+  );
   const total = DEMO_PEOPLE.length;
 
   // 상황별 더미 응답 스냅샷 — 날짜 요약과 날짜·시간 확인 모듈의 계산 재료.
-  const snapshot = useMemo(() => buildCaseSnapshot(current, dates), [current, dates]);
+  const snapshot = useMemo(() => buildCaseSnapshot(current, calendarDates), [current, calendarDates]);
 
   // 전체 응답 해석 — 문장형 추천 요약(브리프)의 재료.
   // rankGroups/필터는 내부 로직·테스트로만 유지하고, 화면은 후보 카드 대신 브리프가 담당한다.
   const contextual = useMemo(
     () =>
-      buildContextualScheduleResult(adaptDemoCaseToEvaluatedSlots(current, dates), {
+      buildContextualScheduleResult(adaptDemoCaseToEvaluatedSlots(current, calendarDates), {
         blocks: snapshot.blocks,
         participants: snapshot.participants,
         workdayStart,
         workdayEnd,
       }),
-    [current, dates, snapshot, workdayStart, workdayEnd],
+    [current, calendarDates, snapshot, workdayStart, workdayEnd],
   );
   // 날짜별 하루 요약 → "modu가 먼저 판단을 정리해주는" 문장형 브리프.
   // 단일 후보 시간(10:00~11:00)이 아니라 날짜 전체 상태로 말한다.
@@ -2451,7 +2442,7 @@ function ResultScreen({
               key 로 상황 전환 시 선택·결과를 초기화한다. */}
           <AvailabilityDateTimeLookup
             key={`lookup-${caseId}`}
-            dates={dates}
+            dates={calendarDates}
             durationMinutes={durationMinutes}
             participants={snapshot.participants}
             blocks={snapshot.blocks}
@@ -2560,6 +2551,7 @@ function ResultComment({ comment, overflowDates }: { comment: string; overflowDa
 // 스포트라이트(딤+구멍) + 말풍선. 화면 래퍼가 sm:-translate-x-1/2 transform 을 쓰므로
 // fixed 자식이 갇히지 않게 document.body 로 포털한다(§9.5 함정).
 const CALENDAR_COACH_KEY = "modu:coach:calendar:v1";
+const CALENDAR_COACH_FORCE_REPLAY_KEY = "modu:coach:calendar:force-replay";
 
 type CalendarCoachStep = { targets: string[]; body: string };
 
@@ -2733,15 +2725,19 @@ function SubmittedCalendarScreenWide({
 }) {
   // 데모 단계: 선택한 케이스의 더미 응답으로 달력을 채운다.
   const current = DEMO_CASES.find((c) => c.id === caseId) ?? DEMO_CASES[0];
-  const candidates = useMemo(() => buildCaseCandidates(current, dates), [current, dates]);
+  const calendarDates = useMemo(() => resolveDemoDates(dates), [dates]);
+  const candidates = useMemo(
+    () => buildCaseCandidates(current, calendarDates),
+    [current, calendarDates],
+  );
   const respondedCount = DEMO_PEOPLE.length - current.pendingNames.length;
 
   // 날짜 요약(조회 전용) — 케이스별 더미 응답 스냅샷으로 계산한다.
-  const snapshot = useMemo(() => buildCaseSnapshot(current, dates), [current, dates]);
+  const snapshot = useMemo(() => buildCaseSnapshot(current, calendarDates), [current, calendarDates]);
 
   const months = useMemo(
-    () => getCalendarMonthsWithDates([...dates, ...candidates.map((c) => c.date)]),
-    [dates, candidates],
+    () => getCalendarMonthsWithDates([...calendarDates, ...candidates.map((c) => c.date)]),
+    [calendarDates, candidates],
   );
   const monthIndexOf = (dateStr: string) => {
     const [y, m] = dateStr.split("-").map(Number);
@@ -2764,9 +2760,27 @@ function SubmittedCalendarScreenWide({
   // 데모 유저용 캘린더 코치마크(최초 1회). 진입 애니메이션이 자리잡은 뒤 띄운다.
   const [coachOpen, setCoachOpen] = useState(false);
   useEffect(() => {
+    const markForceReplay = (e: KeyboardEvent) => {
+      const isReloadKey = e.key.toLowerCase() === "r" || e.code === "KeyR";
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && isReloadKey) {
+        try {
+          window.localStorage.setItem(CALENDAR_COACH_FORCE_REPLAY_KEY, "1");
+        } catch {
+          /* storage 접근 불가 시 강제 재생 생략 */
+        }
+      }
+    };
+    window.addEventListener("keydown", markForceReplay, { capture: true });
+    return () => window.removeEventListener("keydown", markForceReplay, { capture: true });
+  }, []);
+  useEffect(() => {
     let t: number | undefined;
     try {
-      if (!window.localStorage.getItem(CALENDAR_COACH_KEY)) {
+      const forceReplay = window.localStorage.getItem(CALENDAR_COACH_FORCE_REPLAY_KEY) === "1";
+      if (forceReplay) {
+        window.localStorage.removeItem(CALENDAR_COACH_FORCE_REPLAY_KEY);
+      }
+      if (forceReplay || !window.localStorage.getItem(CALENDAR_COACH_KEY)) {
         t = window.setTimeout(() => setCoachOpen(true), 450);
       }
     } catch {
@@ -2816,13 +2830,13 @@ function SubmittedCalendarScreenWide({
   // 맥락형 해석 — 후보 전체를 평가해 컨텍스트·해석 문장·날짜 톤(신호)을 만든다.
   const contextual = useMemo(
     () =>
-      buildContextualScheduleResult(adaptDemoCaseToEvaluatedSlots(current, dates), {
+      buildContextualScheduleResult(adaptDemoCaseToEvaluatedSlots(current, calendarDates), {
         blocks: snapshot.blocks,
         participants: snapshot.participants,
         workdayStart,
         workdayEnd,
       }),
-    [current, dates, snapshot, workdayStart, workdayEnd],
+    [current, calendarDates, snapshot, workdayStart, workdayEnd],
   );
   const markByDate = useMemo(() => {
     const map = new Map<string, CalendarMark>();
@@ -2831,7 +2845,7 @@ function SubmittedCalendarScreenWide({
   }, [contextual]);
   const fallbackSummaryByDate = useMemo(() => {
     const map = new Map<string, ReturnType<typeof summarizeDateAvailability>>();
-    dates.forEach((date) => {
+    calendarDates.forEach((date) => {
       if (isWeekendDateStr(date)) return;
       map.set(
         date,
@@ -2848,10 +2862,19 @@ function SubmittedCalendarScreenWide({
       );
     });
     return map;
-  }, [dates, durationMinutes, workdayStart, workdayEnd, lunchStart, lunchEnd, snapshot]);
+  }, [calendarDates, durationMinutes, workdayStart, workdayEnd, lunchStart, lunchEnd, snapshot]);
   const dateQualityByDate = useMemo(
     () => rankDateAvailabilitySummaries(fallbackSummaryByDate),
     [fallbackSummaryByDate],
+  );
+  const calendarComment = useMemo(
+    () =>
+      buildCalendarAlignedComment({
+        contextual,
+        dateQualityByDate,
+        summariesByDate: fallbackSummaryByDate,
+      }),
+    [contextual, dateQualityByDate, fallbackSummaryByDate],
   );
   const [lookupResult, setLookupResult] = useState<AvailabilityLookupResult | null>(null);
   const lookupResultRef = useRef<HTMLDivElement>(null);
@@ -3014,19 +3037,7 @@ function SubmittedCalendarScreenWide({
           모바일에서 날짜를 탭하면 명단은 바텀시트 모달로 뜨고, 이 문장·달력은 그대로 유지된다. */}
       <div className="space-y-2 px-1" data-coach="headline">
         <p className="break-keep text-base font-bold text-slate-800 sm:text-lg">{contextual.headline}</p>
-        <ResultComment comment={contextual.comment} overflowDates={contextual.overflowDates} />
-        {/* 특정 시간대 경고 — mostlyAvailable 은 첫 경고가 이미 코멘트에 있어 건너뛴다. */}
-        {(contextual.context === "mostlyAvailable"
-          ? contextual.warnings.slice(1, 3)
-          : contextual.warnings.slice(0, 3)
-        ).map((warning) => (
-          <p
-            key={`${warning.startAt}-${warning.level}`}
-            className="break-keep text-xs font-medium text-red-500"
-          >
-            {highlightKeywords(warning.message)}
-          </p>
-        ))}
+        <ResultComment comment={calendarComment} />
       </div>
 
       {/* PC: 달력(좌) + 참석 명단(우) 2열. 모바일: 원본과 동일한 세로 스택. */}
@@ -3041,7 +3052,7 @@ function SubmittedCalendarScreenWide({
           <Card data-coach="lookup" className="space-y-3 !border-0 !shadow-none sm:!shadow-[0_4px_16px_rgba(15,23,42,0.10)]">
             <AvailabilityDateTimeLookup
               key={`calendar-lookup-${caseId}-${selectedDate ?? "none"}`}
-              dates={dates}
+              dates={calendarDates}
               durationMinutes={durationMinutes}
               participants={snapshot.participants}
               blocks={snapshot.blocks}

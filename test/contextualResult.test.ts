@@ -380,7 +380,7 @@ describe("pickRedSlots(상대적 빨강)", () => {
     expect(mark?.reason).toContain("참석할 수 있는 인원이 적어요");
     expect(mark?.reason).not.toContain("필수참석자");
     // normal 에서 필수 경고 없이 상대적 빨강만 있으면 상단 코멘트도 인원 부족을 설명한다.
-    expect(result.comment).toContain("다른 날짜보다 참석할 수 있는 인원이 적어요");
+    expect(result.comment).toContain("다른 날짜보다 참석 가능한 인원이 적어요");
   });
 
   it("20. 필수참석자 1명이 빠져 빨간 날짜의 reason 은 '필수참석자 1명'을 말한다", () => {
