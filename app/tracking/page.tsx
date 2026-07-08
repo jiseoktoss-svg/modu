@@ -4,14 +4,15 @@ import { fetchTrackingSummary } from "@/lib/tracking";
 import { hasTrackingAccess, hasTrackingPassword } from "@/lib/trackingAuth";
 import type { TrackingCountRow, TrackingEvent, TrackingSummary } from "@/lib/trackingModel";
 import type { ReactNode } from "react";
-import { loginTracking, logoutTracking } from "./actions";
+import { ClearTrackingForm } from "./ClearTrackingForm";
+import { clearTrackingEventsAction, loginTracking, logoutTracking } from "./actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function TrackingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; setup?: string }>;
+  searchParams: Promise<{ clearError?: string; cleared?: string; error?: string; setup?: string }>;
 }) {
   const params = await searchParams;
 
@@ -92,15 +93,32 @@ export default async function TrackingPage({
             트래킹 내역
           </h1>
         </div>
-        <form action={logoutTracking}>
-          <button
-            type="submit"
-            className="h-10 rounded-xl bg-slate-100 px-4 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-200"
-          >
-            로그아웃
-          </button>
-        </form>
+        <div className="flex flex-wrap gap-2">
+          <ClearTrackingForm
+            action={clearTrackingEventsAction}
+            disabled={summary.totalCount === 0}
+          />
+          <form action={logoutTracking}>
+            <button
+              type="submit"
+              className="h-10 rounded-xl bg-slate-100 px-4 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-200"
+            >
+              로그아웃
+            </button>
+          </form>
+        </div>
       </div>
+
+      {params.cleared && (
+        <p role="status" className="mb-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">
+          트래킹 기록을 모두 지웠습니다.
+        </p>
+      )}
+      {params.clearError && (
+        <p role="alert" className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+          기록을 지우지 못했습니다. 잠시 후 다시 시도해 주세요.
+        </p>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-3">
         <MetricCard label="전체 기록" value={summary.totalCount} />

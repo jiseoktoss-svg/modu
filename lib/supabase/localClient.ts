@@ -40,6 +40,7 @@ type LocalRow =
 
 interface Filter {
   column: string;
+  operator: "eq" | "neq";
   value: unknown;
 }
 
@@ -200,6 +201,7 @@ function withDefaults(table: LocalTableName, row: Record<string, unknown>): Loca
 function matches(row: LocalRow, filters: Filter[]) {
   return filters.every((filter) => {
     const value = asRecord(row)[filter.column];
+    if (filter.operator === "neq") return value !== filter.value;
     return value === filter.value;
   });
 }
@@ -259,7 +261,12 @@ class LocalQueryBuilder implements PromiseLike<QueryResult<unknown>> {
   }
 
   eq(column: string, value: unknown) {
-    this.filters.push({ column, value });
+    this.filters.push({ column, operator: "eq", value });
+    return this;
+  }
+
+  neq(column: string, value: unknown) {
+    this.filters.push({ column, operator: "neq", value });
     return this;
   }
 

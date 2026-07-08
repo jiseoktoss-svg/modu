@@ -2,9 +2,11 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { clearTrackingEvents } from "@/lib/tracking";
 import {
   TRACKING_AUTH_COOKIE,
   createTrackingAuthToken,
+  hasTrackingAccess,
   hasTrackingPassword,
   verifyTrackingPassword,
 } from "@/lib/trackingAuth";
@@ -38,4 +40,17 @@ export async function logoutTracking() {
   });
 
   redirect("/tracking");
+}
+
+export async function clearTrackingEventsAction() {
+  if (!(await hasTrackingAccess())) redirect("/tracking");
+
+  try {
+    await clearTrackingEvents();
+  } catch (error) {
+    console.error("[tracking] failed to clear events", error);
+    redirect("/tracking?clearError=1");
+  }
+
+  redirect("/tracking?cleared=1");
 }

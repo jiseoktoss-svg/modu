@@ -82,6 +82,15 @@ export async function fetchTrackingSummary(): Promise<TrackingSummary> {
   return buildTrackingSummary(events);
 }
 
+export async function clearTrackingEvents(): Promise<void> {
+  const { error } = await getSupabaseAdmin()
+    .from("tracking_events")
+    .delete()
+    .neq("id", "");
+
+  if (error) throw error;
+}
+
 function trimNullable(value: string | null | undefined): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
