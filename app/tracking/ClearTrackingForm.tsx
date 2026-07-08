@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { type FormEvent } from "react";
 
 interface ClearTrackingFormProps {
   action: (formData: FormData) => void | Promise<void>;
@@ -11,18 +11,12 @@ export function ClearTrackingForm({
   action,
   disabled = false,
 }: ClearTrackingFormProps) {
-  const [armed, setArmed] = useState(false);
-
-  useEffect(() => {
-    if (!armed) return;
-    const timer = window.setTimeout(() => setArmed(false), 5000);
-    return () => window.clearTimeout(timer);
-  }, [armed]);
-
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    if (armed) return;
-    event.preventDefault();
-    setArmed(true);
+    const confirmed = window.confirm(
+      "트래킹 기록을 모두 삭제할까요? 삭제한 기록은 되돌릴 수 없습니다.",
+    );
+
+    if (!confirmed) event.preventDefault();
   }
 
   return (
@@ -32,7 +26,7 @@ export function ClearTrackingForm({
         disabled={disabled}
         className="h-10 rounded-xl bg-red-50 px-4 text-sm font-bold text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {armed ? "한 번 더 눌러 삭제" : "기록 지우기"}
+        기록 지우기
       </button>
     </form>
   );

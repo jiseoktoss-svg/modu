@@ -15,6 +15,7 @@ import {
 
 const MAX_TRACKING_EVENTS = 1000;
 const MAX_TEXT_LENGTH = 500;
+const CLEAR_ALL_EVENT_NAME_SENTINEL = "__clear_all_tracking_events__";
 
 export interface RecordTrackingEventInput {
   eventName: TrackingEventName;
@@ -86,7 +87,7 @@ export async function clearTrackingEvents(): Promise<void> {
   const { error } = await getSupabaseAdmin()
     .from("tracking_events")
     .delete()
-    .neq("id", "");
+    .neq("event_name", CLEAR_ALL_EVENT_NAME_SENTINEL);
 
   if (error) throw error;
 }
