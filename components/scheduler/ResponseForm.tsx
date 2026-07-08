@@ -2619,8 +2619,15 @@ function CalendarCoachMarks({ onClose }: { onClose: () => void }) {
     const targets = steps[safeIndex].targets;
     const findTarget = (): HTMLElement | null => {
       for (const t of targets) {
-        const el = document.querySelector<HTMLElement>(`[data-coach="${t}"]`);
-        if (el) return el;
+        const elements = Array.from(
+          document.querySelectorAll<HTMLElement>(`[data-coach="${t}"]`),
+        );
+        const visible = elements.find((el) => {
+          const box = el.getBoundingClientRect();
+          return box.width > 0 && box.height > 0;
+        });
+        if (visible) return visible;
+        if (elements[0]) return elements[0];
       }
       return null;
     };
