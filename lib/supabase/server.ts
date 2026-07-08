@@ -18,7 +18,7 @@ export function hasSupabaseConfig() {
 export function getSupabaseAdmin(): SupabaseClient {
   if (cached) return cached;
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const url = normalizeSupabaseProjectUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
   const key =
     process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -43,4 +43,23 @@ export function getSupabaseAdmin(): SupabaseClient {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   return cached;
+}
+
+function normalizeSupabaseProjectUrl(value: string | undefined) {
+  if (!value) return null;
+
+  const trimmed = value.trim();
+  try {
+    const url = new URL(trimmed);
+    const restApiPathIndex = url.pathname.indexOf("/rest/v1");
+    if (restApiPathIndex >= 0) {
+      url.pathname = url.pathname.slice(0, restApiPathIndex);
+    }
+    url.pathname = url.pathname.replace(/\/+$/, "");
+    url.search = "";
+    url.hash = "";
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return trimmed.replace(/\/rest\/v1\/?$/, "").replace(/\/+$/, "");
+  }
 }
