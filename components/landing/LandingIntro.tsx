@@ -9,8 +9,8 @@ import { cn } from "@/lib/cn";
 // 재생이 끝나야 하단 고정 CTA(회의 만들기)가 페이드인된다.
 // 같은 세션 재방문·저감 모션·건너뛰기는 애니메이션 없이 마지막 장면 + CTA를 바로 보여준다.
 
-// 장면 4 워드마크(15.15s + 0.55s)까지 끝난 뒤 CTA 페이드인.
-const INTRO_DURATION_MS = 16_100;
+// 장면 4 워드마크(14.15s + 0.55s)까지 끝난 뒤 CTA 페이드인.
+const INTRO_DURATION_MS = 15_100;
 
 // 같은 세션에서 이미 한 번 열었는지 표시 — 재방문(새로고침·뒤로가기) 시 CTA를 처음부터 노출한다.
 // (모션은 첫 진입·재방문 모두 항상 새로 재생한다.)
@@ -20,6 +20,9 @@ const INTRO_PLAYED_KEY = "modu:landing-intro-played";
 // 실제 무대(카드) 크기에 맞춰 비율 그대로 축소(scale)해 어떤 화면에서도 스크롤 없이 전부 보이게 한다.
 const ARTBOARD_W = 340;
 const ARTBOARD_H = 500;
+// 장면 2 참석자 배지가 아트보드 좌우로 각각 8px 삐져나오므로(BADGES 의 left/right: -8),
+// 스케일 계산에는 이 여백(bleed)을 포함한 실제 콘텐츠 폭을 써야 폭이 빡빡한 기기에서 배지가 잘리지 않는다.
+const ARTBOARD_BLEED = 8;
 
 type Phase = "pending" | "playing" | "done";
 
@@ -82,31 +85,31 @@ const TYPED: Array<{ ch?: string; red?: boolean }> = [
 // 장면 2: 참석자 뱃지 6개 + 중앙으로 수렴하는 불가 칩 6개.
 // 필수 4명(위/중간 두 줄) + 선택 2명(아래 줄). 세로 중앙(분석 필 자리)은 비워 겹침을 막는다.
 const BADGES = [
-  { name: "지수", required: true, pos: { left: -8, top: 56 }, pop: 4.8, float: "mi-floaty 3.2s ease-in-out 0.2s infinite" },
-  { name: "민준", required: true, pos: { right: -8, top: 56 }, pop: 4.95, float: "mi-floaty 3.6s ease-in-out 0.8s infinite" },
-  { name: "지석", required: true, pos: { left: -8, top: 140 }, pop: 5.1, float: "mi-floaty 3.3s ease-in-out 0.6s infinite" },
-  { name: "하늘", required: true, pos: { right: -8, top: 140 }, pop: 5.25, float: "mi-floaty 3.7s ease-in-out 1.3s infinite" },
-  { name: "서연", required: false, pos: { left: -8, top: 388 }, pop: 5.4, float: "mi-floaty 3s ease-in-out 0.4s infinite" },
-  { name: "도윤", required: false, pos: { right: -8, top: 388 }, pop: 5.55, float: "mi-floaty 3.4s ease-in-out 1.1s infinite" },
+  { name: "지수", required: true, pos: { left: -8, top: 56 }, pop: 3.8, float: "mi-floaty 3.2s ease-in-out 0.2s infinite" },
+  { name: "민준", required: true, pos: { right: -8, top: 56 }, pop: 3.95, float: "mi-floaty 3.6s ease-in-out 0.8s infinite" },
+  { name: "지석", required: true, pos: { left: -8, top: 140 }, pop: 4.1, float: "mi-floaty 3.3s ease-in-out 0.6s infinite" },
+  { name: "하늘", required: true, pos: { right: -8, top: 140 }, pop: 4.25, float: "mi-floaty 3.7s ease-in-out 1.3s infinite" },
+  { name: "서연", required: false, pos: { left: -8, top: 388 }, pop: 4.4, float: "mi-floaty 3s ease-in-out 0.4s infinite" },
+  { name: "도윤", required: false, pos: { right: -8, top: 388 }, pop: 4.55, float: "mi-floaty 3.4s ease-in-out 1.1s infinite" },
 ] as const;
 
 // 각 칩은 배지 근처에서 나와 중앙(분석 필, ≈y265)으로 비슷한 거리를 이동해 수렴한다.
 const CHIPS = [
-  { label: "7/8 종일", pos: { left: 8, top: 96 }, dx: 127, dy: 158, pop: 5.5, converge: 5.95 },
-  { label: "7/9 오전", pos: { right: 8, top: 96 }, dx: -125, dy: 158, pop: 5.65, converge: 6.1 },
-  { label: "7/10 오후", pos: { left: 8, top: 174 }, dx: 127, dy: 82, pop: 5.8, converge: 6.25 },
-  { label: "7/13 오전", pos: { right: 8, top: 174 }, dx: -125, dy: 82, pop: 5.95, converge: 6.4 },
-  { label: "7/11", pos: { left: 8, top: 356 }, dx: 134, dy: -100, pop: 6.1, converge: 6.55 },
-  { label: "7/14 오후", pos: { right: 8, top: 356 }, dx: -120, dy: -100, pop: 6.25, converge: 6.7 },
+  { label: "7/8 종일", pos: { left: 8, top: 96 }, dx: 127, dy: 158, pop: 4.5, converge: 4.95 },
+  { label: "7/9 오전", pos: { right: 8, top: 96 }, dx: -125, dy: 158, pop: 4.65, converge: 5.1 },
+  { label: "7/10 오후", pos: { left: 8, top: 174 }, dx: 127, dy: 82, pop: 4.8, converge: 5.25 },
+  { label: "7/13 오전", pos: { right: 8, top: 174 }, dx: -125, dy: 82, pop: 4.95, converge: 5.4 },
+  { label: "7/11", pos: { left: 8, top: 356 }, dx: 134, dy: -100, pop: 5.1, converge: 5.55 },
+  { label: "7/14 오후", pos: { right: 8, top: 356 }, dx: -120, dy: -100, pop: 5.25, converge: 5.7 },
 ] as const;
 
 // 장면 3: 탈락하는 날짜(값은 등장 순서 인덱스). 스캔이 지나간 뒤 빨갛게 물들고, 순서대로 낙하한다.
 const CELL_FALL: Record<number, number> = {
   3: 0, 6: 1, 8: 2, 9: 3, 10: 4, 11: 5, 13: 6, 14: 7, 21: 8, 24: 9, 28: 10,
 };
-const MARK_BASE = 11.15; // 빨간 칸 물들기 시작(느려진 스캔이 지나간 뒤)
+const MARK_BASE = 10.15; // 빨간 칸 물들기 시작(느려진 스캔이 지나간 뒤)
 const MARK_STEP = 0.03;
-const FALL_BASE = 11.55; // 낙하 시작
+const FALL_BASE = 10.55; // 낙하 시작
 const FALL_STEP = 0.06;
 
 // 추천 후보 리스트 — 달력 다음 장면(장면 4)에서 새로 노출. 2026년 7월 기준 요일(주말·탈락일 제외).
@@ -152,7 +155,7 @@ const attendeeBadgeStyle: CSSProperties = {
   fontSize: 12,
   fontWeight: 600,
   color: "#334155",
-  boxShadow: "0 4px 10px rgba(15, 23, 42, 0.1)",
+  boxShadow: "0 4px 7px rgba(15, 23, 42, 0.1)",
 };
 
 function AttendeeTag({ required, name }: { required: boolean; name: string }) {
@@ -229,8 +232,8 @@ function Wordmark() {
 function MotionScenes() {
   return (
     <div style={{ position: "absolute", inset: 0 }}>
-      {/* ════ 장면 1 · 타이핑 클로즈업 → 응답하기 (0 ~ 4.6s) ════ */}
-      <div style={{ position: "absolute", inset: 0, animation: "mi-scene-out 0.35s ease 4.2s both" }}>
+      {/* ════ 장면 1 · 타이핑 클로즈업 → 응답하기 (0 ~ 3.6s) ════ */}
+      <div style={{ position: "absolute", inset: 0, animation: "mi-scene-out 0.35s ease 3.2s both" }}>
         <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 340, transform: "translateX(-50%)" }}>
           <div
             style={{
@@ -242,7 +245,7 @@ function MotionScenes() {
               border: "1px solid #e2e8f0",
               borderRadius: 20,
               padding: 18,
-              boxShadow: "0 10px 30px rgba(15, 23, 42, 0.08)",
+              boxShadow: "0 10px 20px rgba(15, 23, 42, 0.08)",
               animation: "mi-card-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both",
             }}
           >
@@ -359,7 +362,7 @@ function MotionScenes() {
                   boxShadow: "0 0 18px rgba(69, 147, 252, 0.45)",
                   opacity: 0,
                   animation:
-                    "mi-scene-in 0.25s ease 3.15s both, mi-border-flow 1.6s linear 3.15s infinite",
+                    "mi-scene-in 0.25s ease 2.91s both, mi-border-flow 1.6s linear 2.91s infinite",
                 }}
               />
               <div
@@ -374,8 +377,8 @@ function MotionScenes() {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  boxShadow: "0 4px 12px rgba(49, 130, 246, 0.25)",
-                  animation: "mi-press 0.35s ease 3.24s",
+                  boxShadow: "0 4px 8px rgba(49, 130, 246, 0.25)",
+                  animation: "mi-press 0.35s ease 2.95s",
                 }}
               >
                 응답하기
@@ -391,7 +394,7 @@ function MotionScenes() {
                   borderRadius: 999,
                   background: "rgba(255, 255, 255, 0.55)",
                   opacity: 0,
-                  animation: "mi-click-ring 0.5s ease-out 3.26s both",
+                  animation: "mi-click-ring 0.5s ease-out 2.97s both",
                 }}
               />
             </div>
@@ -404,7 +407,7 @@ function MotionScenes() {
                 top: 0,
                 zIndex: 5,
                 pointerEvents: "none",
-                animation: "mi-cursor-submit 1.3s linear 2.3s both",
+                animation: "mi-cursor-submit 0.9s linear 2.3s both",
               }}
             >
               <svg width="22" height="24" viewBox="0 0 22 24" aria-hidden="true">
@@ -422,12 +425,12 @@ function MotionScenes() {
         </div>
       </div>
 
-      {/* ════ 장면 2 · 응답 수렴 + 분석 필 (4.6 ~ 9.1s) ════ */}
+      {/* ════ 장면 2 · 응답 수렴 + 분석 필 (3.6 ~ 8.1s) ════ */}
       <div
         style={{
           position: "absolute",
           inset: 0,
-          animation: "mi-scene-in 0.45s ease 4.6s both, mi-scene-out 0.45s ease 8.7s both",
+          animation: "mi-scene-in 0.45s ease 3.6s both, mi-scene-out 0.45s ease 7.7s both",
           opacity: 0,
         }}
       >
@@ -461,7 +464,7 @@ function MotionScenes() {
               fontSize: 12,
               fontWeight: 700,
               padding: "5px 11px",
-              boxShadow: "0 4px 10px rgba(185, 28, 28, 0.08)",
+              boxShadow: "0 4px 7px rgba(185, 28, 28, 0.08)",
               opacity: 0,
               animation: `mi-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) ${c.pop}s both, mi-converge 0.7s cubic-bezier(0.55, 0, 0.55, 0.2) ${c.converge}s both`,
             };
@@ -487,7 +490,7 @@ function MotionScenes() {
                 "radial-gradient(circle, rgba(49, 130, 246, 0.32) 0%, rgba(49, 130, 246, 0) 68%)",
               filter: "blur(6px)",
               animation:
-                "mi-scene-in 0.6s ease 5.3s both, mi-glow-pulse 2.4s ease-in-out 5.9s infinite",
+                "mi-scene-in 0.6s ease 4.3s both, mi-glow-pulse 2.4s ease-in-out 4.9s infinite",
               opacity: 0,
             }}
           />
@@ -498,7 +501,7 @@ function MotionScenes() {
               style={{
                 position: "relative",
                 animation:
-                  "mi-pill-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) 5.2s both, mi-pill-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 6.6s, mi-pill-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 6.8s, mi-pill-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 7s, mi-pill-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 7.2s, mi-pill-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 7.4s, mi-pill-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 7.6s",
+                  "mi-pill-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) 4.2s both, mi-pill-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 5.6s, mi-pill-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 5.8s, mi-pill-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 6s, mi-pill-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 6.2s, mi-pill-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 6.4s, mi-pill-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) 6.6s",
                 opacity: 0,
               }}
             >
@@ -509,8 +512,8 @@ function MotionScenes() {
                   background:
                     "linear-gradient(100deg, #2272eb 0%, #4593fc 30%, #c9e2ff 50%, #4593fc 70%, #2272eb 100%)",
                   backgroundSize: "300% 100%",
-                  animation: "mi-border-flow 1.6s linear 5.4s infinite",
-                  boxShadow: "0 10px 30px rgba(49, 130, 246, 0.3)",
+                  animation: "mi-border-flow 1.6s linear 4.4s infinite",
+                  boxShadow: "0 10px 20px rgba(49, 130, 246, 0.3)",
                 }}
               >
                 <div
@@ -530,16 +533,16 @@ function MotionScenes() {
             </div>
           </div>
 
-          <SceneCaption text="모두의 응답을 모아 분석하고" delay={5} />
+          <SceneCaption text="모두의 응답을 모아 분석하고" delay={4} />
         </div>
       </div>
 
-      {/* ════ 장면 3 · 달력 스캔 → 탈락 → 낙하 (9.1 ~ 13.25s) ════ */}
+      {/* ════ 장면 3 · 달력 스캔 → 탈락 → 낙하 (8.1 ~ 12.25s) ════ */}
       <div
         style={{
           position: "absolute",
           inset: 0,
-          animation: "mi-scene-in 0.45s ease 9.1s both, mi-scene-out 0.45s ease 12.8s both",
+          animation: "mi-scene-in 0.45s ease 8.1s both, mi-scene-out 0.45s ease 11.8s both",
           opacity: 0,
         }}
       >
@@ -555,8 +558,8 @@ function MotionScenes() {
               border: "1px solid #e2e8f0",
               borderRadius: 20,
               padding: 16,
-              boxShadow: "0 10px 30px rgba(15, 23, 42, 0.08)",
-              animation: "mi-card-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) 9.2s both",
+              boxShadow: "0 10px 20px rgba(15, 23, 42, 0.08)",
+              animation: "mi-card-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) 8.2s both",
             }}
           >
             {/* 캘린더 아이콘(타이틀 대체) */}
@@ -624,19 +627,19 @@ function MotionScenes() {
                     background:
                       "linear-gradient(105deg, rgba(148, 163, 184, 0) 0%, rgba(203, 213, 225, 0.4) 42%, rgba(255, 255, 255, 0.95) 50%, rgba(203, 213, 225, 0.4) 58%, rgba(148, 163, 184, 0) 100%)",
                     transform: "translateX(-130%)",
-                    animation: "mi-scan 1.5s ease-in-out 9.7s both",
+                    animation: "mi-scan 1.5s ease-in-out 8.7s both",
                   }}
                 />
               </div>
             </div>
           </div>
 
-          <SceneCaption text="불가능한 날은 제외하여" delay={9.5} />
+          <SceneCaption text="불가능한 날은 제외하여" delay={8.5} />
         </div>
       </div>
 
-      {/* ════ 장면 4 · 추천 후보 리스트 → 위로 팡 → 워드마크 (12.9s ~ 끝) ════ */}
-      <div style={{ position: "absolute", inset: 0, animation: "mi-scene-in 0.45s ease 12.9s both", opacity: 0 }}>
+      {/* ════ 장면 4 · 추천 후보 리스트 → 위로 팡 → 워드마크 (11.9s ~ 끝) ════ */}
+      <div style={{ position: "absolute", inset: 0, animation: "mi-scene-in 0.45s ease 11.9s both", opacity: 0 }}>
         <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 340, transform: "translateX(-50%)" }}>
           {/* 후보 리스트 12줄 — 순차 등장 후 위로 빠르게 날아간다 */}
           <div
@@ -661,8 +664,8 @@ function MotionScenes() {
                   border: "1px solid #c9e2ff",
                   borderRadius: 13,
                   padding: "8px 18px",
-                  boxShadow: "0 3px 10px rgba(49, 130, 246, 0.09)",
-                  animation: `mi-fade-up 0.4s ease-out ${(13.05 + i * 0.06).toFixed(2)}s both, mi-list-up 0.35s cubic-bezier(0.5, 0, 1, 0.5) ${(14.4 + i * 0.03).toFixed(2)}s forwards`,
+                  boxShadow: "0 3px 7px rgba(49, 130, 246, 0.09)",
+                  animation: `mi-fade-up 0.4s ease-out ${(12.05 + i * 0.06).toFixed(2)}s both, mi-list-up 0.35s cubic-bezier(0.5, 0, 1, 0.5) ${(13.4 + i * 0.03).toFixed(2)}s forwards`,
                   opacity: 0,
                 }}
               >
@@ -676,7 +679,7 @@ function MotionScenes() {
             <div
               style={{
                 position: "relative",
-                animation: "mi-pop-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) 15.15s both",
+                animation: "mi-pop-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) 14.15s both",
                 opacity: 0,
               }}
             >
@@ -685,7 +688,7 @@ function MotionScenes() {
           </div>
 
           {/* 캡션 — 장면 2·3과 동일한 위치(bottom:24). 후보 리스트와 함께 위로 날아간다. */}
-          <SceneCaption text="최적의 시간을 알려드려요" delay={13} flyAt={14.4} />
+          <SceneCaption text="최적의 시간을 알려드려요" delay={12} flyAt={13.4} />
         </div>
       </div>
     </div>
@@ -759,7 +762,7 @@ export function LandingIntro() {
       const w = el.clientWidth;
       const h = el.clientHeight;
       if (w <= 0 || h <= 0) return;
-      setArtboardScale(Math.min(w / ARTBOARD_W, h / ARTBOARD_H, 1));
+      setArtboardScale(Math.min(w / (ARTBOARD_W + ARTBOARD_BLEED * 2), h / ARTBOARD_H, 1));
     };
     update();
     const ro = new ResizeObserver(update);
