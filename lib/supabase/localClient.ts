@@ -10,6 +10,7 @@ import type {
   MeetingRow,
   MeetingVoteRow,
   ParticipantRow,
+  TrackingEventRow,
 } from "@/lib/types";
 
 type LocalTableName =
@@ -17,7 +18,8 @@ type LocalTableName =
   | "participants"
   | "availability_blocks"
   | "confirmed_slots"
-  | "meeting_votes";
+  | "meeting_votes"
+  | "tracking_events";
 
 interface LocalStore {
   meetings: MeetingRow[];
@@ -25,6 +27,7 @@ interface LocalStore {
   availability_blocks: AvailabilityBlockRow[];
   confirmed_slots: ConfirmedSlotRow[];
   meeting_votes: MeetingVoteRow[];
+  tracking_events: TrackingEventRow[];
 }
 
 type LocalRow =
@@ -32,7 +35,8 @@ type LocalRow =
   | ParticipantRow
   | AvailabilityBlockRow
   | ConfirmedSlotRow
-  | MeetingVoteRow;
+  | MeetingVoteRow
+  | TrackingEventRow;
 
 interface Filter {
   column: string;
@@ -55,6 +59,7 @@ function emptyStore(): LocalStore {
     availability_blocks: [],
     confirmed_slots: [],
     meeting_votes: [],
+    tracking_events: [],
   };
 }
 
@@ -70,6 +75,7 @@ async function readStore(): Promise<LocalStore> {
       availability_blocks: parsed.availability_blocks ?? [],
       confirmed_slots: parsed.confirmed_slots ?? [],
       meeting_votes: parsed.meeting_votes ?? [],
+      tracking_events: parsed.tracking_events ?? [],
     };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return emptyStore();
@@ -163,6 +169,24 @@ function withDefaults(table: LocalTableName, row: Record<string, unknown>): Loca
     };
   }
 
+  if (table === "tracking_events") {
+    const viewportWidth = Number(row.viewport_width);
+    return {
+      id: String(row.id ?? randomUUID()),
+      event_name: String(row.event_name ?? ""),
+      page_path: String(row.page_path ?? ""),
+      page_label: String(row.page_label ?? ""),
+      meeting_id: (row.meeting_id as string | null | undefined) ?? null,
+      visitor_id: (row.visitor_id as string | null | undefined) ?? null,
+      session_id: (row.session_id as string | null | undefined) ?? null,
+      referrer: (row.referrer as string | null | undefined) ?? null,
+      user_agent: (row.user_agent as string | null | undefined) ?? null,
+      device_type: String(row.device_type ?? "unknown"),
+      viewport_width: Number.isFinite(viewportWidth) ? viewportWidth : null,
+      created_at: String(row.created_at ?? nowIso),
+    };
+  }
+
   return {
     id: String(row.id ?? randomUUID()),
     meeting_id: String(row.meeting_id ?? ""),
@@ -208,6 +232,7 @@ class LocalQueryBuilder implements PromiseLike<QueryResult<unknown>> {
   private patch: Record<string, unknown> | null = null;
   private selectedColumns: string[] | null = null;
   private orderBy: { column: string; ascending: boolean } | null = null;
+  private rowLimit: number | null = null;
 
   constructor(private readonly table: LocalTableName) {}
 
@@ -240,6 +265,11 @@ class LocalQueryBuilder implements PromiseLike<QueryResult<unknown>> {
 
   order(column: string, options?: { ascending?: boolean }) {
     this.orderBy = { column, ascending: options?.ascending ?? true };
+    return this;
+  }
+
+  limit(count: number) {
+    this.rowLimit = count;
     return this;
   }
 
@@ -295,6 +325,10 @@ class LocalQueryBuilder implements PromiseLike<QueryResult<unknown>> {
           const bv = String(asRecord(b)[column] ?? "");
           return ascending ? av.localeCompare(bv) : bv.localeCompare(av);
         });
+      }
+
+      if (this.rowLimit !== null) {
+        resultRows = resultRows.slice(0, Math.max(0, this.rowLimit));
       }
 
       if (dirty) await writeStore(store);

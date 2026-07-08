@@ -137,6 +137,21 @@ export interface MeetingVoteRow {
   created_at: string;
 }
 
+export interface TrackingEventRow {
+  id: string;
+  event_name: string;
+  page_path: string;
+  page_label: string;
+  meeting_id: string | null;
+  visitor_id: string | null;
+  session_id: string | null;
+  referrer: string | null;
+  user_agent: string | null;
+  device_type: string;
+  viewport_width: number | null;
+  created_at: string;
+}
+
 // ---- 매퍼 ----
 
 export function mapMeeting(row: MeetingRow): Meeting {

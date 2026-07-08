@@ -40,6 +40,7 @@ import {
 import { MobileHeaderTitle } from "@/components/layout/MobileHeaderTitle";
 import { MobileStickyAction } from "@/components/layout/MobileStickyAction";
 import { cn } from "@/lib/cn";
+import { trackClientEvent } from "@/lib/clientTracking";
 import { hasBatchim } from "@/lib/korean";
 import { useScrollLock } from "@/lib/useScrollLock";
 import { cellKey, cellsToBlocks, GRID_STEP_MINUTES } from "@/lib/grid";
@@ -98,6 +99,15 @@ interface Props {
 type Step = "loading" | ResponseDraftStep;
 type DateSummaryStatus = "available" | "preferred" | "busy" | "mixed";
 type CalendarStatus = "available" | "preferred" | "avoid" | "busy" | "pending";
+
+const RESPONSE_STEP_TRACKING_NAMES: Partial<Record<ResponseDraftStep, string>> = {
+  intro: "response_intro",
+  identity: "response_identity",
+  availability: "availability_input",
+  review: "response_review",
+  waiting: "response_waiting",
+  done: "calendar",
+};
 
 // 입력 확인(review) 문장은 글자 잉크 채움(공용 CharFillSentence)으로 등장한다.
 const REVIEW_CTA_DURATION_MS = 1000;
@@ -730,6 +740,7 @@ export function ResponseForm(props: Props) {
   // 회의 안내(intro): 문장 채움이 끝난 뒤에야 '시간 정하러 가기' CTA 를 노출한다.
   const [introCtaReady, setIntroCtaReady] = useState(false);
   const [responseDraftReady, setResponseDraftReady] = useState(false);
+  const trackedStepKeys = useRef<Set<string>>(new Set());
 
   const selected = participants.find((p) => p.id === selectedId) ?? null;
   // 평가용 우회 계정(서지석/프로덕트 디자이너)이 어느 회의에서든 선택 가능하도록 직무를 보장한다.
@@ -887,6 +898,23 @@ export function ResponseForm(props: Props) {
     draftStart,
     draftEnd,
   ]);
+
+  useEffect(() => {
+    if (!responseDraftReady || step === "loading" || step === "result") return;
+    const screenName = RESPONSE_STEP_TRACKING_NAMES[step];
+    if (!screenName) return;
+
+    const trackingKey = `${meetingId}:${screenName}`;
+    if (trackedStepKeys.current.has(trackingKey)) return;
+
+    trackedStepKeys.current.add(trackingKey);
+    trackClientEvent({
+      eventName: "screen_view",
+      pagePath: `/m/${meetingId}`,
+      screenName,
+      meetingId,
+    });
+  }, [meetingId, responseDraftReady, step]);
 
   function persistIdentity(participantId: string, tok: string) {
     window.localStorage.setItem(

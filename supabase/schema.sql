@@ -98,6 +98,21 @@ create table if not exists meeting_votes (
   unique (meeting_id, participant_id)
 );
 
+create table if not exists tracking_events (
+  id uuid primary key default gen_random_uuid(),
+  event_name text not null check (event_name in ('page_view', 'screen_view')),
+  page_path text not null,
+  page_label text not null,
+  meeting_id text,
+  visitor_id text,
+  session_id text,
+  referrer text,
+  user_agent text,
+  device_type text not null default 'unknown',
+  viewport_width integer,
+  created_at timestamptz not null default now()
+);
+
 alter table meetings
   drop constraint if exists meetings_confirmed_slot_id_fkey;
 alter table meetings
@@ -127,20 +142,33 @@ create index if not exists meeting_votes_meeting_id_idx
 create index if not exists meeting_votes_slot_idx
   on meeting_votes(meeting_id, start_at, end_at);
 
+create index if not exists tracking_events_created_at_idx
+  on tracking_events(created_at desc);
+
+create index if not exists tracking_events_page_idx
+  on tracking_events(page_path, created_at desc);
+
+create index if not exists tracking_events_meeting_idx
+  on tracking_events(meeting_id, created_at desc)
+  where meeting_id is not null;
+
 alter table meetings enable row level security;
 alter table participants enable row level security;
 alter table availability_blocks enable row level security;
 alter table confirmed_slots enable row level security;
 alter table meeting_votes enable row level security;
+alter table tracking_events enable row level security;
 
 revoke all on meetings from anon, authenticated;
 revoke all on participants from anon, authenticated;
 revoke all on availability_blocks from anon, authenticated;
 revoke all on confirmed_slots from anon, authenticated;
 revoke all on meeting_votes from anon, authenticated;
+revoke all on tracking_events from anon, authenticated;
 
 grant all on meetings to service_role;
 grant all on participants to service_role;
 grant all on availability_blocks to service_role;
 grant all on confirmed_slots to service_role;
 grant all on meeting_votes to service_role;
+grant all on tracking_events to service_role;
