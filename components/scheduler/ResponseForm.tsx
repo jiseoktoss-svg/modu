@@ -741,6 +741,7 @@ export function ResponseForm(props: Props) {
   const [introCtaReady, setIntroCtaReady] = useState(false);
   const [responseDraftReady, setResponseDraftReady] = useState(false);
   const trackedStepKeys = useRef<Set<string>>(new Set());
+  const [calendarCoachReplayKey, setCalendarCoachReplayKey] = useState(0);
 
   const selected = participants.find((p) => p.id === selectedId) ?? null;
   // 평가용 우회 계정(서지석/프로덕트 디자이너)이 어느 회의에서든 선택 가능하도록 직무를 보장한다.
@@ -1519,7 +1520,10 @@ export function ResponseForm(props: Props) {
         <WaitingScreen
           responseDeadline={responseDeadline}
           totalParticipants={participants.length}
-          onProceed={() => setStep("done")}
+          onProceed={() => {
+            setCalendarCoachReplayKey((key) => key + 1);
+            setStep("done");
+          }}
           onEdit={() => {
             setAvailStep(0);
             setMaxAvailStep(0);
@@ -1550,6 +1554,7 @@ export function ResponseForm(props: Props) {
           workdayEnd={workdayEnd}
           lunchStart={lunchStart}
           lunchEnd={lunchEnd}
+          coachReplayKey={calendarCoachReplayKey}
         />
       </>
     );
@@ -2772,6 +2777,7 @@ function SubmittedCalendarScreenWide({
   lunchStart,
   lunchEnd,
   onBack,
+  coachReplayKey = 0,
 }: {
   caseId: number;
   onSelectCase: (id: number) => void;
@@ -2783,6 +2789,7 @@ function SubmittedCalendarScreenWide({
   lunchStart: string;
   lunchEnd: string;
   onBack?: () => void;
+  coachReplayKey?: number;
 }) {
   // 데모 단계: 선택한 케이스의 더미 응답으로 달력을 채운다.
   const current = DEMO_CASES.find((c) => c.id === caseId) ?? DEMO_CASES[0];
@@ -2830,14 +2837,14 @@ function SubmittedCalendarScreenWide({
         | PerformanceNavigationTiming
         | undefined;
       const isReload = nav?.type === "reload";
-      if (isReload || !window.localStorage.getItem(CALENDAR_COACH_KEY)) {
+      if (coachReplayKey > 0 || isReload || !window.localStorage.getItem(CALENDAR_COACH_KEY)) {
         t = window.setTimeout(() => setCoachOpen(true), 450);
       }
     } catch {
       /* 접근 불가 시 코치마크 생략 */
     }
     return () => window.clearTimeout(t);
-  }, []);
+  }, [coachReplayKey]);
   const closeCoach = () => {
     setCoachOpen(false);
     try {
