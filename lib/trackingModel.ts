@@ -15,6 +15,10 @@ export interface TrackingEvent {
   userAgent: string | null;
   deviceType: string;
   viewportWidth: number | null;
+  geoCountry: string | null;
+  geoRegion: string | null;
+  geoCity: string | null;
+  geoTimezone: string | null;
   createdAt: string;
 }
 
@@ -56,6 +60,8 @@ export interface TrackingSummary {
   dropOffRows: TrackingDropOffRow[];
   deviceVisitorCounts: TrackingCountRow[];
   trafficSourceCounts: TrackingCountRow[];
+  countryVisitorCounts: TrackingCountRow[];
+  cityVisitorCounts: TrackingCountRow[];
   pageCounts: TrackingCountRow[];
   eventCounts: TrackingCountRow[];
   meetingCounts: TrackingCountRow[];
@@ -183,6 +189,10 @@ export function mapTrackingEvent(row: TrackingEventRow): TrackingEvent {
     userAgent: row.user_agent,
     deviceType: row.device_type,
     viewportWidth: row.viewport_width,
+    geoCountry: row.geo_country ?? null,
+    geoRegion: row.geo_region ?? null,
+    geoCity: row.geo_city ?? null,
+    geoTimezone: row.geo_timezone ?? null,
     createdAt: row.created_at,
   };
 }
@@ -194,6 +204,7 @@ export function buildTrackingSummary(events: TrackingEvent[], now = new Date()):
   );
   const meetingCreationFunnel = buildFunnel(events, MEETING_CREATION_FUNNEL);
   const responseFunnel = buildFunnel(events, RESPONSE_FUNNEL);
+  const firstKnownLocationEvents = getFirstKnownLocationEvents(events);
 
   return {
     totalCount: events.length,
@@ -209,6 +220,14 @@ export function buildTrackingSummary(events: TrackingEvent[], now = new Date()):
     ]),
     deviceVisitorCounts: countUniqueVisitorsBy(events, deviceTypeLabel),
     trafficSourceCounts: countFirstTouchTrafficSources(events),
+    countryVisitorCounts: countUniqueVisitorsBy(
+      firstKnownLocationEvents.filter((event) => event.geoCountry),
+      countryLocationLabel,
+    ),
+    cityVisitorCounts: countUniqueVisitorsBy(
+      firstKnownLocationEvents.filter(hasCityLocation),
+      cityLocationLabel,
+    ),
     pageCounts: countBy(events, (event) => `${event.pageLabel}|${event.pagePath}`).map(
       splitCountLabel,
     ),
@@ -326,6 +345,22 @@ function countFirstTouchTrafficSources(events: TrackingEvent[]): TrackingCountRo
   return countUniqueVisitorsBy([...firstEventByVisitor.values()], trafficSourceLabel);
 }
 
+function getFirstKnownLocationEvents(events: TrackingEvent[]) {
+  const firstEventByVisitor = new Map<string, TrackingEvent>();
+  const oldestFirst = [...events].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  );
+
+  for (const event of oldestFirst) {
+    const visitorKey = uniqueVisitorKey(event);
+    if (!visitorKey || firstEventByVisitor.has(visitorKey)) continue;
+    if (!hasKnownLocation(event)) continue;
+    firstEventByVisitor.set(visitorKey, event);
+  }
+
+  return [...firstEventByVisitor.values()];
+}
+
 function deviceTypeLabel(event: TrackingEvent) {
   if (event.deviceType === "mobile") return { key: "mobile", label: "모바일" };
   if (event.deviceType === "tablet") return { key: "tablet", label: "태블릿" };
@@ -342,6 +377,25 @@ function trafficSourceLabel(event: TrackingEvent) {
   } catch {
     return { key: "unknown", label: "기타" };
   }
+}
+
+function countryLocationLabel(event: TrackingEvent) {
+  const country = event.geoCountry ?? "unknown";
+  return { key: country, label: country };
+}
+
+function cityLocationLabel(event: TrackingEvent) {
+  const label = [event.geoCity, event.geoRegion, event.geoCountry].filter(Boolean).join(", ");
+  const key = [event.geoCountry, event.geoRegion, event.geoCity].filter(Boolean).join("|");
+  return { key, label: label || "unknown" };
+}
+
+function hasCityLocation(event: TrackingEvent) {
+  return Boolean(event.geoCity || event.geoRegion || event.geoCountry);
+}
+
+function hasKnownLocation(event: TrackingEvent) {
+  return Boolean(event.geoCountry || event.geoRegion || event.geoCity || event.geoTimezone);
 }
 
 function rate(part: number, total: number) {
@@ -365,11 +419,12 @@ function formatKstDateKey(date: Date) {
   }).format(date);
 }
 
-function formatKstHour(date: Date) {
-  return new Intl.DateTimeFormat("ko-KR", {
+function formatKstTime(date: Date) {
+  return new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Seoul",
     hour: "2-digit",
-    hour12: false,
+    minute: "2-digit",
+    hourCycle: "h23",
   }).format(date);
 }
 
@@ -399,7 +454,7 @@ function buildTodayHourlyCounts(events: TrackingEvent[], todayKey: string) {
   for (const event of events) {
     const createdAt = new Date(event.createdAt);
     if (formatKstDateKey(createdAt) !== todayKey) continue;
-    const hour = `${formatKstHour(createdAt)}시`;
+    const hour = formatKstTime(createdAt);
     counts.set(hour, (counts.get(hour) ?? 0) + 1);
   }
   return [...counts.entries()]

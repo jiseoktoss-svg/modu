@@ -28,6 +28,10 @@ export interface RecordTrackingEventInput {
   referrer?: string | null;
   userAgent?: string | null;
   viewportWidth?: number | null;
+  geoCountry?: string | null;
+  geoRegion?: string | null;
+  geoCity?: string | null;
+  geoTimezone?: string | null;
 }
 
 export async function recordTrackingEvent(
@@ -56,6 +60,10 @@ export async function recordTrackingEvent(
     user_agent: userAgent,
     device_type: detectDeviceType(userAgent),
     viewport_width: viewportWidth,
+    geo_country: trimNullable(input.geoCountry),
+    geo_region: trimNullable(input.geoRegion),
+    geo_city: trimNullable(input.geoCity),
+    geo_timezone: trimNullable(input.geoTimezone),
   };
 
   const { error } = await getSupabaseAdmin().from("tracking_events").insert(row);

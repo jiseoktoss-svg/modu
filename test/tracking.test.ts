@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { trackingGeoFromHeaders } from "@/lib/trackingGeo";
 import { clientIpHashFromHeaders } from "@/lib/trackingIp";
 import {
   buildTrackingSummary,
@@ -69,6 +70,18 @@ describe("tracking model", () => {
       label: "직접/알 수 없음",
       count: 4,
     });
+    expect(summary.countryVisitorCounts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: "KR", count: 3 }),
+        expect.objectContaining({ label: "US", count: 1 }),
+      ]),
+    );
+    expect(summary.cityVisitorCounts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: "Seoul, 11, KR", count: 3 }),
+        expect.objectContaining({ label: "New York, NY, US", count: 1 }),
+      ]),
+    );
     expect(summary.pageCounts[0]).toMatchObject({ label: "랜딩", count: 3 });
     expect(summary.eventCounts).toEqual(
       expect.arrayContaining([
@@ -77,6 +90,7 @@ describe("tracking model", () => {
       ]),
     );
     expect(summary.meetingCounts[0]).toMatchObject({ label: "abc", count: 2 });
+    expect(summary.hourlyCounts).toEqual([{ hour: "10:00", count: 5 }]);
   });
 
   it("uses visitor IDs only for legacy events without IP hashes", () => {
@@ -99,6 +113,24 @@ describe("tracking model", () => {
 
     expect(forwardedHash).toBe(realIpHash);
     expect(forwardedHash).not.toContain("203.0.113.7");
+  });
+
+  it("reads Vercel geo headers without exposing the raw IP", () => {
+    const geo = trackingGeoFromHeaders(
+      new Headers({
+        "x-vercel-ip-country": "kr",
+        "x-vercel-ip-country-region": "11",
+        "x-vercel-ip-city": "Seoul%20Gangnam",
+        "x-vercel-ip-timezone": "Asia%2FSeoul",
+      }),
+    );
+
+    expect(geo).toEqual({
+      geoCountry: "KR",
+      geoRegion: "11",
+      geoCity: "Seoul Gangnam",
+      geoTimezone: "Asia/Seoul",
+    });
   });
 });
 
@@ -127,6 +159,10 @@ function event(
     userAgent: null,
     deviceType,
     viewportWidth: 1280,
+    geoCountry: ipHash === "ip-c" ? "US" : ipHash ? "KR" : null,
+    geoRegion: ipHash === "ip-c" ? "NY" : ipHash ? "11" : null,
+    geoCity: ipHash === "ip-c" ? "New York" : ipHash ? "Seoul" : null,
+    geoTimezone: ipHash ? "Asia/Seoul" : null,
     createdAt,
   };
 }

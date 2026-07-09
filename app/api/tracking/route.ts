@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { trackingGeoFromHeaders } from "@/lib/trackingGeo";
 import { clientIpHashFromHeaders } from "@/lib/trackingIp";
 import { recordTrackingEvent } from "@/lib/tracking";
 import { isTrackingEventName } from "@/lib/trackingModel";
@@ -31,6 +32,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  const geo = trackingGeoFromHeaders(request.headers);
+
   const result = await recordTrackingEvent({
     eventName: payload.eventName,
     pagePath: payload.pagePath,
@@ -43,6 +46,7 @@ export async function POST(request: NextRequest) {
     userAgent: request.headers.get("user-agent"),
     viewportWidth:
       typeof payload.viewportWidth === "number" ? payload.viewportWidth : null,
+    ...geo,
   });
 
   return NextResponse.json({ ok: result.ok }, { status: result.ok ? 200 : 202 });

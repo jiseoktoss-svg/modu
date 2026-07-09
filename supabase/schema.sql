@@ -111,11 +111,21 @@ create table if not exists tracking_events (
   user_agent text,
   device_type text not null default 'unknown',
   viewport_width integer,
+  geo_country text,
+  geo_region text,
+  geo_city text,
+  geo_timezone text,
   created_at timestamptz not null default now()
 );
 
 alter table tracking_events
   add column if not exists ip_hash text;
+
+alter table tracking_events
+  add column if not exists geo_country text,
+  add column if not exists geo_region text,
+  add column if not exists geo_city text,
+  add column if not exists geo_timezone text;
 
 alter table meetings
   drop constraint if exists meetings_confirmed_slot_id_fkey;

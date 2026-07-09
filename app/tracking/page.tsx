@@ -190,6 +190,21 @@ export default async function TrackingPage({
       </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-2">
+        <CountPanel
+          title="GEO.COUNTRIES"
+          rows={summary.countryVisitorCounts}
+          emptyText="No location records yet."
+          unit=" users"
+        />
+        <CountPanel
+          title="GEO.CITIES"
+          rows={summary.cityVisitorCounts}
+          emptyText="No location records yet."
+          unit=" users"
+        />
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-2">
         <CountPanel title="PAGE.HITS" rows={summary.pageCounts} />
         <CountPanel title="EVENT.TYPES" rows={summary.eventCounts} />
         <CountPanel
@@ -390,7 +405,7 @@ function CountPanel({
 
 function HourlyPanel({ rows }: { rows: { hour: string; count: number }[] }) {
   return (
-    <TerminalPanel title="TODAY.HOURLY" meta={`${rows.length.toLocaleString()} BUCKETS`} className="h-[220px]">
+    <TerminalPanel title="TODAY.MINUTE" meta={`${rows.length.toLocaleString()} BUCKETS`} className="h-[220px]">
       {rows.length > 0 ? (
         <div className="space-y-2 text-xs">
           {rows.map((row) => (
@@ -435,6 +450,7 @@ function RecentEventsPanel({ events }: { events: TrackingEvent[] }) {
               <div className="min-w-0">
                 <p className="font-medium text-zinc-200 md:truncate">{event.pageLabel}</p>
                 <p className="break-all text-[11px] text-zinc-600">{event.pagePath}</p>
+                <p className="break-all text-[11px] text-zinc-500">geo: {formatEventLocation(event)}</p>
               </div>
               <span className="text-zinc-400">
                 <span className="text-zinc-600 md:hidden">event: </span>
@@ -479,6 +495,11 @@ function TerminalLine({
 function barPercent(value: number | null) {
   if (value === null) return 0;
   return Math.max(0, Math.min(100, value));
+}
+
+function formatEventLocation(event: TrackingEvent) {
+  const location = [event.geoCity, event.geoRegion, event.geoCountry].filter(Boolean).join(", ");
+  return location || "-";
 }
 
 function formatKstDateTime(value: string) {

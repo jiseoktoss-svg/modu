@@ -150,6 +150,10 @@ export interface TrackingEventRow {
   user_agent: string | null;
   device_type: string;
   viewport_width: number | null;
+  geo_country?: string | null;
+  geo_region?: string | null;
+  geo_city?: string | null;
+  geo_timezone?: string | null;
   created_at: string;
 }
 

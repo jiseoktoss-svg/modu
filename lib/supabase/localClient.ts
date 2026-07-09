@@ -185,6 +185,10 @@ function withDefaults(table: LocalTableName, row: Record<string, unknown>): Loca
       user_agent: (row.user_agent as string | null | undefined) ?? null,
       device_type: String(row.device_type ?? "unknown"),
       viewport_width: Number.isFinite(viewportWidth) ? viewportWidth : null,
+      geo_country: (row.geo_country as string | null | undefined) ?? null,
+      geo_region: (row.geo_region as string | null | undefined) ?? null,
+      geo_city: (row.geo_city as string | null | undefined) ?? null,
+      geo_timezone: (row.geo_timezone as string | null | undefined) ?? null,
       created_at: String(row.created_at ?? nowIso),
     };
   }
