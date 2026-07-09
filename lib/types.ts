@@ -143,6 +143,7 @@ export interface TrackingEventRow {
   page_path: string;
   page_label: string;
   meeting_id: string | null;
+  ip_hash: string | null;
   visitor_id: string | null;
   session_id: string | null;
   referrer: string | null;

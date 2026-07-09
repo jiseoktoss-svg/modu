@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { clientIpHashFromHeaders } from "@/lib/trackingIp";
 import {
   buildTrackingSummary,
   getTrackingPageMeta,
@@ -23,9 +24,9 @@ describe("tracking model", () => {
 
   it("builds dashboard counts from events", () => {
     const events: TrackingEvent[] = [
-      event("1", "page_view", "회의 만들기", "/meetings/new", null, "visitor-1"),
-      event("2", "page_view", "회의 만들기", "/meetings/new", null, "visitor-1"),
-      event("3", "screen_view", "캘린더 화면", "/m/abc", "abc", "visitor-2"),
+      event("1", "page_view", "회의 만들기", "/meetings/new", null, "visitor-1", "ip-a"),
+      event("2", "page_view", "회의 만들기", "/meetings/new", null, "visitor-2", "ip-a"),
+      event("3", "screen_view", "캘린더 화면", "/m/abc", "abc", "visitor-3", "ip-b"),
     ];
 
     const summary = buildTrackingSummary(events, new Date("2026-07-08T10:00:00+09:00"));
@@ -42,6 +43,28 @@ describe("tracking model", () => {
     );
     expect(summary.meetingCounts[0]).toMatchObject({ label: "abc", count: 1 });
   });
+
+  it("uses visitor IDs only for legacy events without IP hashes", () => {
+    const events: TrackingEvent[] = [
+      event("1", "page_view", "랜딩", "/", null, "visitor-1", null),
+      event("2", "page_view", "랜딩", "/", null, "visitor-1", null),
+      event("3", "page_view", "랜딩", "/", null, "visitor-2", null),
+    ];
+
+    const summary = buildTrackingSummary(events, new Date("2026-07-08T10:00:00+09:00"));
+
+    expect(summary.uniqueVisitorCount).toBe(2);
+  });
+
+  it("creates the same hash for the same forwarded IP without exposing the raw IP", () => {
+    const forwardedHash = clientIpHashFromHeaders(
+      new Headers({ "x-forwarded-for": "203.0.113.7, 10.0.0.2" }),
+    );
+    const realIpHash = clientIpHashFromHeaders(new Headers({ "x-real-ip": "203.0.113.7" }));
+
+    expect(forwardedHash).toBe(realIpHash);
+    expect(forwardedHash).not.toContain("203.0.113.7");
+  });
 });
 
 function event(
@@ -51,6 +74,7 @@ function event(
   pagePath: string,
   meetingId: string | null,
   visitorId: string,
+  ipHash: string | null,
 ): TrackingEvent {
   return {
     id,
@@ -58,6 +82,7 @@ function event(
     pagePath,
     pageLabel,
     meetingId,
+    ipHash,
     visitorId,
     sessionId: `session-${visitorId}`,
     referrer: null,

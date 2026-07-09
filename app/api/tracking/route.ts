@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { clientIpHashFromHeaders } from "@/lib/trackingIp";
 import { recordTrackingEvent } from "@/lib/tracking";
 import { isTrackingEventName } from "@/lib/trackingModel";
 
@@ -35,6 +36,7 @@ export async function POST(request: NextRequest) {
     pagePath: payload.pagePath,
     screenName: nullableString(payload.screenName),
     meetingId: nullableString(payload.meetingId),
+    ipHash: clientIpHashFromHeaders(request.headers),
     visitorId: nullableString(payload.visitorId),
     sessionId: nullableString(payload.sessionId),
     referrer: nullableString(payload.referrer) ?? request.headers.get("referer"),

@@ -104,6 +104,7 @@ create table if not exists tracking_events (
   page_path text not null,
   page_label text not null,
   meeting_id text,
+  ip_hash text,
   visitor_id text,
   session_id text,
   referrer text,
@@ -112,6 +113,9 @@ create table if not exists tracking_events (
   viewport_width integer,
   created_at timestamptz not null default now()
 );
+
+alter table tracking_events
+  add column if not exists ip_hash text;
 
 alter table meetings
   drop constraint if exists meetings_confirmed_slot_id_fkey;
@@ -151,6 +155,10 @@ create index if not exists tracking_events_page_idx
 create index if not exists tracking_events_meeting_idx
   on tracking_events(meeting_id, created_at desc)
   where meeting_id is not null;
+
+create index if not exists tracking_events_ip_hash_idx
+  on tracking_events(ip_hash, created_at desc)
+  where ip_hash is not null;
 
 alter table meetings enable row level security;
 alter table participants enable row level security;

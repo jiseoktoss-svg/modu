@@ -8,6 +8,7 @@ export interface TrackingEvent {
   pagePath: string;
   pageLabel: string;
   meetingId: string | null;
+  ipHash: string | null;
   visitorId: string | null;
   sessionId: string | null;
   referrer: string | null;
@@ -138,6 +139,7 @@ export function mapTrackingEvent(row: TrackingEventRow): TrackingEvent {
     pagePath: row.page_path,
     pageLabel: row.page_label,
     meetingId: row.meeting_id,
+    ipHash: row.ip_hash ?? null,
     visitorId: row.visitor_id,
     sessionId: row.session_id,
     referrer: row.referrer,
@@ -150,7 +152,7 @@ export function mapTrackingEvent(row: TrackingEventRow): TrackingEvent {
 
 export function buildTrackingSummary(events: TrackingEvent[], now = new Date()): TrackingSummary {
   const todayKey = formatKstDateKey(now);
-  const uniqueVisitors = new Set(events.map((event) => event.visitorId).filter(Boolean));
+  const uniqueVisitors = new Set(events.map(uniqueVisitorKey).filter(Boolean));
 
   return {
     totalCount: events.length,
@@ -170,6 +172,14 @@ export function buildTrackingSummary(events: TrackingEvent[], now = new Date()):
     hourlyCounts: buildTodayHourlyCounts(events, todayKey),
     recentEvents: events.slice(0, 50),
   };
+}
+
+function uniqueVisitorKey(event: TrackingEvent) {
+  // 새 기록은 IP 해시 기준으로 중복 제거한다.
+  // 기존 기록에는 IP 해시가 없어서, 그 기록만 기존 브라우저 방문자 ID로 계산한다.
+  if (event.ipHash) return `ip:${event.ipHash}`;
+  if (event.visitorId) return `visitor:${event.visitorId}`;
+  return null;
 }
 
 function normalizePagePath(pathname: string) {

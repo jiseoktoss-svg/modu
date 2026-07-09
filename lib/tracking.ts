@@ -22,6 +22,7 @@ export interface RecordTrackingEventInput {
   pagePath: string;
   screenName?: string | null;
   meetingId?: string | null;
+  ipHash?: string | null;
   visitorId?: string | null;
   sessionId?: string | null;
   referrer?: string | null;
@@ -48,6 +49,7 @@ export async function recordTrackingEvent(
     page_path: pageMeta.pagePath,
     page_label: pageMeta.pageLabel,
     meeting_id: trimNullable(input.meetingId) ?? pageMeta.meetingId,
+    ip_hash: trimNullable(input.ipHash),
     visitor_id: trimNullable(input.visitorId),
     session_id: trimNullable(input.sessionId),
     referrer: trimNullable(input.referrer),

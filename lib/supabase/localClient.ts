@@ -178,6 +178,7 @@ function withDefaults(table: LocalTableName, row: Record<string, unknown>): Loca
       page_path: String(row.page_path ?? ""),
       page_label: String(row.page_label ?? ""),
       meeting_id: (row.meeting_id as string | null | undefined) ?? null,
+      ip_hash: (row.ip_hash as string | null | undefined) ?? null,
       visitor_id: (row.visitor_id as string | null | undefined) ?? null,
       session_id: (row.session_id as string | null | undefined) ?? null,
       referrer: (row.referrer as string | null | undefined) ?? null,
