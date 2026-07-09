@@ -24,34 +24,59 @@ describe("tracking model", () => {
 
   it("builds dashboard counts from events", () => {
     const events: TrackingEvent[] = [
-      event("1", "page_view", "회의 만들기", "/meetings/new", null, "visitor-1", "ip-a"),
-      event("2", "page_view", "회의 만들기", "/meetings/new", null, "visitor-2", "ip-a"),
-      event("3", "screen_view", "캘린더 화면", "/m/abc", "abc", "visitor-3", "ip-b"),
+      event("1", "page_view", "랜딩", "/", null, "visitor-1", "ip-a"),
+      event("2", "page_view", "회의 만들기", "/meetings/new", null, "visitor-1", "ip-a"),
+      event("3", "page_view", "랜딩", "/", null, "visitor-2", "ip-b", undefined, "mobile"),
+      event("4", "page_view", "공유 화면", "/meetings/abc/share", "abc", "visitor-1", "ip-a"),
+      event("5", "screen_view", "캘린더 화면", "/m/abc", "abc", "visitor-3", "ip-c"),
       event(
-        "4",
+        "6",
         "page_view",
         "랜딩",
         "/",
         null,
         "visitor-4",
-        "ip-c",
+        "ip-d",
         "2026-07-07T01:00:00.000Z",
       ),
     ];
 
     const summary = buildTrackingSummary(events, new Date("2026-07-08T10:00:00+09:00"));
 
-    expect(summary.totalCount).toBe(4);
-    expect(summary.todayUniqueVisitorCount).toBe(2);
-    expect(summary.uniqueVisitorCount).toBe(3);
-    expect(summary.pageCounts[0]).toMatchObject({ label: "회의 만들기", count: 2 });
+    expect(summary.totalCount).toBe(6);
+    expect(summary.todayUniqueVisitorCount).toBe(3);
+    expect(summary.uniqueVisitorCount).toBe(4);
+    expect(summary.meetingCreationRate).toBe(33.3);
+    expect(summary.meetingCreationFunnel).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "landing", count: 3, conversionRate: 100 }),
+        expect.objectContaining({ key: "new_meeting", count: 1, dropOffCount: 2 }),
+        expect.objectContaining({ key: "share", count: 1, conversionRate: 33.3 }),
+      ]),
+    );
+    expect(summary.dropOffRows[0]).toMatchObject({
+      label: "회의 생성 · 랜딩 방문 → 회의 만들기 진입",
+      dropOffCount: 2,
+      dropOffRate: 66.7,
+    });
+    expect(summary.deviceVisitorCounts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: "PC", count: 3 }),
+        expect.objectContaining({ label: "모바일", count: 1 }),
+      ]),
+    );
+    expect(summary.trafficSourceCounts[0]).toMatchObject({
+      label: "직접/알 수 없음",
+      count: 4,
+    });
+    expect(summary.pageCounts[0]).toMatchObject({ label: "랜딩", count: 3 });
     expect(summary.eventCounts).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ label: "주소 방문", count: 3 }),
+        expect.objectContaining({ label: "주소 방문", count: 5 }),
         expect.objectContaining({ label: "화면 진입", count: 1 }),
       ]),
     );
-    expect(summary.meetingCounts[0]).toMatchObject({ label: "abc", count: 1 });
+    expect(summary.meetingCounts[0]).toMatchObject({ label: "abc", count: 2 });
   });
 
   it("uses visitor IDs only for legacy events without IP hashes", () => {
@@ -86,6 +111,8 @@ function event(
   visitorId: string,
   ipHash: string | null,
   createdAt = "2026-07-08T01:00:00.000Z",
+  deviceType = "desktop",
+  referrer: string | null = null,
 ): TrackingEvent {
   return {
     id,
@@ -96,9 +123,9 @@ function event(
     ipHash,
     visitorId,
     sessionId: `session-${visitorId}`,
-    referrer: null,
+    referrer,
     userAgent: null,
-    deviceType: "desktop",
+    deviceType,
     viewportWidth: 1280,
     createdAt,
   };

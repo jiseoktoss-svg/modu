@@ -2,7 +2,13 @@ import { SiteHeader } from "@/components/layout/SiteHeader";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { fetchTrackingSummary } from "@/lib/tracking";
 import { hasTrackingAccess, hasTrackingPassword } from "@/lib/trackingAuth";
-import type { TrackingCountRow, TrackingEvent, TrackingSummary } from "@/lib/trackingModel";
+import type {
+  TrackingCountRow,
+  TrackingDropOffRow,
+  TrackingEvent,
+  TrackingFunnelStep,
+  TrackingSummary,
+} from "@/lib/trackingModel";
 import type { ReactNode } from "react";
 import { ClearTrackingForm } from "./ClearTrackingForm";
 import { clearTrackingEventsAction, loginTracking, logoutTracking } from "./actions";
@@ -120,10 +126,32 @@ export default async function TrackingPage({
         </p>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label="전체 기록" value={summary.totalCount} />
         <MetricCard label="오늘 방문자" value={summary.todayUniqueVisitorCount} />
         <MetricCard label="전체 방문자(IP 기준)" value={summary.uniqueVisitorCount} />
+        <MetricCard label="회의 생성 도달률" value={formatPercent(summary.meetingCreationRate)} />
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <FunnelCard title="회의 생성 흐름" steps={summary.meetingCreationFunnel} />
+        <FunnelCard title="참석자 응답 흐름" steps={summary.responseFunnel} />
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        <DropOffCard rows={summary.dropOffRows} />
+        <CountCard
+          title="기기별 방문자"
+          rows={summary.deviceVisitorCounts}
+          emptyText="방문자 기록이 아직 없습니다."
+          unit="명"
+        />
+        <CountCard
+          title="유입 경로"
+          rows={summary.trafficSourceCounts}
+          emptyText="유입 기록이 아직 없습니다."
+          unit="명"
+        />
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -167,13 +195,67 @@ function TrackingShell({ children }: { children: ReactNode }) {
   );
 }
 
-function MetricCard({ label, value }: { label: string; value: number }) {
+function MetricCard({ label, value }: { label: string; value: number | string }) {
   return (
     <Card className="space-y-2">
       <p className="text-sm font-bold text-slate-500">{label}</p>
       <p className="text-3xl font-extrabold tabular-nums text-slate-900">
-        {value.toLocaleString()}
+        {typeof value === "number" ? value.toLocaleString() : value}
       </p>
+    </Card>
+  );
+}
+
+function FunnelCard({ title, steps }: { title: string; steps: TrackingFunnelStep[] }) {
+  return (
+    <Card className="space-y-4">
+      <CardTitle>{title}</CardTitle>
+      <div className="space-y-4">
+        {steps.map((step) => (
+          <div key={step.key} className="space-y-1.5">
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="font-bold text-slate-800">{step.label}</span>
+              <span className="shrink-0 font-extrabold tabular-nums text-slate-900">
+                {step.count.toLocaleString()}명
+              </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-brand-500"
+                style={{ width: `${Math.min(step.conversionRate ?? 0, 100)}%` }}
+              />
+            </div>
+            <p className="text-xs font-medium text-slate-500">
+              시작 대비 {formatPercent(step.conversionRate)}
+              {step.dropOffCount !== null &&
+                ` · 이전 단계 이탈 ${step.dropOffCount.toLocaleString()}명 (${formatPercent(step.dropOffRate)})`}
+            </p>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function DropOffCard({ rows }: { rows: TrackingDropOffRow[] }) {
+  return (
+    <Card className="space-y-3">
+      <CardTitle>이탈 의심 구간</CardTitle>
+      {rows.length > 0 ? (
+        <div className="space-y-2">
+          {rows.map((row) => (
+            <div key={row.key} className="flex items-start justify-between gap-4 text-sm">
+              <p className="font-bold text-slate-800">{row.label}</p>
+              <span className="shrink-0 text-right font-extrabold tabular-nums text-slate-900">
+                {row.dropOffCount.toLocaleString()}명
+                <span className="block text-xs text-slate-400">{formatPercent(row.dropOffRate)}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-slate-500">이탈로 볼 만한 구간이 아직 없습니다.</p>
+      )}
     </Card>
   );
 }
@@ -182,10 +264,12 @@ function CountCard({
   title,
   rows,
   emptyText = "아직 기록이 없습니다.",
+  unit = "회",
 }: {
   title: string;
   rows: TrackingCountRow[];
   emptyText?: string;
+  unit?: string;
 }) {
   return (
     <Card className="space-y-3">
@@ -199,7 +283,7 @@ function CountCard({
                 <p className="truncate text-xs text-slate-400">{row.key}</p>
               </div>
               <span className="shrink-0 font-extrabold tabular-nums text-slate-900">
-                {row.count.toLocaleString()}회
+                {row.count.toLocaleString()}{unit}
               </span>
             </div>
           ))}
@@ -262,4 +346,9 @@ function formatKstDateTime(value: string) {
     minute: "2-digit",
     hour12: false,
   }).format(new Date(value));
+}
+
+function formatPercent(value: number | null) {
+  if (value === null) return "-";
+  return `${value.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}%`;
 }

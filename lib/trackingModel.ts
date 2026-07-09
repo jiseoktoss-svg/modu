@@ -30,10 +30,32 @@ export interface TrackingCountRow {
   count: number;
 }
 
+export interface TrackingFunnelStep {
+  key: string;
+  label: string;
+  count: number;
+  conversionRate: number | null;
+  dropOffCount: number | null;
+  dropOffRate: number | null;
+}
+
+export interface TrackingDropOffRow {
+  key: string;
+  label: string;
+  dropOffCount: number;
+  dropOffRate: number;
+}
+
 export interface TrackingSummary {
   totalCount: number;
   todayUniqueVisitorCount: number;
   uniqueVisitorCount: number;
+  meetingCreationRate: number | null;
+  meetingCreationFunnel: TrackingFunnelStep[];
+  responseFunnel: TrackingFunnelStep[];
+  dropOffRows: TrackingDropOffRow[];
+  deviceVisitorCounts: TrackingCountRow[];
+  trafficSourceCounts: TrackingCountRow[];
   pageCounts: TrackingCountRow[];
   eventCounts: TrackingCountRow[];
   meetingCounts: TrackingCountRow[];
@@ -42,6 +64,21 @@ export interface TrackingSummary {
 }
 
 const TRACKING_EVENT_NAMES = new Set<string>(["page_view", "screen_view"]);
+
+const MEETING_CREATION_FUNNEL = [
+  { key: "landing", label: "랜딩 방문", pageLabel: "랜딩" },
+  { key: "new_meeting", label: "회의 만들기 진입", pageLabel: "회의 만들기" },
+  { key: "share", label: "공유 화면 도달", pageLabel: "공유 화면" },
+] as const;
+
+const RESPONSE_FUNNEL = [
+  { key: "response_intro", label: "참석자 안내", pageLabel: "참석자 안내 화면" },
+  { key: "response_identity", label: "본인 확인", pageLabel: "본인 확인 화면" },
+  { key: "availability_input", label: "가능 시간 입력", pageLabel: "가능 시간 입력 화면" },
+  { key: "response_review", label: "응답 확인", pageLabel: "응답 확인 화면" },
+  { key: "response_waiting", label: "응답 대기", pageLabel: "응답 대기 화면" },
+  { key: "calendar", label: "캘린더 도달", pageLabel: "캘린더 화면" },
+] as const;
 
 export function isTrackingEventName(value: unknown): value is TrackingEventName {
   return typeof value === "string" && TRACKING_EVENT_NAMES.has(value);
@@ -155,11 +192,23 @@ export function buildTrackingSummary(events: TrackingEvent[], now = new Date()):
   const todayEvents = events.filter(
     (event) => formatKstDateKey(new Date(event.createdAt)) === todayKey,
   );
+  const meetingCreationFunnel = buildFunnel(events, MEETING_CREATION_FUNNEL);
+  const responseFunnel = buildFunnel(events, RESPONSE_FUNNEL);
 
   return {
     totalCount: events.length,
     todayUniqueVisitorCount: countUniqueVisitors(todayEvents),
     uniqueVisitorCount: countUniqueVisitors(events),
+    meetingCreationRate:
+      meetingCreationFunnel.find((step) => step.key === "share")?.conversionRate ?? null,
+    meetingCreationFunnel,
+    responseFunnel,
+    dropOffRows: buildDropOffRows([
+      { label: "회의 생성", steps: meetingCreationFunnel },
+      { label: "참석자 응답", steps: responseFunnel },
+    ]),
+    deviceVisitorCounts: countUniqueVisitorsBy(events, deviceTypeLabel),
+    trafficSourceCounts: countFirstTouchTrafficSources(events),
     pageCounts: countBy(events, (event) => `${event.pageLabel}|${event.pagePath}`).map(
       splitCountLabel,
     ),
@@ -175,8 +224,83 @@ export function buildTrackingSummary(events: TrackingEvent[], now = new Date()):
   };
 }
 
+function buildFunnel(
+  events: TrackingEvent[],
+  steps: readonly { key: string; label: string; pageLabel: string }[],
+): TrackingFunnelStep[] {
+  const stageCounts = steps.map((step) => ({
+    ...step,
+    count: countUniqueVisitors(events.filter((event) => event.pageLabel === step.pageLabel)),
+  }));
+  const firstCount = stageCounts[0]?.count ?? 0;
+
+  return stageCounts.map((step, index) => {
+    const previous = index > 0 ? stageCounts[index - 1].count : null;
+    const dropOffCount = previous === null ? null : Math.max(previous - step.count, 0);
+
+    return {
+      key: step.key,
+      label: step.label,
+      count: step.count,
+      conversionRate: rate(step.count, firstCount),
+      dropOffCount,
+      dropOffRate: previous === null || dropOffCount === null ? null : rate(dropOffCount, previous),
+    };
+  });
+}
+
+function buildDropOffRows(funnels: { label: string; steps: TrackingFunnelStep[] }[]) {
+  return funnels
+    .flatMap((funnel) =>
+      funnel.steps
+        .map((step, index) => ({ step, previous: funnel.steps[index - 1] }))
+        .filter(
+          (
+            row,
+          ): row is {
+            step: TrackingFunnelStep & { dropOffCount: number; dropOffRate: number };
+            previous: TrackingFunnelStep;
+          } =>
+            row.previous !== undefined &&
+            row.step.dropOffCount !== null &&
+            row.step.dropOffRate !== null &&
+            row.step.dropOffCount > 0,
+        )
+        .map(({ step, previous }) => ({
+          key: `${funnel.label}:${step.key}`,
+          label: `${funnel.label} · ${previous.label} → ${step.label}`,
+          dropOffCount: step.dropOffCount,
+          dropOffRate: step.dropOffRate,
+        })),
+    )
+    .sort((a, b) => b.dropOffRate - a.dropOffRate || b.dropOffCount - a.dropOffCount)
+    .slice(0, 5);
+}
+
 function countUniqueVisitors(events: TrackingEvent[]) {
   return new Set(events.map(uniqueVisitorKey).filter(Boolean)).size;
+}
+
+function countUniqueVisitorsBy(
+  events: TrackingEvent[],
+  keyOf: (event: TrackingEvent) => { key: string; label: string },
+): TrackingCountRow[] {
+  const counts = new Map<string, { label: string; visitors: Set<string> }>();
+
+  for (const event of events) {
+    const visitorKey = uniqueVisitorKey(event);
+    if (!visitorKey) continue;
+
+    const group = keyOf(event);
+    const row = counts.get(group.key) ?? { label: group.label, visitors: new Set<string>() };
+    row.visitors.add(visitorKey);
+    counts.set(group.key, row);
+  }
+
+  return [...counts.entries()]
+    .map(([key, row]) => ({ key, label: row.label, count: row.visitors.size }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .slice(0, 20);
 }
 
 function uniqueVisitorKey(event: TrackingEvent) {
@@ -185,6 +309,44 @@ function uniqueVisitorKey(event: TrackingEvent) {
   if (event.ipHash) return `ip:${event.ipHash}`;
   if (event.visitorId) return `visitor:${event.visitorId}`;
   return null;
+}
+
+function countFirstTouchTrafficSources(events: TrackingEvent[]): TrackingCountRow[] {
+  const firstEventByVisitor = new Map<string, TrackingEvent>();
+  const oldestFirst = [...events].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  );
+
+  for (const event of oldestFirst) {
+    const visitorKey = uniqueVisitorKey(event);
+    if (!visitorKey || firstEventByVisitor.has(visitorKey)) continue;
+    firstEventByVisitor.set(visitorKey, event);
+  }
+
+  return countUniqueVisitorsBy([...firstEventByVisitor.values()], trafficSourceLabel);
+}
+
+function deviceTypeLabel(event: TrackingEvent) {
+  if (event.deviceType === "mobile") return { key: "mobile", label: "모바일" };
+  if (event.deviceType === "tablet") return { key: "tablet", label: "태블릿" };
+  if (event.deviceType === "desktop") return { key: "desktop", label: "PC" };
+  return { key: "unknown", label: "알 수 없음" };
+}
+
+function trafficSourceLabel(event: TrackingEvent) {
+  if (!event.referrer) return { key: "direct", label: "직접/알 수 없음" };
+
+  try {
+    const host = new URL(event.referrer).hostname.toLowerCase().replace(/^www\./, "");
+    return host ? { key: host, label: host } : { key: "unknown", label: "기타" };
+  } catch {
+    return { key: "unknown", label: "기타" };
+  }
+}
+
+function rate(part: number, total: number) {
+  if (total <= 0) return null;
+  return Math.round((part / total) * 1000) / 10;
 }
 
 function normalizePagePath(pathname: string) {
