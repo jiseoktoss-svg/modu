@@ -2,19 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { StartMeetingButton } from "@/components/meeting/StartMeetingButton";
-import { cn } from "@/lib/cn";
+import { addDaysToDateStr, describeDateStr, todayDateStrKst } from "@/lib/time";
 
 // 랜딩 인트로 모션(Claude Design 시안 이식).
 // 장면 1(응답 타이핑) → 장면 2(응답 수렴·분석 필) → 장면 3(달력 선별) → modu 워드마크,
 // 재생이 끝나야 하단 고정 CTA(회의 만들기)가 페이드인된다.
 // 같은 세션 재방문·저감 모션·건너뛰기는 애니메이션 없이 마지막 장면 + CTA를 바로 보여준다.
 
-// 장면 4 워드마크(14.15s + 0.55s)까지 끝난 뒤 CTA 페이드인.
-const INTRO_DURATION_MS = 15_100;
-
-// 같은 세션에서 이미 한 번 열었는지 표시 — 재방문(새로고침·뒤로가기) 시 CTA를 처음부터 노출한다.
-// (모션은 첫 진입·재방문 모두 항상 새로 재생한다.)
-const INTRO_PLAYED_KEY = "modu:landing-intro-played";
+// 장면 4 워드마크(13.45s + 0.55s)까지 끝난 뒤 CTA 페이드인.
+const INTRO_DURATION_MS = 14_400;
 
 // 모션 아트보드 고정 좌표계 크기(px). 장면들이 이 안에서 절대 좌표로 배치되므로,
 // 실제 무대(카드) 크기에 맞춰 비율 그대로 축소(scale)해 어떤 화면에서도 스크롤 없이 전부 보이게 한다.
@@ -54,6 +50,7 @@ const KEYFRAMES = `
 @keyframes mi-pill-in { 0% { opacity: 0; transform: scale(0.55); } 65% { opacity: 1; transform: scale(1.06); } 100% { opacity: 1; transform: scale(1); } }
 @keyframes mi-pill-bump { 0% { transform: scale(1); } 45% { transform: scale(1.1); } 100% { transform: scale(1); } }
 @keyframes mi-border-flow { 0% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+@keyframes mi-glow-in { from { opacity: 0; } to { opacity: 0.45; } }
 @keyframes mi-glow-pulse { 0%, 100% { opacity: 0.45; transform: scale(1); } 50% { opacity: 0.8; transform: scale(1.12); } }
 /* 장면 3: 스캔 광선이 달력을 훑고 → 탈락 칸이 빨갛게 물들고 → 우수수 낙하 */
 @keyframes mi-scan { from { transform: translateX(-130%); } to { transform: translateX(320%); } }
@@ -72,15 +69,25 @@ const KEYFRAMES = `
 // ── 장면 데이터 ─────────────────────────────
 
 // 장면 1: 타이핑 문장(빨간 강조 = 불가 값). 공백도 한 슬롯을 차지한다(시차 0.07s).
-const TYPED: Array<{ ch?: string; red?: boolean }> = [
-  { ch: "저" }, { ch: "는" }, {},
-  { ch: "7", red: true }, { ch: "월", red: true }, {},
-  { ch: "1", red: true }, { ch: "0", red: true }, { ch: "일", red: true },
-  { ch: "에" }, { ch: "는" }, {},
-  { ch: "회" }, { ch: "의" }, { ch: "가" }, {},
-  { ch: "불", red: true }, { ch: "가", red: true }, { ch: "능", red: true },
-  { ch: "해" }, { ch: "요" },
-];
+// "불가능" 날짜는 오늘(KST) 다음 날로 계산한다 — 7월 하드코딩 제거.
+type TypedSeg = { ch?: string; red?: boolean };
+
+function buildTypedSegments(today: string): TypedSeg[] {
+  const busy = addDaysToDateStr(today, 1); // 내일
+  const [, month, day] = busy.split("-").map(Number);
+  const red = (ch: string): TypedSeg => ({ ch, red: true });
+  const black = (ch: string): TypedSeg => ({ ch });
+  const gap: TypedSeg = {};
+  return [
+    black("저"), black("는"), gap,
+    ...String(month).split("").map(red), red("월"), gap,
+    ...String(day).split("").map(red), red("일"),
+    black("에"), black("는"), gap,
+    black("회"), black("의"), black("가"), gap,
+    red("불"), red("가"), red("능"),
+    black("해"), black("요"),
+  ];
+}
 
 // 장면 2: 참석자 뱃지 6개 + 중앙으로 수렴하는 불가 칩 6개.
 // 필수 4명(위/중간 두 줄) + 선택 2명(아래 줄). 세로 중앙(분석 필 자리)은 비워 겹침을 막는다.
@@ -94,39 +101,49 @@ const BADGES = [
 ] as const;
 
 // 각 칩은 배지 근처에서 나와 중앙(분석 필, ≈y265)으로 비슷한 거리를 이동해 수렴한다.
-const CHIPS = [
-  { label: "7/8 종일", pos: { left: 8, top: 96 }, dx: 127, dy: 158, pop: 4.5, converge: 4.95 },
-  { label: "7/9 오전", pos: { right: 8, top: 96 }, dx: -125, dy: 158, pop: 4.65, converge: 5.1 },
-  { label: "7/10 오후", pos: { left: 8, top: 174 }, dx: 127, dy: 82, pop: 4.8, converge: 5.25 },
-  { label: "7/13 오전", pos: { right: 8, top: 174 }, dx: -125, dy: 82, pop: 4.95, converge: 5.4 },
-  { label: "7/11", pos: { left: 8, top: 356 }, dx: 134, dy: -100, pop: 5.1, converge: 5.55 },
-  { label: "7/14 오후", pos: { right: 8, top: 356 }, dx: -120, dy: -100, pop: 5.25, converge: 5.7 },
+// 라벨 날짜는 오늘(KST)로부터 offset일 뒤로 계산한다(배치·타이밍은 고정) — 7월 하드코딩 제거.
+const CHIP_SLOTS = [
+  { offset: 1, when: "오전", pos: { left: 8, top: 96 }, dx: 127, dy: 158, pop: 4.5, converge: 4.95 },
+  { offset: 2, when: "오후", pos: { right: 8, top: 96 }, dx: -125, dy: 158, pop: 4.65, converge: 5.1 },
+  { offset: 3, when: "종일", pos: { left: 8, top: 174 }, dx: 127, dy: 82, pop: 4.8, converge: 5.25 },
+  { offset: 6, when: "오전", pos: { right: 8, top: 174 }, dx: -125, dy: 82, pop: 4.95, converge: 5.4 },
+  { offset: 4, when: "", pos: { left: 8, top: 356 }, dx: 134, dy: -100, pop: 5.1, converge: 5.55 },
+  { offset: 7, when: "오후", pos: { right: 8, top: 356 }, dx: -120, dy: -100, pop: 5.25, converge: 5.7 },
 ] as const;
+
+function chipLabel(today: string, slot: { offset: number; when: string }): string {
+  const { monthDay } = describeDateStr(addDaysToDateStr(today, slot.offset));
+  return slot.when ? `${monthDay} ${slot.when}` : monthDay;
+}
 
 // 장면 3: 탈락하는 날짜(값은 등장 순서 인덱스). 스캔이 지나간 뒤 빨갛게 물들고, 순서대로 낙하한다.
 const CELL_FALL: Record<number, number> = {
   3: 0, 6: 1, 8: 2, 9: 3, 10: 4, 11: 5, 13: 6, 14: 7, 21: 8, 24: 9, 28: 10,
 };
-const MARK_BASE = 10.15; // 빨간 칸 물들기 시작(느려진 스캔이 지나간 뒤)
+const MARK_BASE = 9.45; // 빨간 칸 물들기 시작(느려진 스캔이 지나간 뒤)
 const MARK_STEP = 0.03;
-const FALL_BASE = 10.55; // 낙하 시작
+const FALL_BASE = 9.85; // 낙하 시작
 const FALL_STEP = 0.06;
 
-// 추천 후보 리스트 — 달력 다음 장면(장면 4)에서 새로 노출. 2026년 7월 기준 요일(주말·탈락일 제외).
-const CANDIDATE_DATES = [
-  "7월 1일 수요일",
-  "7월 2일 목요일",
-  "7월 7일 화요일",
-  "7월 15일 수요일",
-  "7월 16일 목요일",
-  "7월 17일 금요일",
-  "7월 20일 월요일",
-  "7월 22일 수요일",
-  "7월 23일 목요일",
-  "7월 27일 월요일",
-  "7월 29일 수요일",
-  "7월 30일 목요일",
-] as const;
+// 추천 후보 리스트 — 장면 4에서 노출. 오늘(KST) 이후의 평일에서
+// 주말과 장면 2의 '불가'로 보여준 날짜(탈락일)를 제외하고 순서대로 만든다.
+function buildCandidateDates(today: string, count = 12): string[] {
+  const busy = new Set(CHIP_SLOTS.map((slot) => addDaysToDateStr(today, slot.offset)));
+  const out: string[] = [];
+  let offset = 1;
+  let guard = 0;
+  while (out.length < count && guard < 120) {
+    const dateStr = addDaysToDateStr(today, offset);
+    const { weekdayKo } = describeDateStr(dateStr);
+    if (weekdayKo !== "토" && weekdayKo !== "일" && !busy.has(dateStr)) {
+      const [, m, d] = dateStr.split("-").map(Number);
+      out.push(`${m}월 ${d}일 ${weekdayKo}요일`);
+    }
+    offset += 1;
+    guard += 1;
+  }
+  return out;
+}
 
 // 후보 행마다 조금씩 다른 파란 그라디언트를 돌려 쓴다.
 const CANDIDATE_GRADIENTS = [
@@ -230,6 +247,10 @@ function Wordmark() {
 // 시안 그대로의 애니메이션 아트보드라 내부는 Tailwind 대신 인라인 스타일을 유지한다
 // (px 단위 좌표·딜레이가 서로 맞물려 있어 클래스 변환 시 어긋나기 쉬움).
 function MotionScenes() {
+  // 재생 시점(클라이언트)에 오늘(KST) 기준으로 인트로 날짜를 계산한다.
+  const today = todayDateStrKst();
+  const typedSegments = buildTypedSegments(today);
+  const candidateDates = buildCandidateDates(today);
   return (
     <div style={{ position: "absolute", inset: 0 }}>
       {/* ════ 장면 1 · 타이핑 클로즈업 → 응답하기 (0 ~ 3.6s) ════ */}
@@ -309,7 +330,7 @@ function MotionScenes() {
                 lineHeight: 1.45,
               }}
             >
-              {TYPED.map((seg, i) => {
+              {typedSegments.map((seg, i) => {
                 const delay = `${(0.55 + i * 0.07).toFixed(2)}s`;
                 return seg.ch ? (
                   <span
@@ -425,12 +446,12 @@ function MotionScenes() {
         </div>
       </div>
 
-      {/* ════ 장면 2 · 응답 수렴 + 분석 필 (3.6 ~ 8.1s) ════ */}
+      {/* ════ 장면 2 · 응답 수렴 + 분석 필 (3.6 ~ 7.4s) ════ */}
       <div
         style={{
           position: "absolute",
           inset: 0,
-          animation: "mi-scene-in 0.45s ease 3.6s both, mi-scene-out 0.45s ease 7.7s both",
+          animation: "mi-scene-in 0.45s ease 3.6s both, mi-scene-out 0.45s ease 7.0s both",
           opacity: 0,
         }}
       >
@@ -451,12 +472,13 @@ function MotionScenes() {
           ))}
 
           {/* 뱃지에서 나와 중앙으로 수렴하는 응답 칩 */}
-          {CHIPS.map((c) => {
+          {CHIP_SLOTS.map((slot, i) => {
+            const label = chipLabel(today, slot);
             const chipStyle: ChipStyle = {
               position: "absolute",
-              ...c.pos,
-              "--dx": `${c.dx}px`,
-              "--dy": `${c.dy}px`,
+              ...slot.pos,
+              "--dx": `${slot.dx}px`,
+              "--dy": `${slot.dy}px`,
               borderRadius: 999,
               border: "1px solid #fecaca",
               background: "#fef2f2",
@@ -466,11 +488,11 @@ function MotionScenes() {
               padding: "5px 11px",
               boxShadow: "0 4px 7px rgba(185, 28, 28, 0.08)",
               opacity: 0,
-              animation: `mi-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) ${c.pop}s both, mi-converge 0.7s cubic-bezier(0.55, 0, 0.55, 0.2) ${c.converge}s both`,
+              animation: `mi-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) ${slot.pop}s both, mi-converge 0.7s cubic-bezier(0.55, 0, 0.55, 0.2) ${slot.converge}s both`,
             };
             return (
-              <div key={c.label} style={chipStyle}>
-                {c.label}
+              <div key={i} style={chipStyle}>
+                {label}
               </div>
             );
           })}
@@ -489,8 +511,10 @@ function MotionScenes() {
               background:
                 "radial-gradient(circle, rgba(49, 130, 246, 0.32) 0%, rgba(49, 130, 246, 0) 68%)",
               filter: "blur(6px)",
+              // 필(4.2s)과 함께 등장: 0→0.45로 페이드인(mi-glow-in) 후 펄스. 페이드인 끝값(0.45)이
+              // 펄스 0%와 같아 4.9s 이음새에 튐이 없다.
               animation:
-                "mi-scene-in 0.6s ease 4.3s both, mi-glow-pulse 2.4s ease-in-out 4.9s infinite",
+                "mi-glow-in 0.55s ease 4.2s both, mi-glow-pulse 2.4s ease-in-out 4.9s infinite",
               opacity: 0,
             }}
           />
@@ -537,12 +561,12 @@ function MotionScenes() {
         </div>
       </div>
 
-      {/* ════ 장면 3 · 달력 스캔 → 탈락 → 낙하 (8.1 ~ 12.25s) ════ */}
+      {/* ════ 장면 3 · 달력 스캔 → 탈락 → 낙하 (7.4 ~ 11.55s) ════ */}
       <div
         style={{
           position: "absolute",
           inset: 0,
-          animation: "mi-scene-in 0.45s ease 8.1s both, mi-scene-out 0.45s ease 11.8s both",
+          animation: "mi-scene-in 0.45s ease 7.4s both, mi-scene-out 0.45s ease 11.1s both",
           opacity: 0,
         }}
       >
@@ -559,7 +583,7 @@ function MotionScenes() {
               borderRadius: 20,
               padding: 16,
               boxShadow: "0 10px 20px rgba(15, 23, 42, 0.08)",
-              animation: "mi-card-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) 8.2s both",
+              animation: "mi-card-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) 7.5s both",
             }}
           >
             {/* 캘린더 아이콘(타이틀 대체) */}
@@ -627,19 +651,19 @@ function MotionScenes() {
                     background:
                       "linear-gradient(105deg, rgba(148, 163, 184, 0) 0%, rgba(203, 213, 225, 0.4) 42%, rgba(255, 255, 255, 0.95) 50%, rgba(203, 213, 225, 0.4) 58%, rgba(148, 163, 184, 0) 100%)",
                     transform: "translateX(-130%)",
-                    animation: "mi-scan 1.5s ease-in-out 8.7s both",
+                    animation: "mi-scan 1.5s ease-in-out 8.0s both",
                   }}
                 />
               </div>
             </div>
           </div>
 
-          <SceneCaption text="불가능한 날은 제외하여" delay={8.5} />
+          <SceneCaption text="불가능한 날은 제외하여" delay={7.8} />
         </div>
       </div>
 
-      {/* ════ 장면 4 · 추천 후보 리스트 → 위로 팡 → 워드마크 (11.9s ~ 끝) ════ */}
-      <div style={{ position: "absolute", inset: 0, animation: "mi-scene-in 0.45s ease 11.9s both", opacity: 0 }}>
+      {/* ════ 장면 4 · 추천 후보 리스트 → 위로 팡 → 워드마크 (11.2s ~ 끝) ════ */}
+      <div style={{ position: "absolute", inset: 0, animation: "mi-scene-in 0.45s ease 11.2s both", opacity: 0 }}>
         <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 340, transform: "translateX(-50%)" }}>
           {/* 후보 리스트 12줄 — 순차 등장 후 위로 빠르게 날아간다 */}
           <div
@@ -654,7 +678,7 @@ function MotionScenes() {
               gap: 6,
             }}
           >
-            {CANDIDATE_DATES.slice(0, 8).map((date, i) => (
+            {candidateDates.slice(0, 8).map((date, i) => (
               <div
                 key={date}
                 style={{
@@ -665,7 +689,7 @@ function MotionScenes() {
                   borderRadius: 13,
                   padding: "8px 18px",
                   boxShadow: "0 3px 7px rgba(49, 130, 246, 0.09)",
-                  animation: `mi-fade-up 0.4s ease-out ${(12.05 + i * 0.06).toFixed(2)}s both, mi-list-up 0.35s cubic-bezier(0.5, 0, 1, 0.5) ${(13.4 + i * 0.03).toFixed(2)}s forwards`,
+                  animation: `mi-fade-up 0.4s ease-out ${(11.35 + i * 0.06).toFixed(2)}s both, mi-list-up 0.35s cubic-bezier(0.5, 0, 1, 0.5) ${(12.7 + i * 0.03).toFixed(2)}s forwards`,
                   opacity: 0,
                 }}
               >
@@ -679,7 +703,7 @@ function MotionScenes() {
             <div
               style={{
                 position: "relative",
-                animation: "mi-pop-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) 14.15s both",
+                animation: "mi-pop-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) 13.45s both",
                 opacity: 0,
               }}
             >
@@ -688,7 +712,7 @@ function MotionScenes() {
           </div>
 
           {/* 캡션 — 장면 2·3과 동일한 위치(bottom:24). 후보 리스트와 함께 위로 날아간다. */}
-          <SceneCaption text="최적의 시간을 알려드려요" delay={12} flyAt={13.4} />
+          <SceneCaption text="최적의 시간을 알려드려요" delay={11.3} flyAt={12.7} />
         </div>
       </div>
     </div>
@@ -697,8 +721,6 @@ function MotionScenes() {
 
 export function LandingIntro() {
   const [phase, setPhase] = useState<Phase>("pending");
-  // 같은 세션에서 이미 한 번 연 적 있으면(새로고침·뒤로가기 복귀) CTA를 처음부터 노출한다.
-  const [ctaAlwaysShown, setCtaAlwaysShown] = useState(false);
 
   const stageRef = useRef<HTMLDivElement>(null);
   const ctaRef = useRef<HTMLDivElement>(null);
@@ -710,28 +732,10 @@ export function LandingIntro() {
     setPhase("done");
   }, []);
 
-  // 모션은 첫 진입·재방문 모두 항상 새로 재생한다(저감 모션만 마지막 장면 바로 표시).
-  // 세션 플래그는 CTA를 처음부터 띄울지만 결정한다:
-  //  - 첫 진입: 모션이 끝난 뒤 CTA 노출
-  //  - 재방문(새로고침·뒤로가기): 모션과 무관하게 CTA 상시 노출
+  // 인트로 모션은 진입할 때마다 재생한다(저감 모션이면 마지막 장면을 바로 표시).
+  // 하단 CTA는 재생과 무관하게 상시 노출한다.
   useEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-    let alreadyOpened = false;
-    try {
-      alreadyOpened = window.sessionStorage.getItem(INTRO_PLAYED_KEY) === "1";
-    } catch {
-      // 사생활 모드 등으로 storage 접근이 막히면 첫 진입처럼 다룬다.
-    }
-    setCtaAlwaysShown(alreadyOpened);
-
-    // 이후 재방문부터 CTA를 상시 노출하도록 표시를 남긴다.
-    try {
-      window.sessionStorage.setItem(INTRO_PLAYED_KEY, "1");
-    } catch {
-      // 접근 불가면 무시(첫 진입 동작 유지).
-    }
-
     setPhase(reduced ? "done" : "playing");
   }, []);
 
@@ -769,8 +773,6 @@ export function LandingIntro() {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-
-  const ctaShown = ctaAlwaysShown || phase === "done";
 
   return (
     <>
@@ -811,14 +813,10 @@ export function LandingIntro() {
         </div>
       </main>
 
-      {/* 하단 고정 CTA — 인트로가 끝나야 페이드인. PC·모바일 공통, CTA 아래에는 아무것도 두지 않는다. */}
+      {/* 하단 고정 CTA — 상시 노출. PC·모바일 공통, CTA 아래에는 아무것도 두지 않는다. */}
       <div
         ref={ctaRef}
-        aria-hidden={!ctaShown}
-        className={cn(
-          "fixed inset-x-0 bottom-0 z-20 bg-white px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-4 transition-opacity duration-500",
-          ctaShown ? "opacity-100" : "pointer-events-none opacity-0",
-        )}
+        className="fixed inset-x-0 bottom-0 z-20 bg-white px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-4"
       >
         <div
           aria-hidden="true"
