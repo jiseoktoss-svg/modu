@@ -27,17 +27,27 @@ describe("tracking model", () => {
       event("1", "page_view", "회의 만들기", "/meetings/new", null, "visitor-1", "ip-a"),
       event("2", "page_view", "회의 만들기", "/meetings/new", null, "visitor-2", "ip-a"),
       event("3", "screen_view", "캘린더 화면", "/m/abc", "abc", "visitor-3", "ip-b"),
+      event(
+        "4",
+        "page_view",
+        "랜딩",
+        "/",
+        null,
+        "visitor-4",
+        "ip-c",
+        "2026-07-07T01:00:00.000Z",
+      ),
     ];
 
     const summary = buildTrackingSummary(events, new Date("2026-07-08T10:00:00+09:00"));
 
-    expect(summary.totalCount).toBe(3);
-    expect(summary.todayCount).toBe(3);
-    expect(summary.uniqueVisitorCount).toBe(2);
+    expect(summary.totalCount).toBe(4);
+    expect(summary.todayUniqueVisitorCount).toBe(2);
+    expect(summary.uniqueVisitorCount).toBe(3);
     expect(summary.pageCounts[0]).toMatchObject({ label: "회의 만들기", count: 2 });
     expect(summary.eventCounts).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ label: "주소 방문", count: 2 }),
+        expect.objectContaining({ label: "주소 방문", count: 3 }),
         expect.objectContaining({ label: "화면 진입", count: 1 }),
       ]),
     );
@@ -75,6 +85,7 @@ function event(
   meetingId: string | null,
   visitorId: string,
   ipHash: string | null,
+  createdAt = "2026-07-08T01:00:00.000Z",
 ): TrackingEvent {
   return {
     id,
@@ -89,6 +100,6 @@ function event(
     userAgent: null,
     deviceType: "desktop",
     viewportWidth: 1280,
-    createdAt: "2026-07-08T01:00:00.000Z",
+    createdAt,
   };
 }

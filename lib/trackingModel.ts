@@ -32,7 +32,7 @@ export interface TrackingCountRow {
 
 export interface TrackingSummary {
   totalCount: number;
-  todayCount: number;
+  todayUniqueVisitorCount: number;
   uniqueVisitorCount: number;
   pageCounts: TrackingCountRow[];
   eventCounts: TrackingCountRow[];
@@ -152,13 +152,14 @@ export function mapTrackingEvent(row: TrackingEventRow): TrackingEvent {
 
 export function buildTrackingSummary(events: TrackingEvent[], now = new Date()): TrackingSummary {
   const todayKey = formatKstDateKey(now);
-  const uniqueVisitors = new Set(events.map(uniqueVisitorKey).filter(Boolean));
+  const todayEvents = events.filter(
+    (event) => formatKstDateKey(new Date(event.createdAt)) === todayKey,
+  );
 
   return {
     totalCount: events.length,
-    todayCount: events.filter((event) => formatKstDateKey(new Date(event.createdAt)) === todayKey)
-      .length,
-    uniqueVisitorCount: uniqueVisitors.size,
+    todayUniqueVisitorCount: countUniqueVisitors(todayEvents),
+    uniqueVisitorCount: countUniqueVisitors(events),
     pageCounts: countBy(events, (event) => `${event.pageLabel}|${event.pagePath}`).map(
       splitCountLabel,
     ),
@@ -172,6 +173,10 @@ export function buildTrackingSummary(events: TrackingEvent[], now = new Date()):
     hourlyCounts: buildTodayHourlyCounts(events, todayKey),
     recentEvents: events.slice(0, 50),
   };
+}
+
+function countUniqueVisitors(events: TrackingEvent[]) {
+  return new Set(events.map(uniqueVisitorKey).filter(Boolean)).size;
 }
 
 function uniqueVisitorKey(event: TrackingEvent) {

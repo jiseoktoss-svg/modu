@@ -122,8 +122,8 @@ export default async function TrackingPage({
 
       <div className="grid gap-3 sm:grid-cols-3">
         <MetricCard label="전체 기록" value={summary.totalCount} />
-        <MetricCard label="오늘 기록" value={summary.todayCount} />
-        <MetricCard label="방문자(IP 기준)" value={summary.uniqueVisitorCount} />
+        <MetricCard label="오늘 방문자" value={summary.todayUniqueVisitorCount} />
+        <MetricCard label="전체 방문자(IP 기준)" value={summary.uniqueVisitorCount} />
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
