@@ -11,6 +11,10 @@ export function hasTrackingPassword() {
   return getTrackingPassword() !== null;
 }
 
+export function canBypassTrackingAuthLocally() {
+  return process.env.NODE_ENV === "development";
+}
+
 export function verifyTrackingPassword(candidate: string) {
   const password = getTrackingPassword();
   if (!password) return false;
@@ -27,6 +31,7 @@ export function createTrackingAuthToken() {
 }
 
 export async function hasTrackingAccess() {
+  if (canBypassTrackingAuthLocally()) return true;
   if (!hasTrackingPassword()) return false;
   const store = await cookies();
   return store.get(TRACKING_AUTH_COOKIE)?.value === createTrackingAuthToken();

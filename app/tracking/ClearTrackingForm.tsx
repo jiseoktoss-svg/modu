@@ -24,9 +24,9 @@ export function ClearTrackingForm({
       <button
         type="submit"
         disabled={disabled}
-        className="h-10 rounded-xl bg-red-50 px-4 text-sm font-bold text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+        className="h-8 border border-red-400/40 bg-black px-3 font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-red-200 transition-colors hover:border-red-200 hover:text-red-100 focus:outline-none focus:ring-2 focus:ring-red-200 focus:ring-offset-2 focus:ring-offset-black disabled:cursor-not-allowed disabled:border-zinc-800 disabled:text-zinc-700"
       >
-        기록 지우기
+        purge logs
       </button>
     </form>
   );
