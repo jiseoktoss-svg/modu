@@ -7,6 +7,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/Badge";
 import { Emoji } from "@/components/ui/Emoji";
@@ -114,6 +115,20 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
     movingRef.current = moving;
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", JSON.stringify(moving));
+    // 2명 이상 함께 이동하면 기본 드래그 이미지(뱃지 1개) 대신
+    // 터치 드래그 고스트와 같은 인원 수 pill 을 드래그 이미지로 쓴다.
+    if (moving.length >= 2) {
+      const ghost = document.createElement("div");
+      ghost.textContent = `${moving.length}명 이동`;
+      ghost.className =
+        "fixed rounded-full bg-slate-900 px-3 py-2 text-xs font-bold text-white shadow-xl";
+      ghost.style.top = "-100px";
+      ghost.style.left = "0";
+      document.body.appendChild(ghost);
+      e.dataTransfer.setDragImage(ghost, 12, 12);
+      // 드래그 이미지 스냅샷은 dragstart 시점에 찍히므로 다음 틱에 정리해도 안전하다.
+      window.setTimeout(() => ghost.remove(), 0);
+    }
     setDragKey(key);
   }
 
@@ -253,8 +268,9 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
     document.addEventListener("mouseup", onUp);
   }
 
+  // 루트 p-0.5(-m-0.5 로 상쇄): overflow-hidden 경계에 붙는 검색창 포커스 링(2px)이 잘리지 않게 링 두께만큼 안쪽 여백 확보.
   return (
-    <div className="flex h-full min-h-0 flex-col gap-1.5 overflow-hidden sm:gap-2">
+    <div className="-m-0.5 flex h-full min-h-0 flex-col gap-1.5 overflow-hidden p-0.5 sm:gap-2">
       {/* 검색 */}
       <div className="relative max-w-sm shrink-0">
         <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -266,7 +282,7 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="이름 또는 직책 검색"
           aria-label="직원 검색"
-          className="h-9 w-full rounded-2xl border border-slate-200 bg-slate-50 py-0 pl-9 pr-10 text-base font-medium text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-2 focus:border-brand-400 focus:bg-white focus:ring-0 sm:h-10"
+          className="h-9 w-full rounded-xl border border-transparent bg-slate-100 py-0 pl-9 pr-10 text-base font-medium text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-brand-400 focus:bg-white focus:ring-2 focus:ring-brand-100 sm:h-10"
         />
         {query && (
           <button
@@ -294,10 +310,10 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
                 aria-pressed={selected}
                 disabled={disabledByLimit}
                 className={cn(
-                  "flex w-full items-center justify-between gap-2 rounded-xl border px-2.5 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45 sm:gap-3 sm:px-3 sm:py-2.5",
+                  "flex w-full items-center justify-between gap-2 rounded-xl border px-2.5 py-2 text-left transition-[background-color,border-color,transform] duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transition-none motion-reduce:active:scale-100 sm:gap-3 sm:px-3 sm:py-2.5",
                   selected
                     ? "border-brand-200 bg-brand-50"
-                    : "border-slate-200 bg-white hover:bg-slate-50",
+                    : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50",
                 )}
               >
                 <span className="min-w-0">
@@ -355,10 +371,12 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
                   onDragLeave={() => setOverZone((o) => (o === g.type ? null : o))}
                   onDrop={(e) => handleDrop(e, g.type)}
                   className={cn(
-                    "flex flex-col gap-1 overflow-y-auto rounded-xl border p-1.5 transition-colors sm:gap-2 sm:p-3",
+                    "flex flex-col gap-1 overflow-y-auto rounded-2xl border p-1.5 transition-[background-color,border-color,box-shadow] sm:gap-2 sm:p-3",
                     overZone === g.type
-                      ? "border-brand-400 bg-brand-50"
-                      : "border-slate-200 bg-slate-50",
+                      ? "border-brand-400 bg-brand-50 ring-2 ring-brand-200/60"
+                      : members.length === 0
+                        ? "border-dashed border-slate-300 bg-slate-50/70"
+                        : "border-slate-200 bg-slate-50",
                   )}
                 >
                   <p className="shrink-0 text-[11px] font-bold text-slate-700 sm:text-xs">
@@ -396,7 +414,7 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
                             }}
                             title={`${p.name} — 끌어서 구역 이동`}
                             className={cn(
-                              "inline-flex touch-none cursor-grab select-none items-center gap-1 rounded-full border py-0.5 pl-2.5 pr-1 active:cursor-grabbing sm:py-1 sm:pl-3",
+                              "inline-flex touch-none cursor-grab select-none items-center gap-1 rounded-full border py-0.5 pl-2.5 pr-1 shadow-sm transition-colors active:cursor-grabbing sm:py-1 sm:pl-3",
                               picked
                                 ? "border-brand-400 bg-brand-50 ring-2 ring-brand-200"
                                 : "border-slate-200 bg-white",
@@ -436,14 +454,17 @@ export function ParticipantListEditor({ participants, onChange }: Props) {
         </div>
       </div>
 
-      {touchDrag && (
-        <div
-          className="pointer-events-none fixed z-[60] rounded-full bg-slate-900 px-3 py-2 text-xs font-bold text-white shadow-xl"
-          style={{ left: touchDrag.x + 10, top: touchDrag.y + 10 }}
-        >
-          {touchDrag.keys.length}명 이동
-        </div>
-      )}
+      {/* 모달 패널에 애니메이션(transform)이 걸리면 fixed 기준이 패널로 바뀌므로 body 포털로 띄운다. */}
+      {touchDrag &&
+        createPortal(
+          <div
+            className="pointer-events-none fixed z-[60] rounded-full bg-slate-900 px-3 py-2 text-xs font-bold text-white shadow-xl"
+            style={{ left: touchDrag.x + 10, top: touchDrag.y + 10 }}
+          >
+            {touchDrag.keys.length}명 이동
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

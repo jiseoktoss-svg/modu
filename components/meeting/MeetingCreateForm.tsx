@@ -1141,12 +1141,12 @@ export function MeetingCreateForm({
             }
             backdropDownRef.current = false;
           }}
-          className="fixed inset-0 z-30 flex items-stretch bg-slate-900/40 p-0 sm:items-center sm:p-6"
+          className="fixed inset-0 z-30 flex animate-fade-in items-stretch bg-slate-900/40 p-0 motion-reduce:animate-none sm:items-center sm:p-6"
         >
           <div
             ref={modalPanelRef}
             tabIndex={-1}
-            className="mx-auto flex h-dvh max-h-dvh w-full max-w-2xl flex-col overflow-hidden bg-white p-4 shadow-xl focus:outline-none sm:h-[744px] sm:max-h-[calc(100vh-3rem)] sm:rounded-3xl sm:p-5"
+            className="mx-auto flex h-dvh max-h-dvh w-full max-w-2xl animate-sheet-up flex-col overflow-hidden bg-white p-4 shadow-2xl focus:outline-none motion-reduce:animate-none sm:h-[744px] sm:max-h-[calc(100vh-3rem)] sm:animate-fade-up sm:rounded-3xl sm:p-5"
           >
             <div className="mb-0.5 flex shrink-0 items-start justify-between gap-3 sm:mb-1 sm:gap-4">
               <h3 className="text-base font-bold text-slate-900 sm:text-lg">참석자 선택</h3>
@@ -1168,7 +1168,7 @@ export function MeetingCreateForm({
                   participants.length > MAX_MEETING_PARTICIPANTS) && (
                 <div
                   role="alert"
-                  className="mb-2 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700"
+                  className="mb-2 flex animate-fade-in items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 motion-reduce:animate-none"
                 >
                   <Emoji symbol="⚠️" size={14} />
                   {participantError}
