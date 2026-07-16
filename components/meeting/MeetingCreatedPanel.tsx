@@ -313,16 +313,18 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
           >
             {copied ? "복사됨" : "링크 복사"}
           </TDSButton>
-          <TDSButton
-            as="a"
-            href={participantPath}
-            target="_blank"
-            rel="noopener noreferrer"
-            size="xl"
-            display="block"
-          >
-            회의 시간 입력하기
-          </TDSButton>
+          <div className="modu-floating-cta">
+            <TDSButton
+              as="a"
+              href={participantPath}
+              target="_blank"
+              rel="noopener noreferrer"
+              size="xl"
+              display="block"
+            >
+              회의 시간 입력하기
+            </TDSButton>
+          </div>
         </div>
       </MobileStickyAction>
     </section>

@@ -257,6 +257,23 @@ body {
   transform: scale(0.97);
 }
 
+/* 회의 생성 완료 화면의 주 CTA — 제자리에서 천천히 위아래로 떠서 다음 행동을 강조한다.
+   버튼 바깥 래퍼에 적용해 버튼 자체의 press transform 과 충돌하지 않게 한다. */
+@keyframes modu-floating-cta {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-7px);
+  }
+}
+
+.modu-floating-cta {
+  animation: modu-floating-cta 2.2s ease-in-out infinite;
+}
+
 @media (hover: hover) and (pointer: fine) {
   .modu-tds-button:not(:disabled):hover {
     filter: brightness(0.97);
@@ -504,6 +521,10 @@ body {
 
   .modu-tds-button {
     transition: none;
+  }
+
+  .modu-floating-cta {
+    animation: none;
   }
 
   .modu-tds-button:active {
