@@ -10,7 +10,7 @@ import {
 describe("tracking model", () => {
   it("labels known page paths and screen views", () => {
     expect(getTrackingPageMeta("/meetings/new")).toMatchObject({
-      pageLabel: "회의 만들기",
+      pageLabel: "일정 만들기",
       meetingId: null,
     });
     expect(getTrackingPageMeta("/m/demo-1", "calendar")).toMatchObject({
@@ -26,7 +26,7 @@ describe("tracking model", () => {
   it("builds dashboard counts from events", () => {
     const events: TrackingEvent[] = [
       event("1", "page_view", "랜딩", "/", null, "visitor-1", "ip-a"),
-      event("2", "page_view", "회의 만들기", "/meetings/new", null, "visitor-1", "ip-a"),
+      event("2", "page_view", "일정 만들기", "/meetings/new", null, "visitor-1", "ip-a"),
       event("3", "page_view", "랜딩", "/", null, "visitor-2", "ip-b", undefined, "mobile"),
       event("4", "page_view", "공유 화면", "/meetings/abc/share", "abc", "visitor-1", "ip-a"),
       event("5", "screen_view", "캘린더 화면", "/m/abc", "abc", "visitor-3", "ip-c"),
@@ -56,7 +56,7 @@ describe("tracking model", () => {
       ]),
     );
     expect(summary.dropOffRows[0]).toMatchObject({
-      label: "회의 생성 · 랜딩 방문 → 회의 만들기 진입",
+      label: "일정 생성 · 랜딩 방문 → 일정 만들기 진입",
       dropOffCount: 2,
       dropOffRate: 66.7,
     });

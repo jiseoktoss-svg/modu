@@ -16,7 +16,6 @@ export interface SubmitAvailabilityArgs {
   meetingId: string;
   participantId: string;
   token: string | null;
-  role?: string | null;
   memo?: string | null;
   blocks: SubmitBlockInput[];
 }
@@ -25,19 +24,18 @@ export type SubmitResult =
   | { ok: true; participantId: string; token: string }
   | { ok: false; error: string };
 
-export interface VerifyParticipantIdentityArgs {
+export interface JoinMeetingArgs {
   meetingId: string;
   name: string;
-  role: string;
-  token?: string | null;
 }
 
-export type VerifyParticipantIdentityResult =
+export type JoinMeetingResult =
   | {
       ok: true;
       participantId: string;
       name: string;
       role: string;
+      attendanceType: AttendanceType;
       responseStatus: "pending" | "submitted";
       token: string;
     }
@@ -52,7 +50,12 @@ export interface LoadResponseArgs {
 }
 
 export type LoadResponseResult =
-  | { ok: true; blocks: SubmitBlockInput[]; memo: string | null }
+  | {
+      ok: true;
+      blocks: SubmitBlockInput[];
+      memo: string | null;
+      responseStatus: "pending" | "submitted";
+    }
   | { ok: false; error: string };
 
 export interface CalendarSnapshotParticipant {

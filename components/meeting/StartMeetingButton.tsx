@@ -20,11 +20,11 @@ export function StartMeetingButton({ display = "inline", className }: StartMeeti
       size="xl"
       display={display}
       loading={pending}
-      aria-label="회의 만들기"
+      aria-label="일정 만들기"
       className={className}
       onClick={() => startTransition(() => router.push("/meetings/new"))}
     >
-      {pending ? null : "회의 만들기"}
+      {pending ? null : "일정 만들기"}
     </TDSButton>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCaseSnapshot, DEMO_CASES } from "@/data/demoCases";
+import { buildCaseSnapshot, DEMO_CASES, resolveDemoDates } from "@/data/demoCases";
 import { summarizeDateAvailability } from "@/lib/scheduler/dateAvailabilitySummary";
 import { addDaysToDateStr, todayDateStrKst } from "@/lib/time";
 
@@ -51,6 +51,18 @@ function summarySignature(summary: ReturnType<typeof summarizeDateAvailability>)
 }
 
 describe("demo case date detail diversity", () => {
+  it("주말 날짜도 데모 캘린더 대상에 포함한다", () => {
+    let saturday = todayDateStrKst();
+    do {
+      saturday = addDaysToDateStr(saturday, 1);
+      const [y, m, d] = saturday.split("-").map(Number);
+      if (new Date(Date.UTC(y, m - 1, d)).getUTCDay() === 6) break;
+    } while (true);
+    const sunday = addDaysToDateStr(saturday, 1);
+
+    expect(resolveDemoDates([saturday, sunday])).toEqual([saturday, sunday]);
+  });
+
   it("상황 2는 날짜를 바꿔도 같은 추천 시간만 반복하지 않는다", () => {
     const summaries = summariesForCase(2, 8);
     const bestRanges = summaries

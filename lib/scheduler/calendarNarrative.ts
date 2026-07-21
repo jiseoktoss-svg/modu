@@ -31,7 +31,7 @@ function pickEarliestAllAvailableSlot(
 function buildEarliestAllAvailableComment(slot: RecommendedSlot | null): string | null {
   if (!slot) return null;
 
-  return `전원이 참석 가능한 날짜 중 가장 빠른 날은 ${formatKoreanDateNoYear(slot.startAt)}이고, 그날 가장 빠른 시간은 ${formatKoreanTimeRange(slot.startAt, slot.endAt)}이에요.`;
+  return `모두가 참여할 수 있는 날짜 중 가장 빠른 날은 ${formatKoreanDateNoYear(slot.startAt)}이고, 그날 가장 빠른 시간은 ${formatKoreanTimeRange(slot.startAt, slot.endAt)}이에요.`;
 }
 
 export function buildCalendarAlignedComment({
@@ -46,7 +46,7 @@ export function buildCalendarAlignedComment({
   const qualities = [...dateQualityByDate.values()];
   const summaries = [...summariesByDate.values()];
   if (summaries.length === 0) {
-    return "날짜별 상세를 확인해 참석 가능 여부를 확인해 주세요.";
+    return "날짜별 상세에서 참여 가능 여부를 확인해 주세요.";
   }
 
   const lowCount = qualities.filter((quality) => quality.tier === "low").length;
@@ -69,19 +69,19 @@ export function buildCalendarAlignedComment({
   }
 
   if (everyDayWarning) {
-    return `매일 ${formatKoreanTime(everyDayWarning.startAt)}~${formatKoreanTime(everyDayWarning.endAt)}에는 필수참석자인 ${formatNameList(everyDayWarning.names)}이 참석하기 어려워요. 그 시간만 피해서 추천도 원이 많은 날짜를 확인해 주세요.`;
+    return `매일 ${formatKoreanTime(everyDayWarning.startAt)}~${formatKoreanTime(everyDayWarning.endAt)}에는 꼭 함께할 사람인 ${formatNameList(everyDayWarning.names)}이 참여하기 어려워요. 그 시간만 피해서 추천도 원이 많은 날짜를 확인해 주세요.`;
   }
 
   if (contextual.context === "noGoodOption") {
-    return "이번 기간에는 필수참석자가 모두 가능한 시간이 없어요. 기간을 넓히거나 날짜별 상세를 확인해 주세요.";
+    return "이번 기간에는 꼭 함께할 사람이 모두 가능한 시간이 없어요. 기간을 넓히거나 날짜별 상세를 확인해 주세요.";
   }
 
   if (requiredIssueCount > 0) {
-    return "일부 날짜에는 필수참석자가 참석하기 어려운 시간이 있어요. 추천도 원이 많은 날짜를 먼저 확인해 주세요.";
+    return "일부 날짜에는 꼭 함께할 사람이 참여하기 어려운 시간이 있어요. 추천도 원이 많은 날짜를 먼저 확인해 주세요.";
   }
 
   if (lowCount > 0) {
-    return "일부 날짜는 참석 가능한 인원이 적어요. 추천도 원이 많은 날짜를 먼저 확인해 주세요.";
+    return "일부 날짜는 참여 가능한 인원이 적어요. 추천도 원이 많은 날짜를 먼저 확인해 주세요.";
   }
 
   if (allAvailableCount === summaries.length) {
@@ -92,5 +92,5 @@ export function buildCalendarAlignedComment({
     return "추천도 원이 많은 날짜가 있어요. 해당 날짜를 먼저 확인해 주세요.";
   }
 
-  return "날짜별 상세를 확인해 참석 가능 여부를 확인해 주세요.";
+  return "날짜별 상세에서 참여 가능 여부를 확인해 주세요.";
 }

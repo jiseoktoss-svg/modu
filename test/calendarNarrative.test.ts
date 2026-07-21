@@ -109,7 +109,7 @@ describe("buildCalendarAlignedComment", () => {
       ]),
     });
 
-    expect(comment).toContain("필수참석자");
+    expect(comment).toContain("꼭 함께할 사람");
     expect(comment).toContain("추천도 원이 많은 날짜");
     expect(comment).not.toContain("2026");
     expect(comment).not.toContain("7/");
@@ -149,7 +149,7 @@ describe("buildCalendarAlignedComment", () => {
       ]),
     });
 
-    expect(comment).toContain("전원이 참석 가능한 날짜 중 가장 빠른 날");
+    expect(comment).toContain("모두가 참여할 수 있는 날짜 중 가장 빠른 날");
     expect(comment).toContain("7월 9일");
     expect(comment).toContain("그날 가장 빠른 시간");
     expect(comment).toContain("10:00~11:00");

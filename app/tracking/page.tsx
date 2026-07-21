@@ -210,7 +210,7 @@ export default async function TrackingPage({
         <CountPanel
           title="MEETING.HITS"
           rows={summary.meetingCounts}
-          emptyText="회의별 기록이 아직 없습니다."
+          emptyText="일정별 기록이 아직 없습니다."
         />
         <HourlyPanel rows={summary.hourlyCounts} />
       </div>

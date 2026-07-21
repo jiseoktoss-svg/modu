@@ -30,8 +30,8 @@ create table if not exists meetings (
   duration_minutes integer not null default 60 check (duration_minutes > 0),
   date_start date not null,
   date_end date not null,
-  workday_start time not null default '09:00',
-  workday_end time not null default '18:00',
+  workday_start time not null default '00:00',
+  workday_end time not null default '24:00',
   lunch_start time not null default '12:00',
   lunch_end time not null default '13:00',
   admin_token text not null unique,
@@ -48,6 +48,8 @@ create table if not exists meetings (
 alter table meetings add column if not exists agenda text not null default '';
 alter table meetings add column if not exists location text not null default '';
 alter table meetings add column if not exists response_deadline timestamptz;
+alter table meetings alter column workday_start set default '00:00';
+alter table meetings alter column workday_end set default '24:00';
 
 create table if not exists participants (
   id uuid primary key default gen_random_uuid(),
@@ -64,6 +66,10 @@ create table if not exists participants (
 
 -- 기존 배포(이미 participants 가 있는 경우)를 위한 멱등 마이그레이션.
 alter table participants add column if not exists memo text;
+alter table participants add column if not exists join_key text;
+create unique index if not exists participants_meeting_join_key_unique
+  on participants(meeting_id, join_key)
+  where join_key is not null;
 
 create table if not exists availability_blocks (
   id uuid primary key default gen_random_uuid(),

@@ -67,29 +67,29 @@ export function MeetingSummarySentence({
   // 문장을 절(clause) 단위로 구성한다(글자 채움의 절 사이 호흡 기준).
   const clauses: CharFillSegment[][] = [];
   clauses.push([
-    "이번 회의명은 ",
+    "일정 이름은 ",
     summaryValue(title),
     hasBatchim(title) ? " 이에요." : " 예요.",
   ]);
   if (agenda.trim() !== "") {
     clauses.push([
-      "회의 안건은 ",
+      "일정 내용은 ",
       summaryValue(agenda),
       hasBatchim(agenda) ? " 이에요." : " 예요.",
     ]);
   }
   if (location.trim() !== "") {
-    clauses.push(["회의 장소는 ", summaryValue(location), " 이고,"]);
+    clauses.push(["장소는 ", summaryValue(location), " 이고,"]);
   }
   {
-    const duration: CharFillSegment[] = ["예상 회의 진행 시간은 "];
+    const duration: CharFillSegment[] = ["예상 소요 시간은 "];
     if (showHours) duration.push(summaryValue(String(hours)), showMin ? " 시간 " : " 시간");
     if (showMin) duration.push(summaryValue(String(mins)), " 분");
     duration.push(" 이에요.");
     clauses.push(duration);
   }
   if (deadlineText !== "") {
-    clauses.push([summaryValue(deadlineText), " 까지는 회의를 마쳐야 해요."]);
+    clauses.push([summaryValue(deadlineText), " 까지 가능한 시간을 찾아볼게요."]);
   }
   if (responseDeadline) {
     clauses.push([

@@ -11,9 +11,9 @@ export function explainRecommendation(c: CandidateFacts): string {
 
   // 1) 필수 참석자
   if (c.requiredTotalCount > 0 && c.requiredAllAvailable) {
-    parts.push(`필수 참석자 ${c.requiredTotalCount}명이 모두 참석할 수 있어요`);
+    parts.push(`꼭 함께할 사람 ${c.requiredTotalCount}명이 모두 참여할 수 있어요`);
   } else if (c.requiredTotalCount > 0 && requiredPending > 0) {
-    parts.push(`필수 참석자 ${requiredPending}명이 아직 응답하지 않았어요`);
+    parts.push(`꼭 함께할 사람 ${requiredPending}명이 아직 응답하지 않았어요`);
   } else {
     parts.push(`지금까지의 응답으로 비교한 시간이에요`);
   }
@@ -21,9 +21,9 @@ export function explainRecommendation(c: CandidateFacts): string {
   // 2) 선택 참석자
   if (c.optionalTotalCount > 0) {
     if (c.busyOptionalCount === 0) {
-      parts.push(`선택 참석자 ${c.optionalAvailableCount}명도 참석할 수 있어요`);
+      parts.push(`함께하면 좋은 사람 ${c.optionalAvailableCount}명도 참여할 수 있어요`);
     } else {
-      parts.push(`선택 참석자 ${c.busyOptionalCount}명은 참석하기 어려워요`);
+      parts.push(`함께하면 좋은 사람 ${c.busyOptionalCount}명은 참여하기 어려워요`);
     }
   }
 

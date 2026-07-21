@@ -45,7 +45,7 @@ export default async function ConfirmedPage({
     <div className="min-h-dvh bg-white/95">
       <SiteHeader />
       <main className="mx-auto w-full max-w-2xl px-4 pb-10 pt-4 sm:px-6 sm:pt-6">
-        <MobileHeaderTitle title="확정된 회의" hideBack />
+        <MobileHeaderTitle title="정해진 일정" hideBack />
         {slot ? (
           <ConfirmedMeetingSummary
             meeting={meeting}
@@ -58,8 +58,8 @@ export default async function ConfirmedPage({
           <Card className="space-y-3 text-center">
             <CardTitle>아직 확정 전이에요</CardTitle>
             <p className="text-sm text-slate-600">
-              이 회의는 아직 시간이 확정되지 않았어요. 현재 플로우에서는 MOA가
-              회의 시간을 확정하지 않고, 추천안을 바탕으로 참여자들이 최종 시간을 정해요.
+              이 일정은 아직 시간이 정해지지 않았어요. 현재 흐름에서는 MOA가
+              시간을 대신 정하지 않고, 추천안을 바탕으로 참여자들이 최종 시간을 정해요.
             </p>
             <div>
               <Link href="/" className="text-sm font-semibold text-brand-600">

@@ -33,7 +33,7 @@
   "overrides": {
     "postcss": "$postcss"
   },
-  "description": "> 모두의 시간, 모두의 회의",
+  "description": "업무 회의부터 친구 약속까지 함께할 시간을 찾는 일정 조율 서비스",
   "main": "index.js",
   "directories": {
     "doc": "docs",

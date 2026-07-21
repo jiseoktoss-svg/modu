@@ -21,7 +21,7 @@ export function RoleTag({
         className,
       )}
     >
-      {isRequired ? "필수" : "선택"}
+      {isRequired ? "꼭 함께" : "함께하면 좋아요"}
     </span>
   );
 }

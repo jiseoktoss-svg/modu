@@ -13,6 +13,8 @@ import {
 import { MAX_MEMO_LENGTH, validateSubmittedBlocks } from "@/lib/scheduler";
 import {
   createDemoMeetingId,
+  createDemoSelfParticipant,
+  getDemoSelfParticipant,
   getDemoParticipants,
   isDemoMeetingId,
 } from "@/lib/demoMeeting";
@@ -25,27 +27,33 @@ import {
   MAX_MEETING_LOCATION_LENGTH,
   MAX_MEETING_PARTICIPANTS,
   MAX_MEETING_TITLE_LENGTH,
-  MIN_MEETING_PARTICIPANTS,
 } from "@/lib/meetingLimits";
+import {
+  normalizeParticipantName,
+  participantNameKey,
+  validateParticipantName,
+} from "@/lib/participantIdentity";
+import {
+  DISABLED_BREAK_END,
+  DISABLED_BREAK_START,
+  MAX_SCHEDULE_DURATION_MINUTES,
+  SCHEDULE_DAY_END,
+  SCHEDULE_DAY_START,
+} from "@/lib/schedulingPolicy";
 import type {
   FormState,
   LoadCalendarSnapshotArgs,
   LoadCalendarSnapshotResult,
   LoadResponseArgs,
   LoadResponseResult,
+  JoinMeetingArgs,
+  JoinMeetingResult,
   SubmitAvailabilityArgs,
   SubmitResult,
-  VerifyParticipantIdentityArgs,
-  VerifyParticipantIdentityResult,
 } from "@/lib/actionTypes";
 
-const MAX_ROLE_LENGTH = 40;
-const DEFAULT_WORKDAY_START = "09:00";
-const DEFAULT_WORKDAY_END = "18:00";
-const DISABLED_LUNCH_START = "00:00";
-const DISABLED_LUNCH_END = "00:01";
 const MEETING_STORAGE_ERROR_MESSAGE =
-  "회의 링크를 만드는 중에 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.";
+  "일정 링크를 만드는 중에 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.";
 
 function logMeetingStorageError(context: string, error: unknown) {
   console.error(`[meetings] ${context}`, error);
@@ -58,32 +66,6 @@ function getMeetingStorage() {
     logMeetingStorageError("failed to initialize Supabase client", error);
     return { ok: false as const, error: MEETING_STORAGE_ERROR_MESSAGE };
   }
-}
-
-interface ParticipantSeed {
-  name: string;
-  role: string;
-  attendanceType: "required" | "optional";
-}
-
-function parseParticipants(raw: string): ParticipantSeed[] {
-  try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((p): ParticipantSeed => ({
-        name: String(p?.name ?? "").trim(),
-        role: String(p?.role ?? "").trim(),
-        attendanceType: p?.attendanceType === "required" ? "required" : "optional",
-      }))
-      .filter((p) => p.name.length > 0);
-  } catch {
-    return [];
-  }
-}
-
-function normalizeIdentity(value: string) {
-  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("ko-KR");
 }
 
 // ---- 회의 생성 ----
@@ -112,37 +94,30 @@ export async function createMeeting(
   const responseDeadlineTime = String(formData.get("responseDeadlineTime") ?? "").trim();
   const dateStart = todayDateStrKst(new Date());
   const dateEnd = deadlineDate;
-  const workdayStart = DEFAULT_WORKDAY_START;
-  const workdayEnd = DEFAULT_WORKDAY_END;
-  const lunchStart = DISABLED_LUNCH_START;
-  const lunchEnd = DISABLED_LUNCH_END;
-  const participants = parseParticipants(String(formData.get("participants") ?? "[]"));
+  const workdayStart = SCHEDULE_DAY_START;
+  const workdayEnd = SCHEDULE_DAY_END;
+  const lunchStart = DISABLED_BREAK_START;
+  const lunchEnd = DISABLED_BREAK_END;
 
   // 검증
-  if (!title) return { error: "회의명을 입력해 주세요." };
+  if (!title) return { error: "일정 이름을 입력해 주세요." };
   if (rawTitle.length > MAX_MEETING_TITLE_LENGTH) {
-    return { error: `회의명은 최대 ${MAX_MEETING_TITLE_LENGTH}글자까지 입력할 수 있어요.` };
+    return { error: `일정 이름은 최대 ${MAX_MEETING_TITLE_LENGTH}글자까지 입력할 수 있어요.` };
   }
-  if (!agenda) return { error: "회의 안건을 입력해 주세요." };
+  if (!agenda) return { error: "일정 내용을 입력해 주세요." };
   if (rawAgenda.length > MAX_MEETING_AGENDA_LENGTH) {
-    return { error: `회의 안건은 최대 ${MAX_MEETING_AGENDA_LENGTH}글자까지 입력할 수 있어요.` };
+    return { error: `일정 내용은 최대 ${MAX_MEETING_AGENDA_LENGTH}글자까지 입력할 수 있어요.` };
   }
-  if (!location) return { error: "회의 장소를 입력해 주세요." };
+  if (!location) return { error: "장소를 입력해 주세요." };
   if (rawLocation.length > MAX_MEETING_LOCATION_LENGTH) {
-    return { error: `회의 장소는 최대 ${MAX_MEETING_LOCATION_LENGTH}글자까지 입력할 수 있어요.` };
-  }
-  if (participants.length < MIN_MEETING_PARTICIPANTS) {
-    return { error: `참석자를 ${MIN_MEETING_PARTICIPANTS}명 이상 선택해 주세요.` };
-  }
-  if (participants.length > MAX_MEETING_PARTICIPANTS) {
-    return { error: `참석자는 최대 ${MAX_MEETING_PARTICIPANTS}명까지 선택할 수 있어요.` };
+    return { error: `장소는 최대 ${MAX_MEETING_LOCATION_LENGTH}글자까지 입력할 수 있어요.` };
   }
   if (!deadlineDate) {
-    return { error: "회의 마감 날짜를 선택해 주세요." };
+    return { error: "일정 후보의 마지막 날을 선택해 주세요." };
   }
   const minDeadlineDate = addDaysToDateStr(dateStart, 2);
   if (deadlineDate < minDeadlineDate) {
-    return { error: "회의가 끝나야 하는 날은 오늘부터 이틀 뒤부터 고를 수 있어요." };
+    return { error: "일정 후보의 마지막 날은 오늘부터 이틀 뒤부터 고를 수 있어요." };
   }
 
   // 응답 마감일(날짜 + 시간). 폼에서 항상 전송되지만, 없으면 null 로 둔다(구버전 데모 링크 호환).
@@ -158,7 +133,7 @@ export async function createMeeting(
       return { error: "응답 마감 날짜는 오늘 이후로 선택해 주세요." };
     }
     if (responseDeadlineDate > addDaysToDateStr(dateEnd, -2)) {
-      return { error: "응답 마감 날짜는 회의 마감 날짜보다 이틀 이상 빨라야 해요." };
+      return { error: "응답 마감 날짜는 일정 후보의 마지막 날보다 이틀 이상 빨라야 해요." };
     }
     responseDeadline = kstWallToIso(responseDeadlineDate, parseHm(responseDeadlineTime || "18:00"));
   }
@@ -171,15 +146,17 @@ export async function createMeeting(
     !Number.isInteger(durationHours) ||
     !Number.isInteger(durationMinutePart)
   ) {
-    return { error: "회의 길이를 시간과 분으로 올바르게 입력해 주세요." };
+    return { error: "소요 시간을 시간과 분으로 올바르게 입력해 주세요." };
   }
   if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
-    return { error: "회의 길이를 1분 이상으로 입력해 주세요." };
+    return { error: "소요 시간을 1분 이상으로 입력해 주세요." };
   }
   const ws = parseHm(workdayStart);
   const we = parseHm(workdayEnd);
   if (!(ws < we)) return { error: "근무 시작 시간은 종료 시간보다 빨라야 해요." };
-  if (durationMinutes > we - ws) return { error: "회의 길이를 근무 시간 안으로 줄여 주세요." };
+  if (durationMinutes > MAX_SCHEDULE_DURATION_MINUTES) {
+    return { error: "진행 시간은 24시간 이내로 입력해 주세요." };
+  }
 
   if (process.env.NODE_ENV === "production" && !hasSupabaseConfig()) {
     const demoMeetingId = createDemoMeetingId({
@@ -194,7 +171,7 @@ export async function createMeeting(
       lunchStart,
       lunchEnd,
       responseDeadline,
-      participants,
+      participants: [],
     });
     redirect(`/meetings/${demoMeetingId}/share`);
   }
@@ -226,81 +203,97 @@ export async function createMeeting(
 
   if (meetingError || !meetingData) {
     logMeetingStorageError("failed to create meeting", meetingError);
-    return { error: "회의를 만들지 못했어요. 잠시 후 다시 시도해 주세요." };
+    return { error: "일정을 만들지 못했어요. 잠시 후 다시 시도해 주세요." };
   }
 
-  const meetingId = meetingData.id as string;
-  const participantRows = participants.map((p) => ({
-    meeting_id: meetingId,
-    name: p.name,
-    role: p.role,
-    attendance_type: p.attendanceType,
-    participant_token: generateToken(),
-  }));
-
-  const { error: participantError } = await sb.from("participants").insert(participantRows);
-  if (participantError) {
-    logMeetingStorageError("failed to insert participants", participantError);
-    return { error: "참석자를 저장하지 못했어요. 잠시 후 다시 시도해 주세요." };
-  }
-
-  redirect(`/meetings/${meetingId}/share`);
+  redirect(`/meetings/${meetingData.id as string}/share`);
 }
 
-// ---- 참석자 본인 확인 ----
+// ---- 링크 접속자 참여 등록 ----
 
-export async function verifyParticipantIdentity(
-  args: VerifyParticipantIdentityArgs,
-): Promise<VerifyParticipantIdentityResult> {
-  const name = normalizeIdentity(args.name);
-  const role = normalizeIdentity(args.role);
-  if (!name) return { ok: false, error: "이름을 입력해 주세요." };
-  if (!role) return { ok: false, error: "직무를 선택해 주세요." };
+export async function joinMeeting(args: JoinMeetingArgs): Promise<JoinMeetingResult> {
+  const nameError = validateParticipantName(args.name);
+  if (nameError) return { ok: false, error: nameError };
+  const name = normalizeParticipantName(args.name);
+  const joinKey = participantNameKey(name);
 
   const meeting = await fetchMeeting(args.meetingId);
-  if (!meeting) return { ok: false, error: "회의를 찾지 못했어요." };
+  if (!meeting) return { ok: false, error: "일정을 찾지 못했어요." };
   if (meeting.confirmedSlotId) {
-    return { ok: false, error: "이미 확정된 회의라 응답할 수 없어요." };
+    return { ok: false, error: "이미 시간이 정해진 일정이라 응답할 수 없어요." };
   }
 
-  // 평가용 우회 계정 — 서지석/프로덕트 디자이너는 참석자 명단과 무관하게 항상 통과한다.
-  // (과제 평가자가 어떤 회의 링크에서도 응답 흐름을 확인할 수 있게. 본인확인 툴팁에 안내됨.)
-  const isReviewerBypass =
-    name === normalizeIdentity("서지석") &&
-    [normalizeIdentity("프로덕트 디자이너"), normalizeIdentity("프로젝트 디자이너")].includes(
-      role,
-    );
-
-  const participants = await fetchParticipants(args.meetingId);
-  const matched = participants.find(
-    (p) => normalizeIdentity(p.name) === name && normalizeIdentity(p.role) === role,
-  );
-  // 우회 계정이 명단에 없으면 첫 참석자 자격으로 응답 흐름을 진행한다(평가 편의).
-  const participant = matched ?? (isReviewerBypass ? participants[0] : undefined);
-
-  if (!participant) {
-    return { ok: false, error: "입력한 이름과 직무가 참석자 명단과 달라요. 다시 확인해 주세요." };
-  }
-
-  const hasValidToken =
-    args.token != null &&
-    args.token.length > 0 &&
-    args.token === participant.participantToken;
-
-  if (!isReviewerBypass && participant.responseStatus === "submitted" && !hasValidToken) {
+  if (isDemoMeetingId(args.meetingId)) {
+    const participant = createDemoSelfParticipant(args.meetingId, name);
+    if (!participant) return { ok: false, error: "일정에 참여하지 못했어요." };
     return {
-      ok: false,
-      error: "이미 응답한 참석자예요. 처음 응답했던 브라우저에서만 수정할 수 있어요.",
+      ok: true,
+      participantId: participant.id,
+      name: participant.name,
+      role: participant.role,
+      attendanceType: participant.attendanceType,
+      responseStatus: participant.responseStatus,
+      token: participant.participantToken,
     };
   }
 
+  const participants = await fetchParticipants(args.meetingId);
+  const existing = participants.find((participant) => participantNameKey(participant.name) === joinKey);
+  if (existing) {
+    // 기존 방식으로 미리 등록된 일정은 역할 값이 있다. 아직 응답 전이면 이름만으로 참여를 이어간다.
+    if (existing.role.trim() && existing.responseStatus === "pending") {
+      return {
+        ok: true,
+        participantId: existing.id,
+        name: existing.name,
+        role: existing.role,
+        attendanceType: existing.attendanceType,
+        responseStatus: existing.responseStatus,
+        token: existing.participantToken,
+      };
+    }
+    return { ok: false, error: "이미 사용 중인 이름이에요. 구분되는 별명을 입력해 주세요." };
+  }
+
+  if (participants.length >= MAX_MEETING_PARTICIPANTS) {
+    return { ok: false, error: `이 일정에는 최대 ${MAX_MEETING_PARTICIPANTS}명까지 참여할 수 있어요.` };
+  }
+
+  const storage = getMeetingStorage();
+  if (!storage.ok) return { ok: false, error: storage.error };
+  const participantToken = generateToken();
+  const { data, error } = await storage.sb
+    .from("participants")
+    .insert({
+      meeting_id: args.meetingId,
+      name,
+      role: "",
+      attendance_type: "optional",
+      response_status: "pending",
+      participant_token: participantToken,
+      join_key: joinKey,
+    })
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    const duplicate = (error as { code?: string } | null)?.code === "23505";
+    if (duplicate) {
+      return { ok: false, error: "이미 사용 중인 이름이에요. 구분되는 별명을 입력해 주세요." };
+    }
+    logMeetingStorageError("failed to join meeting", error);
+    return { ok: false, error: "일정에 참여하지 못했어요. 잠시 후 다시 시도해 주세요." };
+  }
+
+  const participant = data as ParticipantRow;
   return {
     ok: true,
     participantId: participant.id,
     name: participant.name,
     role: participant.role,
-    responseStatus: participant.responseStatus,
-    token: participant.participantToken,
+    attendanceType: participant.attendance_type,
+    responseStatus: participant.response_status,
+    token: participant.participant_token,
   };
 }
 
@@ -310,9 +303,6 @@ export async function submitAvailability(args: SubmitAvailabilityArgs): Promise<
   if ((args.memo ?? "").length > MAX_MEMO_LENGTH) {
     return { ok: false, error: "메모가 너무 길어요." };
   }
-  if ((args.role ?? "").length > MAX_ROLE_LENGTH) {
-    return { ok: false, error: "역할이 너무 길어요." };
-  }
 
   if (isDemoMeetingId(args.meetingId)) {
     const meeting = await fetchMeeting(args.meetingId);
@@ -321,7 +311,7 @@ export async function submitAvailability(args: SubmitAvailabilityArgs): Promise<
       args.participantId,
       args.token ?? "",
     );
-    if (!meeting || !participant) return { ok: false, error: "참석자를 찾지 못했어요." };
+    if (!meeting || !participant) return { ok: false, error: "참여자를 찾지 못했어요." };
 
     const blockCheck = validateSubmittedBlocks(toSchedulerMeeting(meeting), args.blocks);
     if (!blockCheck.ok) return { ok: false, error: blockCheck.reason };
@@ -332,9 +322,9 @@ export async function submitAvailability(args: SubmitAvailabilityArgs): Promise<
   const sb = getSupabaseAdmin();
 
   const meeting = await fetchMeeting(args.meetingId);
-  if (!meeting) return { ok: false, error: "회의를 찾지 못했어요." };
+  if (!meeting) return { ok: false, error: "일정을 찾지 못했어요." };
   if (meeting.confirmedSlotId) {
-    return { ok: false, error: "이미 확정된 회의는 응답을 수정할 수 없어요." };
+    return { ok: false, error: "이미 시간이 정해진 일정은 응답을 수정할 수 없어요." };
   }
 
   const { data: pData, error: pErr } = await sb
@@ -342,7 +332,7 @@ export async function submitAvailability(args: SubmitAvailabilityArgs): Promise<
     .select("*")
     .eq("id", args.participantId)
     .maybeSingle();
-  if (pErr || !pData) return { ok: false, error: "참석자를 찾지 못했어요." };
+  if (pErr || !pData) return { ok: false, error: "참여자를 찾지 못했어요." };
 
   const participant = pData as ParticipantRow;
   if (participant.meeting_id !== args.meetingId) {
@@ -385,10 +375,9 @@ export async function submitAvailability(args: SubmitAvailabilityArgs): Promise<
 
   // 메모는 블록 유무와 무관하게 참석자 레코드에 저장한다(빈 시간표여도 메모 보존).
   const memo = args.memo?.trim() || null;
-  const role = args.role?.trim() ?? participant.role;
   const { error: updErr } = await sb
     .from("participants")
-    .update({ response_status: "submitted", role, memo, updated_at: new Date().toISOString() })
+    .update({ response_status: "submitted", memo, updated_at: new Date().toISOString() })
     .eq("id", args.participantId);
   if (updErr) return { ok: false, error: "응답을 저장하지 못했어요." };
 
@@ -407,7 +396,12 @@ export async function loadParticipantResponse(
   if (isDemoMeetingId(args.meetingId)) {
     const participant = await assertParticipantToken(args.meetingId, args.participantId, args.token);
     return participant
-      ? { ok: true, blocks: [], memo: null }
+      ? {
+          ok: true,
+          blocks: [],
+          memo: null,
+          responseStatus: participant.response_status,
+        }
       : { ok: false, error: "권한이 없어요." };
   }
 
@@ -417,7 +411,7 @@ export async function loadParticipantResponse(
     .select("*")
     .eq("id", args.participantId)
     .maybeSingle();
-  if (!pData) return { ok: false, error: "참석자를 찾지 못했어요." };
+  if (!pData) return { ok: false, error: "참여자를 찾지 못했어요." };
 
   const participant = pData as ParticipantRow;
   if (participant.meeting_id !== args.meetingId || participant.participant_token !== args.token) {
@@ -434,6 +428,7 @@ export async function loadParticipantResponse(
       note: b.note,
     })),
     memo: participant.memo ?? null,
+    responseStatus: participant.response_status,
   };
 }
 
@@ -452,7 +447,7 @@ export async function loadCalendarSnapshot(
     fetchParticipants(args.meetingId),
     fetchBlocks(args.meetingId),
   ]);
-  if (!meeting) return { ok: false, error: "회의를 찾지 못했어요." };
+  if (!meeting) return { ok: false, error: "일정을 찾지 못했어요." };
 
   return {
     ok: true,
@@ -481,7 +476,7 @@ async function assertParticipantToken(
   if (demoParticipants) {
     const participant = demoParticipants.find(
       (p) => p.id === participantId && p.participantToken === token,
-    );
+    ) ?? getDemoSelfParticipant(meetingId, participantId, token);
     if (!participant) return null;
     return {
       id: participant.id,

@@ -1,8 +1,8 @@
 import "server-only";
 
+import { createHash } from "crypto";
 import {
   MAX_MEETING_PARTICIPANTS,
-  MIN_MEETING_PARTICIPANTS,
 } from "@/lib/meetingLimits";
 import { addDaysToDateStr } from "@/lib/time";
 import type { Meeting, Participant } from "@/lib/types";
@@ -98,7 +98,6 @@ function parseDemoMeetingPayload(meetingId: string): DemoMeetingPayload | null {
     !isTimeString(payload.lunchStart) ||
     !isTimeString(payload.lunchEnd) ||
     !Array.isArray(payload.participants) ||
-    payload.participants.length < MIN_MEETING_PARTICIPANTS ||
     payload.participants.length > MAX_MEETING_PARTICIPANTS
   ) {
     return null;
@@ -180,4 +179,43 @@ export function getDemoParticipants(meetingId: string): Participant[] | null {
     createdAt: `${payload.dateStart}T00:00:00+09:00`,
     updatedAt: `${payload.dateStart}T00:00:00+09:00`,
   }));
+}
+
+function demoSelfToken(meetingId: string, participantId: string): string {
+  return createHash("sha256").update(`${meetingId}:${participantId}:modu-demo`).digest("hex");
+}
+
+export function createDemoSelfParticipant(meetingId: string, name: string): Participant | null {
+  const meeting = getDemoMeeting(meetingId);
+  if (!meeting) return null;
+  const participantId = `demo-self-${encodeBase64Url(name)}`;
+  return {
+    id: participantId,
+    meetingId,
+    name,
+    role: "",
+    attendanceType: "optional",
+    responseStatus: "pending",
+    participantToken: demoSelfToken(meetingId, participantId),
+    memo: null,
+    createdAt: meeting.createdAt,
+    updatedAt: meeting.createdAt,
+  };
+}
+
+export function getDemoSelfParticipant(
+  meetingId: string,
+  participantId: string,
+  token: string,
+): Participant | null {
+  const prefix = "demo-self-";
+  if (!participantId.startsWith(prefix)) return null;
+  if (demoSelfToken(meetingId, participantId) !== token) return null;
+  let name: string;
+  try {
+    name = decodeBase64Url(participantId.slice(prefix.length));
+  } catch {
+    return null;
+  }
+  return createDemoSelfParticipant(meetingId, name);
 }

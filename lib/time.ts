@@ -29,6 +29,9 @@ export function formatHm(minutes: number): string {
  * 예: ("2026-07-01", 840) -> "2026-07-01T14:00:00+09:00"
  */
 export function kstWallToIso(dateStr: string, minutesSinceMidnight: number): string {
+  if (minutesSinceMidnight === 24 * 60) {
+    return `${addDaysToDateStr(dateStr, 1)}T00:00:00+09:00`;
+  }
   const h = Math.floor(minutesSinceMidnight / 60);
   const m = minutesSinceMidnight % 60;
   return `${dateStr}T${pad2(h)}:${pad2(m)}:00+09:00`;

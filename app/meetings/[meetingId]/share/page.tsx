@@ -22,7 +22,7 @@ export default async function SharePage({
       <div className="flex min-h-dvh flex-col bg-white/95">
         <SiteHeader />
         <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 sm:px-6">
-          <MobileHeaderTitle title="회의 만들기" hideBack />
+          <MobileHeaderTitle title="일정 만들기" hideBack />
           <MeetingShareError />
         </main>
       </div>
@@ -38,7 +38,7 @@ export default async function SharePage({
       <div className="flex min-h-dvh flex-col bg-white/95">
         <SiteHeader />
         <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 sm:px-6">
-          <MobileHeaderTitle title="회의 만들기" hideBack />
+          <MobileHeaderTitle title="일정 만들기" hideBack />
           <MeetingShareError />
         </main>
       </div>

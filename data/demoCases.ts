@@ -57,7 +57,7 @@ export type DemoCase = {
   recurringBusy?: DemoBusyBlock[];
   /** 날짜별로 회전시키는 하루 busy 프로필. 후보 순위가 아니라 날짜 상세/시간 검색의 재료다. */
   dailyBusyPatterns?: DemoBusyBlock[][];
-  /** 케이스 슬롯이 없는 나머지 미래 평일을 전원 가능 후보로 채울지 여부. 기본값은 true. */
+  /** 케이스 슬롯이 없는 나머지 미래 날짜를 전원 가능 후보로 채울지 여부. 기본값은 true. */
   fillRemainingDates?: boolean;
   /** 자동으로 채우는 전원 가능 후보의 최대 개수. fillRemainingDates:false이면 무시된다. */
   maxFillerSlots?: number;
@@ -72,12 +72,12 @@ const SPREAD_PATTERN_MAX_SLOTS = 12;
 const ISSUE_START_VARIANTS = [H(10), H(14), H(11), H(15), H(13), H(16), H(9), H(12)];
 
 // 데모 캘린더가 샘플 데이터처럼 보이지 않도록, 피하면 좋은 날은 앞쪽에 몰지 않고
-// 회의 기간 안에서 띄엄띄엄 배치한다. dateIndex 는 미래 평일 목록 기준이다.
+// 일정 기간 안에서 띄엄띄엄 배치한다. dateIndex 는 미래 날짜 목록 기준이다.
 export const DEMO_CASES: DemoCase[] = [
   {
     id: 1,
     title: "전원이 가능한 날짜가 여러 개 있음",
-    situation: "모든 인원이 참석할 수 있는 날짜가 여러 개 있어요.",
+    situation: "모두가 참여할 수 있는 날짜가 여러 개 있어요.",
     judgment:
       "전원이 가능한 날짜를 과장된 순위로 나누지 않고, 달력의 추천도 점과 날짜 상세에서 전체 가능 상태를 함께 보여줘요.",
     banner: {
@@ -105,7 +105,7 @@ export const DEMO_CASES: DemoCase[] = [
     id: 2,
     title: "6명 모두 일정이 빽빽함",
     situation:
-      "6명 모두 하루 중 회의가 어려운 시간이 있고, 이번 기간에는 전원이 동시에 비는 시간이 거의 없어요.",
+      "6명 모두 하루 중 참여가 어려운 시간이 있고, 이번 기간에는 모두가 동시에 비는 시간이 거의 없어요.",
     judgment:
       "전원이 가능한 시간이 있으면 가장 빠른 날짜와 시간을 먼저 안내해요. 날짜 상세에서는 좋은 시간이 더 많을 땐 피해야 하는 시간만 짚어줘요.",
     banner: {
@@ -172,11 +172,11 @@ export const DEMO_CASES: DemoCase[] = [
   },
   {
     id: 3,
-    title: "필수참석자 가능 vs 선택참석자 가능 충돌",
+    title: "꼭 함께할 사람과 함께하면 좋은 사람의 조건 충돌",
     situation:
-      "필수참석자는 다 되지만 선택참석자가 빠지는 날과, 선택참석자는 다 되지만 필수참석자 1명이 어려운 날이 같이 있어요.",
+      "꼭 함께할 사람은 다 되지만 함께하면 좋은 사람이 빠지는 날과, 그 반대인 날이 같이 있어요.",
     judgment:
-      "선택참석자가 더 많이 가능해도 필수참석자가 어려운 날짜는 조심해서 보여줘요. 필수참석자가 모두 가능한 날짜를 우선 기준으로 봐요.",
+      "참여 가능한 사람이 더 많아도 꼭 함께할 사람이 어려운 날짜는 조심해서 보여줘요. 꼭 함께할 사람이 모두 가능한 날짜를 우선 기준으로 봐요.",
     submitted: 6,
     pendingNames: [],
     maxFillerSlots: 1,
@@ -202,7 +202,7 @@ export const DEMO_CASES: DemoCase[] = [
     id: 4,
     title: "특정 시간대만 늘 어려움",
     situation:
-      "김지훈님(필수참석자)이 매일 13:00~14:00에는 회의가 어려워요. 날짜 전체가 아니라 그 시간대만 피하면 돼요.",
+      "김지훈님(꼭 함께할 사람)이 매일 13:00~14:00에는 참여가 어려워요. 날짜 전체가 아니라 그 시간대만 피하면 돼요.",
     judgment:
       "날짜를 통째로 제외하지 않아요. 보조 문장과 날짜 상세에서 매일 반복되는 시간대만 피하면 된다고 안내해요.",
     banner: {
@@ -216,13 +216,13 @@ export const DEMO_CASES: DemoCase[] = [
   },
   {
     id: 5,
-    title: "일부 날짜에 필수참석자 1명이 빠짐",
-    situation: "몇몇 날짜는 특정 시간에 필수참석자 1명이 참석하기 어려워요.",
+    title: "일부 날짜에 꼭 함께할 사람 1명이 빠짐",
+    situation: "몇몇 날짜는 특정 시간에 꼭 함께할 사람 1명이 참여하기 어려워요.",
     judgment:
-      "필수참석자가 어려운 날짜는 추천도 점과 상세 문구에서 조심해서 보여줘요. 날짜를 누르면 누가 어느 시간에 어려운지 확인할 수 있어요.",
+      "꼭 함께할 사람이 어려운 날짜는 추천도 점과 상세 문구에서 조심해서 보여줘요. 날짜를 누르면 누가 어느 시간에 어려운지 확인할 수 있어요.",
     banner: {
       tone: "caution",
-      text: "필수참석자가 어려운 날짜는 피하면 좋은 날짜로 표시돼요.",
+      text: "꼭 함께할 사람이 어려운 날짜는 피하면 좋은 날짜로 표시돼요.",
     },
     submitted: 6,
     pendingNames: [],
@@ -242,13 +242,13 @@ export const DEMO_CASES: DemoCase[] = [
   },
   {
     id: 6,
-    title: "일부 날짜에 필수참석자 2명 이상이 빠짐",
-    situation: "몇몇 날짜는 특정 시간에 필수참석자 2명 이상이 참석하기 어려워요.",
+    title: "일부 날짜에 꼭 함께할 사람 2명 이상이 빠짐",
+    situation: "몇몇 날짜는 특정 시간에 꼭 함께할 사람 2명 이상이 참여하기 어려워요.",
     judgment:
-      "필수참석자 여러 명이 어려운 시간은 먼저 피해야 하는 시간으로 알려줘요. 가능한 대안 날짜는 추천도 점과 날짜 상세에서 비교할 수 있어요.",
+      "꼭 함께할 사람 여러 명이 어려운 시간은 먼저 피해야 하는 시간으로 알려줘요. 가능한 대안 날짜는 추천도 점과 날짜 상세에서 비교할 수 있어요.",
     banner: {
       tone: "danger",
-      text: "빨간 날짜는 필수참석자 여러 명이 참석하기 어려워요. 그 날짜는 피하는 게 좋아요.",
+      text: "빨간 날짜는 꼭 함께할 사람 여러 명이 참여하기 어려워요. 그 날짜는 피하는 게 좋아요.",
     },
     submitted: 6,
     pendingNames: [],
@@ -269,9 +269,9 @@ export const DEMO_CASES: DemoCase[] = [
   {
     id: 7,
     title: "미응답자가 있어 잠정 결과만 보여줌",
-    situation: "참석자 6명 중 2명이 아직 응답하지 않았어요. 그중 1명(최수아)은 필수참석자예요.",
+    situation: "참여자 6명 중 2명이 아직 응답하지 않았어요. 그중 1명(최수아)은 꼭 함께할 사람이에요.",
     judgment:
-      "확정처럼 말하지 않고 잠정 결과로 보여줘요. 미응답자는 가능 인원으로 세지 않아 필수참석자가 모두 가능하다고 과장하지 않아요.",
+      "확정처럼 말하지 않고 잠정 결과로 보여줘요. 미응답자는 가능 인원으로 세지 않아 꼭 함께할 사람이 모두 가능하다고 과장하지 않아요.",
     banner: {
       tone: "caution",
       text: "아직 응답하지 않은 사람이 있어 잠정 결과만 보여줘요. 모두 응답하면 MOA가 가장 나은 시간을 찾아드려요.",
@@ -312,24 +312,17 @@ export type CaseCandidate = {
   reason: string;
 };
 
-function isWeekendDateStr(dateStr: string): boolean {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  return weekday === 0 || weekday === 6;
-}
-
-// 데모 후보는 항상 '오늘 이후 평일'로 노출한다(주말은 회의 대상이 아님).
-// 회의 기간(dates)에서 오늘까지의 날짜·주말을 제외하고, 남은 날이 없으면
-// (기간이 이미 지난 링크) 내일 이후의 평일 4일로 대체한다.
+// 데모 후보는 요일과 관계없이 오늘 이후 날짜를 사용한다.
+// 기간이 이미 지난 링크라면 내일부터 4일을 대체 날짜로 만든다.
 export function resolveDemoDates(dates: string[]): string[] {
   const today = todayDateStrKst();
-  const future = dates.filter((d) => d > today && !isWeekendDateStr(d));
+  const future = dates.filter((d) => d > today);
   if (future.length > 0) return future;
   const fallback: string[] = [];
   let cursor = today;
   while (fallback.length < 4) {
     cursor = addDaysToDateStr(cursor, 1);
-    if (!isWeekendDateStr(cursor)) fallback.push(cursor);
+    fallback.push(cursor);
   }
   return fallback;
 }
@@ -427,7 +420,7 @@ export function buildCaseCandidates(c: DemoCase, dates: string[]): CaseCandidate
   const pending = new Set(c.pendingNames);
   const caseSlots = buildCaseSlotsForDates(c, demoDates);
 
-  // 케이스 슬롯이 없는 나머지 미래 평일은 불가 입력이 없는 날 = '전원 가능' 후보로 그대로 올린다.
+  // 케이스 슬롯이 없는 나머지 미래 날짜는 불가 입력이 없는 날 = '전원 가능' 후보로 그대로 올린다.
   const usedIdx = new Set(
     caseSlots.map((s) => Math.max(0, Math.min(s.dateIndex, demoDates.length - 1))),
   );

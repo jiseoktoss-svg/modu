@@ -33,7 +33,7 @@ describe("summarizeDateAvailability", () => {
 
     expect(summary.totalSlots).toBeGreaterThan(0);
     expect(summary.allSlotsAllAvailable).toBe(true);
-    expect(summary.headline).toContain("회의 가능 시간대 전체");
+    expect(summary.headline).toContain("선택 가능한 모든 시간대");
     expect(summary.exceptionRanges).toHaveLength(0);
   });
 
@@ -85,7 +85,7 @@ describe("summarizeDateAvailability", () => {
     expect(summary.allSlotsAllAvailable).toBe(false);
     expect(summary.requiredIssueSlots).toHaveLength(0);
     expect(summary.optionalIssueSlots.length).toBeGreaterThan(0);
-    expect(summary.headline).toContain("대부분 시간에 모든 인원이 참석할 수 있어요");
+    expect(summary.headline).toContain("대부분 시간에 모두가 참여할 수 있어요");
     expect(summary.comment).toContain("한예린님");
 
     // 예외는 후보 슬롯 병합이 아니라 '실제 busy 시각' 그대로 — 한예린 14:00~15:00 블록이
@@ -103,7 +103,7 @@ describe("summarizeDateAvailability", () => {
     });
 
     expect(summary.requiredIssueSlots.length).toBeGreaterThan(0);
-    expect(summary.headline).toContain("일부 시간에 필수참석자가 참석하기 어려워요");
+    expect(summary.headline).toContain("일부 시간에 꼭 함께할 사람이 참여하기 어려워요");
     expect(summary.comment).toContain("김지훈님");
     expect(summary.comment).toContain("피하는 게 좋아요");
     expect(summary.exceptionRanges[0].reason).toBe("requiredBusy");
@@ -120,7 +120,7 @@ describe("summarizeDateAvailability", () => {
     expect(summary.headline).toContain("모든 인원이 맞는 시간이 없어요");
     // 필수참석자는 전 시간 가능하다는 점을 함께 알려준다.
     expect(summary.allSlotsRequiredAvailable).toBe(true);
-    expect(summary.comment).toContain("필수참석자는 모든 시간에 참석할 수 있어요");
+    expect(summary.comment).toContain("꼭 함께할 사람은 모든 시간에 참여할 수 있어요");
   });
 
   it("5. 미응답자가 있으면 잠정 결과 수식어가 붙는다", () => {

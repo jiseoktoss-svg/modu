@@ -25,14 +25,14 @@ export function ConfirmedMeetingSummary({
     <div className="space-y-4">
       <Card className="space-y-4">
         <div className="space-y-1">
-          <span className="text-sm font-semibold text-brand-600">확정된 회의</span>
+          <span className="text-sm font-semibold text-brand-600">정해진 일정</span>
           <CardTitle className="text-xl">{meeting.title}</CardTitle>
         </div>
 
         <dl className="space-y-3 text-sm">
           {meeting.agenda && (
             <div className="flex items-center gap-3">
-              <dt className="w-5 text-slate-400">안건</dt>
+              <dt className="w-5 text-slate-400">내용</dt>
               <dd className="font-medium text-slate-800">{meeting.agenda}</dd>
             </div>
           )}
@@ -64,12 +64,12 @@ export function ConfirmedMeetingSummary({
           </div>
           <div className="flex items-center gap-3">
             <Emoji symbol="🛡️" size={18} />
-            <dt className="sr-only">필수 참석자 충족 여부</dt>
+            <dt className="sr-only">꼭 함께할 사람의 참여 가능 여부</dt>
             <dd>
               <Badge tone={requiredAllAvailable ? "green" : "amber"}>
                 {requiredAllAvailable
-                  ? "필수 참석자 모두 참석 가능"
-                  : "필수 참석자 일부 미응답·불가"}
+                  ? "꼭 함께할 사람 모두 참여 가능"
+                  : "꼭 함께할 사람 일부 미응답·참여 어려움"}
               </Badge>
             </dd>
           </div>

@@ -73,13 +73,13 @@ const TRACKING_EVENT_NAMES = new Set<string>(["page_view", "screen_view"]);
 
 const MEETING_CREATION_FUNNEL = [
   { key: "landing", label: "랜딩 방문", pageLabel: "랜딩" },
-  { key: "new_meeting", label: "회의 만들기 진입", pageLabel: "회의 만들기" },
+  { key: "new_meeting", label: "일정 만들기 진입", pageLabel: "일정 만들기" },
   { key: "share", label: "공유 화면 도달", pageLabel: "공유 화면" },
 ] as const;
 
 const RESPONSE_FUNNEL = [
-  { key: "response_intro", label: "참석자 안내", pageLabel: "참석자 안내 화면" },
-  { key: "response_identity", label: "본인 확인", pageLabel: "본인 확인 화면" },
+  { key: "response_intro", label: "참여자 안내", pageLabel: "참여자 안내 화면" },
+  { key: "response_identity", label: "일정 참여", pageLabel: "일정 참여 화면" },
   { key: "availability_input", label: "가능 시간 입력", pageLabel: "가능 시간 입력 화면" },
   { key: "response_review", label: "응답 확인", pageLabel: "응답 확인 화면" },
   { key: "response_waiting", label: "응답 대기", pageLabel: "응답 대기 화면" },
@@ -105,7 +105,7 @@ export function getTrackingPageMeta(pathname: string, screenName?: string | null
   if (screenName === "response_intro") {
     return {
       pagePath,
-      pageLabel: "참석자 안내 화면",
+      pageLabel: "참여자 안내 화면",
       meetingId: segments[0] === "m" ? segments[1] ?? null : null,
     };
   }
@@ -113,7 +113,7 @@ export function getTrackingPageMeta(pathname: string, screenName?: string | null
   if (screenName === "response_identity") {
     return {
       pagePath,
-      pageLabel: "본인 확인 화면",
+      pageLabel: "일정 참여 화면",
       meetingId: segments[0] === "m" ? segments[1] ?? null : null,
     };
   }
@@ -147,11 +147,11 @@ export function getTrackingPageMeta(pathname: string, screenName?: string | null
   }
 
   if (pagePath === "/meetings/new") {
-    return { pagePath, pageLabel: "회의 만들기", meetingId: null };
+    return { pagePath, pageLabel: "일정 만들기", meetingId: null };
   }
 
   if (segments[0] === "m" && segments[1]) {
-    return { pagePath, pageLabel: "참석자 응답", meetingId: segments[1] };
+    return { pagePath, pageLabel: "참여자 응답", meetingId: segments[1] };
   }
 
   if (segments[0] === "meetings" && segments[1] && segments[2] === "share") {
@@ -159,7 +159,7 @@ export function getTrackingPageMeta(pathname: string, screenName?: string | null
   }
 
   if (segments[0] === "meetings" && segments[1] && segments[2] === "confirmed") {
-    return { pagePath, pageLabel: "확정 회의 화면", meetingId: segments[1] };
+    return { pagePath, pageLabel: "정해진 일정 화면", meetingId: segments[1] };
   }
 
   return { pagePath, pageLabel: pagePath, meetingId: null };
@@ -215,8 +215,8 @@ export function buildTrackingSummary(events: TrackingEvent[], now = new Date()):
     meetingCreationFunnel,
     responseFunnel,
     dropOffRows: buildDropOffRows([
-      { label: "회의 생성", steps: meetingCreationFunnel },
-      { label: "참석자 응답", steps: responseFunnel },
+      { label: "일정 생성", steps: meetingCreationFunnel },
+      { label: "참여자 응답", steps: responseFunnel },
     ]),
     deviceVisitorCounts: countUniqueVisitorsBy(events, deviceTypeLabel),
     trafficSourceCounts: countFirstTouchTrafficSources(events),

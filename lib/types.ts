@@ -103,6 +103,7 @@ export interface ParticipantRow {
   attendance_type: AttendanceType;
   response_status: ResponseStatus;
   participant_token: string;
+  join_key?: string | null;
   memo: string | null;
   created_at: string;
   updated_at: string;

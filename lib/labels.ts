@@ -19,6 +19,6 @@ export const IMPACT_STATUS_LABEL: Record<ImpactStatus, string> = {
 };
 
 export const ATTENDANCE_LABEL: Record<AttendanceType, string> = {
-  required: "필수",
-  optional: "선택",
+  required: "꼭 함께",
+  optional: "함께하면 좋아요",
 };

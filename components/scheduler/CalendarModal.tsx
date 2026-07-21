@@ -69,9 +69,8 @@ function SelectableCalendarGrid({
           const ds = cell.date;
           const d = cell.day;
           const dow = cell.weekday;
-          const isWeekend = dow === 0 || dow === 6;
           const blocked = blockedDates?.has(ds) ?? false;
-          const inRange = validSet.has(ds) && !isWeekend;
+          const inRange = validSet.has(ds);
           const enabled = inRange && !blocked;
           const isSel = selected.has(ds);
           return (

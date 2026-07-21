@@ -1,4 +1,5 @@
 import { eachDateInRange, kstWallToIso, parseHm } from "@/lib/time";
+import { isBreakWindowEnabled } from "@/lib/schedulingPolicy";
 import type { SchedulerMeeting } from "./types";
 
 export interface RawSlot {
@@ -11,7 +12,7 @@ export const SLOT_STEP_MINUTES = 30;
 /**
  * 후보 슬롯을 생성한다.
  * - 회의 날짜 범위 내 모든 날짜
- * - 근무 시간 안에서만 (slotEnd <= workdayEnd)
+ * - 설정된 하루 시간 범위 안에서만 (slotEnd <= workdayEnd)
  * - 30분 단위 시작
  * - 점심 시간과 겹치는 슬롯은 제외
  */
@@ -20,6 +21,7 @@ export function generateSlots(meeting: SchedulerMeeting): RawSlot[] {
   const workEnd = parseHm(meeting.workdayEnd);
   const lunchStart = parseHm(meeting.lunchStart);
   const lunchEnd = parseHm(meeting.lunchEnd);
+  const excludeBreak = isBreakWindowEnabled(meeting.lunchStart, meeting.lunchEnd);
   const duration = meeting.durationMinutes;
 
   const slots: RawSlot[] = [];
@@ -33,7 +35,7 @@ export function generateSlots(meeting: SchedulerMeeting): RawSlot[] {
     ) {
       const end = start + duration;
       // 점심 시간과 겹치면 제외.
-      if (start < lunchEnd && lunchStart < end) continue;
+      if (excludeBreak && start < lunchEnd && lunchStart < end) continue;
       slots.push({
         startAt: kstWallToIso(date, start),
         endAt: kstWallToIso(date, end),

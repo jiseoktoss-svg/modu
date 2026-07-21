@@ -118,7 +118,7 @@ describe("buildRecommendationBrief", () => {
     expect(brief.primarySentence).toContain("가장 나은 날짜");
     expect(brief.avoidItems.length).toBeGreaterThanOrEqual(1);
     expect(brief.avoidSentence).toBeDefined();
-    expect(brief.avoidSentence).toContain("필수참석자");
+    expect(brief.avoidSentence).toContain("꼭 함께할 사람");
     expect(brief.avoidSentence).toContain("피하는 게 좋아요");
   });
 
@@ -140,7 +140,7 @@ describe("buildRecommendationBrief", () => {
     const brief = briefForCase(4, 3);
 
     expect(brief.avoidSentence).toBeDefined();
-    expect(brief.avoidSentence).toContain("필수참석자");
+    expect(brief.avoidSentence).toContain("꼭 함께할 사람");
     expect(brief.avoidSentence).toContain("피하는 게 좋아요");
   });
 

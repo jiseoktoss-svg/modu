@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { generateSlots } from "@/lib/scheduler/generateSlots";
 import { recommendSlots } from "@/lib/scheduler";
+import { kstWallToIso } from "@/lib/time";
 import type {
   SchedulerBlock,
   SchedulerInput,
@@ -62,6 +63,35 @@ describe("generateSlots", () => {
     const slots = generateSlots(BASE_MEETING);
     expect(slots.some((s) => s.startAt === iso("17:00"))).toBe(true); // 17:00~18:00
     expect(slots.some((s) => s.startAt === iso("17:30"))).toBe(false); // 17:30~18:30 (초과)
+  });
+
+  it("하루 전체 범위에서는 자정부터 밤 11시까지 후보를 만든다", () => {
+    const fullDayMeeting: SchedulerMeeting = {
+      ...BASE_MEETING,
+      workdayStart: "00:00",
+      workdayEnd: "24:00",
+      lunchStart: "00:00",
+      lunchEnd: "00:01",
+    };
+    const slots = generateSlots(fullDayMeeting);
+
+    expect(slots.some((s) => s.startAt === iso("00:00"))).toBe(true);
+    expect(slots.some((s) => s.startAt === iso("23:00"))).toBe(true);
+    expect(slots.find((s) => s.startAt === iso("23:00"))?.endAt).toBe(
+      kstWallToIso(DATE, 24 * 60),
+    );
+  });
+
+  it("주말도 평일과 동일하게 후보를 만든다", () => {
+    const saturday = "2026-07-04";
+    const slots = generateSlots({
+      ...BASE_MEETING,
+      dateStart: saturday,
+      dateEnd: saturday,
+    });
+
+    expect(slots.length).toBeGreaterThan(0);
+    expect(slots[0].startAt.startsWith(`${saturday}T`)).toBe(true);
   });
 });
 

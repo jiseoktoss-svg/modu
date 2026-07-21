@@ -21,18 +21,18 @@ export const CANDIDATE_FILTER_OPTIONS: {
   { value: "all", label: "전체", description: "모든 후보를 보여줘요." },
   {
     value: "allAvailable",
-    label: "모두 참석 가능",
-    description: "모든 인원이 참석할 수 있는 후보예요.",
+    label: "모두 참여 가능",
+    description: "모든 사람이 참여할 수 있는 후보예요.",
   },
   {
     value: "requiredAvailable",
-    label: "필수참석자 가능",
-    description: "필수참석자는 모두 참석할 수 있는 후보예요.",
+    label: "꼭 함께할 사람 가능",
+    description: "꼭 함께할 사람은 모두 참여할 수 있는 후보예요.",
   },
   {
     value: "secondary",
-    label: "필수 1명 어려움",
-    description: "필수참석자 1명이 참석하기 어려운 후보예요.",
+    label: "꼭 함께할 1명 어려움",
+    description: "꼭 함께할 사람 1명이 참여하기 어려운 후보예요.",
   },
   {
     value: "avoid",

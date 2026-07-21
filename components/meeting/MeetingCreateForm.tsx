@@ -23,33 +23,26 @@ import { CharFillSentence } from "@/components/ui/CharFillSentence";
 import { charFillTiming, type CharFillSegment } from "@/lib/charFill";
 import { cn } from "@/lib/cn";
 import { hasBatchim } from "@/lib/korean";
-import { useScrollLock } from "@/lib/useScrollLock";
 import { addDaysToDateStr } from "@/lib/time";
 import {
   MEETING_CREATE_DRAFT_LAST_STEP,
   readMeetingCreateDraft,
   writeMeetingCreateDraft,
 } from "@/components/meeting/meetingCreateDraft";
-import {
-  ParticipantListEditor,
-  type ParticipantDraft,
-} from "@/components/meeting/ParticipantListEditor";
 import type { FormState } from "@/lib/actionTypes";
 import {
   MAX_MEETING_AGENDA_LENGTH,
   MAX_MEETING_LOCATION_LENGTH,
-  MAX_MEETING_PARTICIPANTS,
   MAX_MEETING_TITLE_LENGTH,
-  MIN_MEETING_PARTICIPANTS,
 } from "@/lib/meetingLimits";
+import { MAX_SCHEDULE_DURATION_MINUTES } from "@/lib/schedulingPolicy";
 
 interface Props {
   minDeadlineDate: string;
 }
 
-const INITIAL_PARTICIPANTS: ParticipantDraft[] = [];
 const LAST_STEP = MEETING_CREATE_DRAFT_LAST_STEP;
-const WORKDAY_MINUTES = 9 * 60; // 09:00~18:00 (서버 기본 근무시간과 일치)
+const MAX_DURATION_MINUTES = MAX_SCHEDULE_DURATION_MINUTES;
 // 글자 채움(fill): 확인 문장이 글자 하나씩 읽는 순서대로 좌→우 잉크처럼 칠해진다.
 // 타이밍·슬롯 규칙은 lib/charFill.ts 공용(회의 안내 문장과 동일한 리듬).
 const CONFIRM_CTA_DURATION_MS = 1000;
@@ -62,7 +55,6 @@ const FOCUS_IDS = [
   "durationHours",
   "deadlineDate",
   "responseDeadlineDate",
-  "participantSelect",
 ];
 
 const WEEKDAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
@@ -158,7 +150,7 @@ function SubmitButton({ disabled }: { disabled?: boolean }) {
       disabled={pending || disabled}
       loading={pending}
     >
-      {pending ? "회의 만드는 중…" : "회의 만들기"}
+      {pending ? "일정 만드는 중…" : "일정 만들기"}
     </TDSButton>
   );
 }
@@ -249,9 +241,6 @@ export function MeetingCreateForm({
   // 시간/분은 문자열로 보관해 타이핑 중 빈 칸을 허용한다(즉시 0으로 튀지 않게).
   const [durationHours, setDurationHours] = useState(String(initialDurationHours));
   const [durationMinute, setDurationMinute] = useState(String(initialDurationMinute));
-  const [participants, setParticipants] = useState<ParticipantDraft[]>(INITIAL_PARTICIPANTS);
-  const [showParticipantModal, setShowParticipantModal] = useState(false);
-  const [participantError, setParticipantError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
   const [draftReady, setDraftReady] = useState(false);
@@ -261,17 +250,13 @@ export function MeetingCreateForm({
   const [step, setStep] = useState(0);
   const [maxStep, setMaxStep] = useState(0);
   const [confirming, setConfirming] = useState(false); // 회의 확인 화면 표시 여부
-  const [confirmCtaReady, setConfirmCtaReady] = useState(false); // 7번 문구 등장 후 회의 만들기 노출
+  const [confirmCtaReady, setConfirmCtaReady] = useState(false); // 마지막 문구 등장 후 일정 만들기 노출
   // 확인 화면 글자 채움은 세션 중 1회만 — 키워드 수정 후 다시 돌아오면 즉시 완료 상태로 그린다.
   const [confirmPlayed, setConfirmPlayed] = useState(false);
   // 포커스 제어용 ref.
   const skipInitialFocus = useRef(true); // 최초 마운트 자동 포커스(스크롤 점프) 방지
   const skipNextAutoFocus = useRef(false); // 모바일 '다음' 이동 시 자동 포커스(키보드 팝업·스크롤) 방지
   const focusOverride = useRef<string | null>(null); // 특정 입력으로 포커스 강제
-  const modalPanelRef = useRef<HTMLDivElement>(null);
-  const backdropDownRef = useRef(false); // backdrop 에서 mousedown 시작했는지
-
-  const filledParticipants = participants.filter((p) => p.name.trim().length > 0);
 
   // 시간/분 안전 파싱 + 서버 검증과 동일한 경계.
   const hoursNum = Number(durationHours);
@@ -285,7 +270,7 @@ export function MeetingCreateForm({
     minNum <= 59;
   const durationTotal = (hoursOk ? hoursNum : 0) * 60 + (minOk ? minNum : 0);
   const durationOk =
-    hoursOk && minOk && durationTotal > 0 && durationTotal <= WORKDAY_MINUTES;
+    hoursOk && minOk && durationTotal > 0 && durationTotal <= MAX_DURATION_MINUTES;
   // 상단 문장: 값이 0인 시간/분은 숨긴다. (둘 다 0이면 시간만 표시해 문장이 비지 않게)
   const showDurationMin = !minOk || minNum > 0;
   const showDurationHours = !hoursOk || hoursNum > 0 || !showDurationMin;
@@ -322,8 +307,6 @@ export function MeetingCreateForm({
     durationOk,
     dateOk,
     responseDeadlineOk,
-    filledParticipants.length >= MIN_MEETING_PARTICIPANTS &&
-      filledParticipants.length <= MAX_MEETING_PARTICIPANTS,
   ];
   const allValid = valid.every(Boolean);
 
@@ -377,9 +360,6 @@ export function MeetingCreateForm({
         setResponseDeadlineDate("");
         setResponseDeadlineTime("18:00");
         break;
-      case 6:
-        setParticipants([]);
-        break;
     }
   };
   // 모바일 헤더 뒤로가기: 이전 입력 단계로 한 단계씩 되돌아간다(자동 포커스 없이).
@@ -399,7 +379,7 @@ export function MeetingCreateForm({
     const cap = next ? addDaysToDateStr(next, -2) : "";
     if (responseDeadlineDate && cap && responseDeadlineDate > cap) {
       setResponseDeadlineDate(cap);
-      showToast("회의 마감일에 맞춰 응답 마감일을 조정했어요.");
+      showToast("일정 후보의 마지막 날에 맞춰 응답 마감일을 조정했어요.");
     }
   };
   // 응답 마감일은 회의 마감일 2일 전까지만 → 넘기면 자동 지정 + 경고 토스트.
@@ -407,16 +387,11 @@ export function MeetingCreateForm({
     const cap = deadlineDate ? addDaysToDateStr(deadlineDate, -2) : "";
     if (cap && next > cap) {
       setResponseDeadlineDate(cap);
-      showToast("응답 마감일은 회의 마감일 2일 전까지만 정할 수 있어 맞췄어요.");
+      showToast("응답 마감일은 일정 후보의 마지막 날 2일 전까지만 정할 수 있어 맞췄어요.");
       return;
     }
     setResponseDeadlineDate(next);
   };
-  const openParticipantModal = () => {
-    editStep(LAST_STEP);
-    setShowParticipantModal(true);
-  };
-
   // 값이 있으면 파란 EditValue, 없으면 dot 자리표시(클릭 시 해당 항목으로 이동).
   const valueSlot = (
     empty: boolean,
@@ -449,13 +424,13 @@ export function MeetingCreateForm({
 
   const handleDurationHoursChange = (nextHours: number) => {
     setDurationHours(String(nextHours));
-    if (nextHours >= WORKDAY_MINUTES / 60) {
+    if (nextHours >= MAX_DURATION_MINUTES / 60) {
       setDurationMinute("0");
     }
   };
 
   const normalizeDurationMinute = (minute: number) => {
-    const maxMinute = hoursNum >= WORKDAY_MINUTES / 60 ? 0 : 55;
+    const maxMinute = hoursNum >= MAX_DURATION_MINUTES / 60 ? 0 : 55;
     return Math.min(maxMinute, Math.max(0, Math.round(minute / 5) * 5));
   };
 
@@ -489,8 +464,6 @@ export function MeetingCreateForm({
     setDurationMinute(String(normalizeDurationMinute(Number(digits))));
   };
 
-  const participantNames = filledParticipants.map((p) => p.name).join(", ");
-
   // 회의 생성 전 임시 저장: 새로고침해도 작성 중인 확인 화면과 입력값을 복원한다.
   useEffect(() => {
     const draft = readMeetingCreateDraft(window.sessionStorage);
@@ -504,7 +477,6 @@ export function MeetingCreateForm({
       setResponseDeadlineTime(draft.responseDeadlineTime);
       setDurationHours(draft.durationHours);
       setDurationMinute(draft.durationMinute);
-      setParticipants(draft.participants);
       setStep(draft.step);
       setMaxStep(draft.maxStep);
       setConfirming(draft.confirming);
@@ -523,7 +495,6 @@ export function MeetingCreateForm({
       responseDeadlineTime,
       durationHours,
       durationMinute,
-      participants,
       step,
       maxStep,
       confirming,
@@ -537,7 +508,6 @@ export function MeetingCreateForm({
     durationMinute,
     location,
     maxStep,
-    participants,
     responseDeadlineDate,
     responseDeadlineTime,
     step,
@@ -548,10 +518,6 @@ export function MeetingCreateForm({
   const editFromConfirm = (target: number) => {
     setConfirming(false);
     editStep(target);
-  };
-  const editParticipantsFromConfirm = () => {
-    setConfirming(false);
-    openParticipantModal();
   };
   // 회의 확인 화면 문장. 값은 폼 상단 빌더와 동일하게 구성하고, 클릭하면 수정할 수 있다.
   const durationText = [
@@ -576,38 +542,33 @@ export function MeetingCreateForm({
   // 글자 하나 단위로 칠하기 위해 문장을 [일반 텍스트 | 수정 가능한 값] 조각으로 둔다.
   const confirmClauses: CharFillSegment[][] = [
     [
-      "이번 회의명은 ",
-      confirmValue(title.trim(), "회의명", () => editFromConfirm(0)),
+      "일정 이름은 ",
+      confirmValue(title.trim(), "일정 이름", () => editFromConfirm(0)),
       hasBatchim(title) ? " 이에요." : " 예요.",
     ],
     [
-      "회의 안건은 ",
-      confirmValue(agenda.trim(), "안건", () => editFromConfirm(1)),
+      "일정 내용은 ",
+      confirmValue(agenda.trim(), "일정 내용", () => editFromConfirm(1)),
       hasBatchim(agenda) ? " 이에요." : " 예요.",
     ],
     [
-      "회의 장소는 ",
+      "장소는 ",
       confirmValue(location.trim(), "장소", () => editFromConfirm(2)),
       " 이고,",
     ],
     [
-      "예상 회의 진행 시간은 ",
-      confirmValue(durationText, "회의 길이", () => editFromConfirm(3)),
+      "예상 소요 시간은 ",
+      confirmValue(durationText, "소요 시간", () => editFromConfirm(3)),
       " 이에요.",
     ],
     [
-      confirmValue(confirmDeadlineText, "회의 마감 날짜", () => editFromConfirm(4)),
-      " 까지는 회의를 마쳐야 해요.",
+      confirmValue(confirmDeadlineText, "일정 후보 마지막 날", () => editFromConfirm(4)),
+      " 까지 가능한 시간을 찾아볼게요.",
     ],
     [
       "참여자는 ",
       confirmValue(confirmResponseDeadlineText, "응답 마감", () => editFromConfirm(5)),
       " 까지 응답해주세요.",
-    ],
-    [
-      "회의 참석자 명단은 ",
-      confirmValue(participantNames, "참석자", editParticipantsFromConfirm),
-      ` 총 ${filledParticipants.length}명이에요.`,
     ],
   ];
 
@@ -631,10 +592,7 @@ export function MeetingCreateForm({
     document.getElementById(id)?.focus({ preventScroll: true });
   }, [step]);
 
-  // 참석자 모달: 배경 스크롤 잠금.
-  useScrollLock(showParticipantModal);
-
-  // 회의 확인 화면: 마지막(7번) 문구가 등장한 뒤에 '회의 만들기' 버튼을 노출한다.
+  // 일정 확인 화면: 마지막 문구가 등장한 뒤에 '일정 만들기' 버튼을 노출한다.
   // 이미 한 번 재생했다면(수정 후 재진입) 기다리지 않고 바로 노출한다.
   useEffect(() => {
     if (!confirming) {
@@ -667,40 +625,6 @@ export function MeetingCreateForm({
     window.scrollTo(0, 0);
   }, [confirming]);
 
-  // 참석자 모달 접근성: Esc 닫기 + 열림 시 포커스 이동 + 닫힘 시 트리거로 복원.
-  useEffect(() => {
-    if (!showParticipantModal) return;
-    setParticipantError(null);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setShowParticipantModal(false);
-        return;
-      }
-      // focus trap: 모달 안에서 Tab 순환.
-      if (e.key === "Tab" && modalPanelRef.current) {
-        const nodes = modalPanelRef.current.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        );
-        if (nodes.length === 0) return;
-        const first = nodes[0];
-        const last = nodes[nodes.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    modalPanelRef.current?.focus();
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.getElementById("participantSelect")?.focus({ preventScroll: true });
-    };
-  }, [showParticipantModal]);
-
   return (
     <form
       action={formAction}
@@ -722,11 +646,11 @@ export function MeetingCreateForm({
       {!confirming && (
       <div className="flex-1 pt-4 sm:pt-6">
         <MobileHeaderTitle
-          title="회의 만들기"
+          title="일정 만들기"
           // step 0(회의명)에서 뒤로가기 = 메인 페이지로. 그 외 단계는 이전 단계로.
           onBack={step > 0 ? handleStepBack : () => router.push("/")}
         />
-        <p className="hidden text-sm font-medium text-slate-400">회의 만들기</p>
+        <p className="hidden text-sm font-medium text-slate-400">일정 만들기</p>
         <div
           aria-live="polite"
           className="break-keep text-left text-2xl leading-relaxed text-slate-800 sm:mt-3 sm:text-3xl sm:leading-relaxed"
@@ -734,31 +658,31 @@ export function MeetingCreateForm({
           <p>
             {clauseVisible(0) && (
               <span className="relative animate-fade-up-blur motion-reduce:animate-none">
-                이번 회의명은{" "}
-                {valueSlot(title.trim() === "", "회의명", () => editStep(0), titleDisplay)}{" "}
+                일정 이름은{" "}
+                {valueSlot(title.trim() === "", "일정 이름", () => editStep(0), titleDisplay)}{" "}
                 {hasBatchim(titleDisplay) ? "이에요." : "예요."}{" "}
               </span>
             )}
             {clauseVisible(1) && (
               <span className="relative animate-fade-up-blur motion-reduce:animate-none">
-                회의 안건은{" "}
-                {valueSlot(agenda.trim() === "", "안건", () => editStep(1), agendaDisplay)}{" "}
+                일정 내용은{" "}
+                {valueSlot(agenda.trim() === "", "일정 내용", () => editStep(1), agendaDisplay)}{" "}
                 {hasBatchim(agendaDisplay) ? "이에요." : "예요."}{" "}
               </span>
             )}
             {clauseVisible(2) && (
               <span className="relative animate-fade-up-blur motion-reduce:animate-none">
-                회의 장소는{" "}
+                장소는{" "}
                 {valueSlot(location.trim() === "", "장소", () => editStep(2), locationDisplay)}{" "}
                 이고,{" "}
               </span>
             )}
             {clauseVisible(3) && (
               <span className="relative animate-fade-up-blur motion-reduce:animate-none">
-                예상 회의 진행 시간은{" "}
+                예상 소요 시간은{" "}
                 {showDurationHours && (
                   <>
-                    {valueSlot(!hoursOk, "회의 길이", () => editStep(3), hoursNum)}{" "}
+                    {valueSlot(!hoursOk, "소요 시간", () => editStep(3), hoursNum)}{" "}
                     시간{showDurationMin ? " " : ""}
                   </>
                 )}
@@ -766,7 +690,7 @@ export function MeetingCreateForm({
                   <>
                     {valueSlot(
                       !minOk,
-                      "회의 길이",
+                      "소요 시간",
                       () => editStep(3, "durationMinutePart"),
                       minNum,
                     )}{" "}
@@ -780,11 +704,11 @@ export function MeetingCreateForm({
               <span className="relative animate-fade-up-blur motion-reduce:animate-none">
                 {valueSlot(
                   deadlineText === "",
-                  "회의 마감 날짜",
+                  "일정 후보 마지막 날",
                   () => editStep(4),
                   deadlineText,
                 )}{" "}
-                까지는 회의가 완료되어야 해요.{" "}
+                까지 가능한 시간을 찾아볼게요.{" "}
               </span>
             )}
             {clauseVisible(5) && (
@@ -800,25 +724,6 @@ export function MeetingCreateForm({
               </span>
             )}
           </p>
-          {clauseVisible(6) && (
-            <p className="mt-4 relative animate-fade-up-blur text-left motion-reduce:animate-none">
-              회의 참석자 명단은{" "}
-              {valueSlot(
-                filledParticipants.length === 0,
-                "참석자",
-                openParticipantModal,
-                participantNames,
-              )}{" "}
-              {filledParticipants.length > 0 && (
-                <>
-                  <EditValue fieldLabel="참석자" onEdit={openParticipantModal}>
-                    총 {filledParticipants.length}명
-                  </EditValue>{" "}
-                </>
-              )}
-              이에요.
-            </p>
-          )}
         </div>
       </div>
       )}
@@ -832,17 +737,6 @@ export function MeetingCreateForm({
       <input type="hidden" name="responseDeadlineTime" value={responseDeadlineTime} />
       <input type="hidden" name="durationHours" value={hoursOk ? hoursNum : 0} />
       <input type="hidden" name="durationMinutePart" value={minOk ? minNum : 0} />
-      <input
-        type="hidden"
-        name="participants"
-        value={JSON.stringify(
-          filledParticipants.map((p) => ({
-            name: p.name.trim(),
-            role: p.role.trim(),
-            attendanceType: p.attendanceType,
-          })),
-        )}
-      />
 
       {/* 하단: 현재 단계 입력 + 액션 버튼 */}
       {!confirming && (
@@ -853,10 +747,10 @@ export function MeetingCreateForm({
               <LimitedFieldLabel htmlFor="title" invalid={titleTooLong}>
                 {titleTooLong ? (
                   <>
-                    회의명은 최대 {MAX_MEETING_TITLE_LENGTH}글자까지 입력할 수 있어요.
+                    일정 이름은 최대 {MAX_MEETING_TITLE_LENGTH}글자까지 입력할 수 있어요.
                   </>
                 ) : (
-                  "회의명을 입력해주세요"
+                  "일정 이름을 입력해주세요"
                 )}
               </LimitedFieldLabel>
               <Input
@@ -870,7 +764,7 @@ export function MeetingCreateForm({
                   titleTooLong &&
                     "!border-red-600 focus:!border-2 focus:!border-red-600 focus:!ring-0",
                 )}
-                placeholder="예: 주간 제품 회의"
+                placeholder="예: 주간 제품 회의, 주말 피크닉"
               />
             </>
           )}
@@ -879,10 +773,10 @@ export function MeetingCreateForm({
               <LimitedFieldLabel htmlFor="agenda" invalid={agendaTooLong}>
                 {agendaTooLong ? (
                   <>
-                    회의 안건은 최대 {MAX_MEETING_AGENDA_LENGTH}글자까지 입력할 수 있어요.
+                    일정 내용은 최대 {MAX_MEETING_AGENDA_LENGTH}글자까지 입력할 수 있어요.
                   </>
                 ) : (
-                  "회의 안건을 입력해주세요"
+                  "어떤 일정인지 알려주세요"
                 )}
               </LimitedFieldLabel>
               <Input
@@ -905,10 +799,10 @@ export function MeetingCreateForm({
               <LimitedFieldLabel htmlFor="location" invalid={locationTooLong}>
                 {locationTooLong ? (
                   <>
-                    회의 장소는 최대 {MAX_MEETING_LOCATION_LENGTH}글자까지 입력할 수 있어요.
+                    장소는 최대 {MAX_MEETING_LOCATION_LENGTH}글자까지 입력할 수 있어요.
                   </>
                 ) : (
-                  "회의 장소를 입력해주세요"
+                  "만날 장소를 입력해주세요"
                 )}
               </LimitedFieldLabel>
               <Input
@@ -922,19 +816,19 @@ export function MeetingCreateForm({
                   locationTooLong &&
                     "!border-red-600 focus:!border-2 focus:!border-red-600 focus:!ring-0",
                 )}
-                placeholder="예: 7층 회의실 A 또는 Zoom"
+                placeholder="예: 7층 회의실 A, 성수동 카페"
               />
             </>
           )}
           {step === 4 && (
             <>
-              <Label htmlFor="deadlineDate" className="text-lg">이 날까지는 회의를 마쳐야 해요.</Label>
+              <Label htmlFor="deadlineDate" className="text-lg">언제까지 가능한 시간을 찾아볼까요?</Label>
               <DatePicker
                 id="deadlineDate"
                 value={deadlineDate}
                 onChange={handleDeadlineChange}
                 min={minMeetingDeadlineDate}
-                minReason="회의는 오늘부터 이틀 뒤부터 정할 수 있어요"
+                minReason="마지막 날은 오늘부터 이틀 뒤부터 정할 수 있어요"
                 placeholder="날짜를 선택해주세요"
               />
             </>
@@ -951,7 +845,7 @@ export function MeetingCreateForm({
                 min={minDeadlineDate}
                 max={responseDeadlineMax || undefined}
                 minReason="오늘 이후부터 정할 수 있어요"
-                maxReason="회의 마감일 2일 전까지만 정할 수 있어요"
+                maxReason="일정 후보의 마지막 날 2일 전까지만 정할 수 있어요"
                 placeholder="날짜를 선택해주세요"
               />
               <div className="mt-2">
@@ -967,18 +861,18 @@ export function MeetingCreateForm({
           )}
           {step === 3 && (
             <>
-              <Label htmlFor="durationHours" className="text-lg">예상 회의 진행 시간을 입력해주세요</Label>
+              <Label htmlFor="durationHours" className="text-lg">예상 소요 시간을 입력해주세요</Label>
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex items-center justify-start gap-2">
                   <div id="durationHours" tabIndex={-1}>
                     <NumberStepper
-                      ariaLabel="회의 진행 시간(시간) 직접 입력"
+                      ariaLabel="소요 시간의 시간 단위 직접 입력"
                       value={hoursOk ? hoursNum : 0}
                       inputValue={durationHours}
                       min={0}
-                      max={WORKDAY_MINUTES / 60}
-                      minusLabel="회의 시간 줄이기"
-                      plusLabel="회의 시간 늘리기"
+                      max={MAX_DURATION_MINUTES / 60}
+                      minusLabel="소요 시간 줄이기"
+                      plusLabel="소요 시간 늘리기"
                       onNumberChange={handleDurationHoursChange}
                       onInputChange={handleDurationHoursInput}
                       onKeyDown={onFieldKeyDown}
@@ -989,14 +883,14 @@ export function MeetingCreateForm({
                 <div className="flex items-center justify-start gap-2">
                   <div id="durationMinutePart" tabIndex={-1}>
                     <NumberStepper
-                      ariaLabel="회의 진행 시간(분) 직접 입력"
+                      ariaLabel="소요 시간의 분 단위 직접 입력"
                       value={minOk ? minNum : 0}
                       inputValue={durationMinute}
                       min={0}
-                      max={hoursNum >= WORKDAY_MINUTES / 60 ? 0 : 55}
+                      max={hoursNum >= MAX_DURATION_MINUTES / 60 ? 0 : 55}
                       step={5}
-                      minusLabel="회의 분 줄이기"
-                      plusLabel="회의 분 늘리기"
+                      minusLabel="소요 시간 5분 줄이기"
+                      plusLabel="소요 시간 5분 늘리기"
                       onNumberChange={handleDurationMinuteChange}
                       onInputChange={handleDurationMinuteInput}
                       onKeyDown={onFieldKeyDown}
@@ -1009,19 +903,12 @@ export function MeetingCreateForm({
                 <p className="mt-2 text-xs text-slate-500">
                   {durationTotal === 0
                     ? "시간을 올바르게 입력해 주세요."
-                    : durationTotal > WORKDAY_MINUTES
-                      ? "회의 길이는 9시간(근무시간) 이내로 입력해 주세요."
+                    : durationTotal > MAX_DURATION_MINUTES
+                      ? "진행 시간은 24시간 이내로 입력해 주세요."
                       : "시간은 0 이상, 분은 0~59 사이로 입력해 주세요."}
                 </p>
               )}
             </>
-          )}
-          {step === LAST_STEP &&
-            (filledParticipants.length < MIN_MEETING_PARTICIPANTS ||
-              filledParticipants.length > MAX_MEETING_PARTICIPANTS) && (
-            <Label htmlFor="participantSelect" className="text-lg">
-              본인 포함 참석자를 선택해주세요
-            </Label>
           )}
         </div>
 
@@ -1036,7 +923,7 @@ export function MeetingCreateForm({
         )}
 
         <div className="mt-4">
-          {step === LAST_STEP && allValid && !showParticipantModal ? (
+          {step === LAST_STEP && allValid ? (
             <TDSButton
               type="button"
               size="xl"
@@ -1044,18 +931,6 @@ export function MeetingCreateForm({
               onClick={() => setConfirming(true)}
             >
               다음
-            </TDSButton>
-          ) : step === LAST_STEP &&
-            (filledParticipants.length < MIN_MEETING_PARTICIPANTS ||
-              filledParticipants.length > MAX_MEETING_PARTICIPANTS) ? (
-            <TDSButton
-              id="participantSelect"
-              type="button"
-              size="xl"
-              display="block"
-              onClick={() => setShowParticipantModal(true)}
-            >
-              참석자 선택하기
             </TDSButton>
           ) : step < LAST_STEP ? (
             <TDSButton
@@ -1075,9 +950,9 @@ export function MeetingCreateForm({
       {confirming && (
         <>
           <div className="flex-1 pt-4 sm:pt-6">
-            {/* 확인 화면 뒤로가기: 마지막 입력 단계(참석자)로 복귀 */}
-            <MobileHeaderTitle title="회의 확인" onBack={() => setConfirming(false)} />
-            <p className="hidden text-sm font-medium text-slate-400">회의 확인</p>
+            {/* 확인 화면 뒤로가기: 마지막 입력 단계(응답 마감)로 복귀 */}
+            <MobileHeaderTitle title="일정 확인" onBack={() => setConfirming(false)} />
+            <p className="hidden text-sm font-medium text-slate-400">일정 확인</p>
             {/* 글자가 읽는 순서대로 좌→우 잉크처럼 칠해지는 등장(공용 CharFillSentence).
                 채움이 끝나기 전에는 키워드 호버·클릭을 막는다.
                 retainCharSpans: 문장이 길어(7절) 완료 순간 DOM 교체 번쩍임이 보여서
@@ -1088,10 +963,7 @@ export function MeetingCreateForm({
                 retainCharSpans
                 instant={confirmPlayed}
                 onFillDone={() => setConfirmPlayed(true)}
-                paragraphs={[
-                  { clauses: confirmClauses.slice(0, 6) },
-                  { clauses: [confirmClauses[6]], className: "mt-4" },
-                ]}
+                paragraphs={[{ clauses: confirmClauses }]}
               />
             </div>
             <p
@@ -1127,80 +999,6 @@ export function MeetingCreateForm({
         </>
       )}
 
-      {showParticipantModal && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="참석자 선택"
-          onMouseDown={(e) => {
-            backdropDownRef.current = e.target === e.currentTarget;
-          }}
-          onMouseUp={(e) => {
-            if (backdropDownRef.current && e.target === e.currentTarget) {
-              setShowParticipantModal(false);
-            }
-            backdropDownRef.current = false;
-          }}
-          className="fixed inset-0 z-30 flex animate-fade-in items-stretch bg-slate-900/40 p-0 motion-reduce:animate-none sm:items-center sm:p-6"
-        >
-          <div
-            ref={modalPanelRef}
-            tabIndex={-1}
-            className="mx-auto flex h-dvh max-h-dvh w-full max-w-2xl animate-sheet-up flex-col overflow-hidden bg-white p-4 shadow-2xl focus:outline-none motion-reduce:animate-none sm:h-[744px] sm:max-h-[calc(100vh-3rem)] sm:animate-fade-up sm:rounded-3xl sm:p-5"
-          >
-            <div className="mb-0.5 flex shrink-0 items-start justify-between gap-3 sm:mb-1 sm:gap-4">
-              <h3 className="text-base font-bold text-slate-900 sm:text-lg">참석자 선택</h3>
-              <button
-                type="button"
-                aria-label="참석자 선택 닫기"
-                onClick={() => setShowParticipantModal(false)}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
-              >
-                <Emoji symbol="✕" size={20} />
-              </button>
-            </div>
-            <div className="min-h-0 flex-1">
-              <ParticipantListEditor participants={participants} onChange={setParticipants} />
-            </div>
-            <div className="mt-3 shrink-0 sm:mt-4">
-              {participantError &&
-                (participants.length < MIN_MEETING_PARTICIPANTS ||
-                  participants.length > MAX_MEETING_PARTICIPANTS) && (
-                <div
-                  role="alert"
-                  className="mb-2 flex animate-fade-in items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 motion-reduce:animate-none"
-                >
-                  <Emoji symbol="⚠️" size={14} />
-                  {participantError}
-                </div>
-              )}
-              <TDSButton
-                type="button"
-                size="xl"
-                display="block"
-                onClick={() => {
-                  if (participants.length < MIN_MEETING_PARTICIPANTS) {
-                    setParticipantError(
-                      `참석자를 ${MIN_MEETING_PARTICIPANTS}명 이상 선택해 주세요.`,
-                    );
-                    return;
-                  }
-                  if (participants.length > MAX_MEETING_PARTICIPANTS) {
-                    setParticipantError(
-                      `참석자는 최대 ${MAX_MEETING_PARTICIPANTS}명까지 선택할 수 있어요.`,
-                    );
-                    return;
-                  }
-                  setParticipantError(null);
-                  setShowParticipantModal(false);
-                }}
-              >
-                선택 완료
-              </TDSButton>
-            </div>
-          </div>
-        </div>
-      )}
     </form>
   );
 }

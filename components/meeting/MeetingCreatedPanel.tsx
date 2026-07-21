@@ -177,11 +177,11 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
   const details = useMemo(
     () =>
       [
-        { label: "회의명", value: meeting.title },
-        { label: "안건", value: meeting.agenda },
+        { label: "일정 이름", value: meeting.title },
+        { label: "일정 내용", value: meeting.agenda },
         { label: "장소", value: meeting.location },
-        { label: "회의 마감일", value: formatDate(meeting.dateEnd) },
-        { label: "예상 시간", value: formatDuration(meeting.durationMinutes) },
+        { label: "마지막 날", value: formatDate(meeting.dateEnd) },
+        { label: "소요 시간", value: formatDuration(meeting.durationMinutes) },
       ].filter((item) => item.value.trim().length > 0),
     [meeting],
   );
@@ -232,7 +232,7 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
             className="relative mt-4 text-2xl font-extrabold tracking-tight text-slate-900 animate-fade-up-blur motion-reduce:animate-none"
             style={{ animationDelay: "120ms" }}
           >
-            회의가 만들어졌어요
+            일정이 만들어졌어요
           </h1>
         </div>
 
@@ -253,9 +253,14 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
             </dl>
 
             <div className="mt-4 border-t border-slate-100 pt-4 text-left">
-              <h3 className="text-sm font-bold text-slate-400">참석자 명단</h3>
-              <ul className="mt-2 flex max-h-36 flex-wrap gap-1.5 overflow-y-auto pr-1 sm:mt-2.5 sm:max-h-80 sm:justify-start sm:gap-2">
-                {participants.map((participant) => (
+              <h3 className="text-sm font-bold text-slate-400">참여자</h3>
+              {participants.length === 0 ? (
+                <p className="mt-2 break-keep text-sm font-medium text-slate-600">
+                  링크를 받은 사람이 이름이나 별명을 입력하면 자동으로 참여해요.
+                </p>
+              ) : (
+                <ul className="mt-2 flex max-h-36 flex-wrap gap-1.5 overflow-y-auto pr-1 sm:mt-2.5 sm:max-h-80 sm:justify-start sm:gap-2">
+                  {participants.map((participant) => (
                   <li
                     key={participant.id}
                     className={participantPillClass(participant.attendanceType)}
@@ -269,11 +274,12 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
                       </span>
                     )}
                     <span className={participantTypeClass(participant.attendanceType)}>
-                      {participant.attendanceType === "required" ? "필수" : "선택"}
+                      {participant.attendanceType === "required" ? "꼭 함께" : "함께하면 좋아요"}
                     </span>
                   </li>
-                ))}
-              </ul>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
 
@@ -281,7 +287,7 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
             className="relative rounded-[22px] bg-white p-5 shadow-sm border-y border-slate-100 animate-fade-up-blur motion-reduce:animate-none"
             style={{ animationDelay: "400ms" }}
           >
-            <h2 className="text-sm font-bold text-slate-400">참석자에게 보낼 링크</h2>
+            <h2 className="text-sm font-bold text-slate-400">참여자에게 보낼 링크</h2>
             <div className="mt-3 flex items-center gap-2 rounded-[16px] bg-slate-50 px-3 py-2.5 ring-1 ring-slate-100">
               <p className="min-w-0 flex-1 truncate text-left text-sm font-medium text-slate-700">
                 {participantUrl}
@@ -289,7 +295,7 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
               <button
                 type="button"
                 onClick={copyParticipantUrl}
-                aria-label="참석자 링크 복사"
+                aria-label="참여자 링크 복사"
                 className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-brand-600 transition-colors hover:bg-brand-50 hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
               >
                 {copied ? <CheckIcon /> : <CopyIcon />}
@@ -322,7 +328,7 @@ export function MeetingCreatedPanel({ meeting, participants }: MeetingCreatedPan
               size="xl"
               display="block"
             >
-              회의 시간 입력하기
+              가능한 시간 입력하기
             </TDSButton>
           </div>
         </div>

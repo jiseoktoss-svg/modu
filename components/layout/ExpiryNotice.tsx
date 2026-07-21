@@ -4,7 +4,7 @@ import { cn } from "@/lib/cn";
 export function ExpiryNotice({ className }: { className?: string }) {
   return (
     <p className={cn("text-center text-xs text-slate-400", className)}>
-      회의 데이터는 만료일 이후 삭제될 수 있어요.
+      일정 정보는 만료일 이후 삭제될 수 있어요.
     </p>
   );
 }

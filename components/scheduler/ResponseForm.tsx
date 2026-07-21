@@ -13,14 +13,13 @@ import {
 import { createPortal } from "react-dom";
 import { Emoji } from "@/components/ui/Emoji";
 import {
+  joinMeeting,
   loadCalendarSnapshot,
   loadParticipantResponse,
   submitAvailability,
-  verifyParticipantIdentity,
 } from "@/app/actions/meetings";
 import { Card } from "@/components/ui/Card";
 import { Input, Label } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
 import { TDSButton } from "@/components/ui/TDSButton";
 import { MeetingSummarySentence } from "@/components/meeting/MeetingSummarySentence";
 import { CharFillSentence } from "@/components/ui/CharFillSentence";
@@ -41,8 +40,11 @@ import { MobileHeaderTitle } from "@/components/layout/MobileHeaderTitle";
 import { MobileStickyAction } from "@/components/layout/MobileStickyAction";
 import { cn } from "@/lib/cn";
 import { trackClientEvent } from "@/lib/clientTracking";
-import { hasBatchim } from "@/lib/korean";
 import { useScrollLock } from "@/lib/useScrollLock";
+import {
+  DEFAULT_TIME_RANGE_END,
+  DEFAULT_TIME_RANGE_START,
+} from "@/lib/schedulingPolicy";
 import { cellKey, cellsToBlocks, GRID_STEP_MINUTES } from "@/lib/grid";
 import { kstWallToIso, parseHm } from "@/lib/time";
 import { MOCK_EMPLOYEES } from "@/data/mockEmployees";
@@ -287,16 +289,18 @@ function pad2(n: number): string {
   return n < 10 ? `0${n}` : `${n}`;
 }
 
-// 30분 단위 하루 전체 시간 목록(00:00~23:30).
+// 30분 단위 하루 전체 시작 시간 목록(00:00~23:30).
 const TIME_PICK_STEP = 30;
 const ALL_TIME_OPTIONS: number[] = (() => {
   const out: number[] = [];
   for (let min = 0; min < 24 * 60; min += TIME_PICK_STEP) out.push(min);
   return out;
 })();
+const ALL_END_TIME_OPTIONS = [...ALL_TIME_OPTIONS, 24 * 60];
 
 // "오전 09:00" / "오후 06:00" 형태(네이티브 time 입력과 동일 톤).
 function formatClock(min: number): string {
+  if (min === 24 * 60) return "24:00 (다음 날)";
   const h = Math.floor(min / 60);
   const m = min % 60;
   const period = h < 12 ? "오전" : "오후";
@@ -315,12 +319,14 @@ function TimeSelect({
   workStart,
   workEnd,
   ariaLabel,
+  includeEndOfDay = false,
 }: {
   value: string; // HH:MM
   onChange: (hhmm: string) => void;
   workStart: number; // 분
   workEnd: number; // 분
   ariaLabel: string;
+  includeEndOfDay?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState<number | null>(null); // 근무시간 외 — 컨펌 대기
@@ -425,7 +431,7 @@ function TimeSelect({
         ) : (
           <>
             <div ref={listRef} className="flex-1 overflow-y-auto py-1">
-              {ALL_TIME_OPTIONS.map((min) => {
+              {(includeEndOfDay ? ALL_END_TIME_OPTIONS : ALL_TIME_OPTIONS).map((min) => {
                 const work = inWork(min);
                 const isSel = min === sel;
                 return (
@@ -697,7 +703,7 @@ export function ResponseForm(props: Props) {
     lunchStart,
     lunchEnd,
   } = props;
-  const participants = props.initialParticipants;
+  const [participants, setParticipants] = useState(props.initialParticipants);
   const rows = useMemo(
     () => buildRows(workdayStart, workdayEnd),
     [workdayStart, workdayEnd],
@@ -708,14 +714,9 @@ export function ResponseForm(props: Props) {
   const [caseId, setCaseId] = useState(1); // 데모: 후보/캘린더에 보여줄 케이스(docs/cases.md)
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  const [role, setRole] = useState("");
   const [identityName, setIdentityName] = useState("");
-  const [identityRole, setIdentityRole] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [verifying, setVerifying] = useState(false);
-  // 본인확인 문장 빌더 단계: 0=이름, 1=직무.
-  const [formStep, setFormStep] = useState(0);
-  const [maxFormStep, setMaxFormStep] = useState(0);
+  const [joining, setJoining] = useState(false);
   const skipFormFocus = useRef(true); // 본인확인 진입 시 자동 포커스(스크롤 점프) 방지
   const skipNextAutoFocus = useRef(false); // 모바일 '다음' 이동 시 자동 포커스(키보드 팝업·스크롤) 방지
   // 가능 시간 입력(문장 빌더, 불가 중심 2단계): 0=불가날짜, 1=특정날짜+시간.
@@ -725,9 +726,9 @@ export function ResponseForm(props: Props) {
   const [dateTimeBusy, setDateTimeBusy] = useState<Record<string, TimeRange[]>>({});
   const [dtDate, setDtDate] = useState<string | null>(null); // 특정날짜+시간 단계에서 시간 입력 중인 날짜
   const [dtModalOpen, setDtModalOpen] = useState(false); // 특정날짜+시간 날짜 선택 모달
-  // 시간 입력 기본값: 시작=근무 시작(보통 오전 09:00), 끝=시작+1시간(오전 10:00).
-  const DEFAULT_DRAFT_START = workdayStart;
-  const DEFAULT_DRAFT_END = minToHm(parseHm(workdayStart) + 60);
+  // 선택 가능 범위는 하루 전체지만, 처음 열었을 때는 익숙한 오전 시간대를 제안한다.
+  const DEFAULT_DRAFT_START = DEFAULT_TIME_RANGE_START;
+  const DEFAULT_DRAFT_END = DEFAULT_TIME_RANGE_END;
   const [draftStart, setDraftStart] = useState(DEFAULT_DRAFT_START);
   const [draftEnd, setDraftEnd] = useState(DEFAULT_DRAFT_END);
   // 복사완료 토스트처럼 요소는 계속 렌더되고 open 클래스만 토글해 등장/사라짐을 전환한다.
@@ -744,17 +745,8 @@ export function ResponseForm(props: Props) {
   const [calendarCoachReplayKey, setCalendarCoachReplayKey] = useState(0);
 
   const selected = participants.find((p) => p.id === selectedId) ?? null;
-  // 평가용 우회 계정(서지석/프로덕트 디자이너)이 어느 회의에서든 선택 가능하도록 직무를 보장한다.
-  const roleOptions = Array.from(
-    new Set([...participants.map((p) => p.role.trim()).filter(Boolean), "프로덕트 디자이너"]),
-  );
   const IDENTITY_HELP_TEXT =
-    "참석자 명단의 이름·직무가 일치하면 응답할 수 있어요. 데모에선 '서지석 / 프로덕트 디자이너'로 명단과 상관없이 통과할 수 있어요.";
-  // 본인확인 빌더: 0=이름, 1=직무(마지막).
-  const IDENTITY_LAST_STEP = 1;
-  const formValid = (s: number) =>
-    s === 0 ? identityName.trim().length > 0 : identityRole.trim().length > 0;
-  const clauseVisible = (i: number) => i <= maxFormStep;
+    "다른 참여자가 알아볼 수 있는 이름이나 별명이면 돼요. 이 브라우저에 참여 정보가 저장되어 다음에 바로 이어갈 수 있어요.";
 
   // 가능 시간 빌더(불가 중심 2단계): 0=불가날짜, 1=특정날짜+시간(마지막=1). 도달한 단계까지 문장에 노출.
   const AVAIL_LAST_STEP = 1;
@@ -763,24 +755,16 @@ export function ResponseForm(props: Props) {
   // '불가능' 대신 '어려움' — 외근·점심 직후·집중 업무처럼 완전히 불가능하진 않지만
   // 회의가 부담스러운 시간까지 한 입력으로 자연스럽게 흡수한다(별도 '피하고 싶은 시간' 없음).
   const AVAIL_QUESTIONS = [
-    `${personName}님, 회의가 어려운 날짜가 있나요?`,
-    "특별히 이 날 이 시간엔 회의가 어려운 경우가 있나요?",
+    `${personName}님, 참여하기 어려운 날짜가 있나요?`,
+    "특별히 참여하기 어려운 날짜와 시간이 있나요?",
   ];
   // 단계별 툴팁: 0=어려운 날짜(하루 전체 불가), 1=특별히 어려운 시간대(그날은 가능하나 특정 시간만 불가).
   const AVAIL_HELP_TEXTS = [
-    "외근이나 휴가처럼 해당 날짜 전체가 회의 불가능한 날을 골라주세요.",
-    "해당 날짜에 회의는 가능하지만 불가능한 시간이 있으면 그 시간을 골라주세요.",
+    "다른 일정이 있거나 쉬는 날처럼 하루 종일 참여하기 어려운 날짜를 골라주세요.",
+    "해당 날짜 중 참여하기 어려운 시간이 있으면 그 시간을 골라주세요.",
   ];
-  // 주말 제외 선택 가능한 날짜 수 — 전부 '어려움'으로 고르면 날짜 나열 대신 기간 전체 문구를 쓴다.
-  const selectableDateCount = useMemo(
-    () =>
-      dates.filter((ds) => {
-        const [y, m, d] = ds.split("-").map(Number);
-        const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-        return weekday !== 0 && weekday !== 6;
-      }).length,
-    [dates],
-  );
+  // 전부 '어려움'으로 고르면 날짜 나열 대신 기간 전체 문구를 쓴다.
+  const selectableDateCount = dates.length;
   const allDatesBusy = selectableDateCount > 0 && busyDates.size >= selectableDateCount;
 
   useEffect(() => {
@@ -794,11 +778,7 @@ export function ResponseForm(props: Props) {
       setCaseId(draft.caseId);
       setSelectedId(draft.selectedId);
       setToken(draft.token);
-      setRole(draft.role);
       setIdentityName(draft.identityName);
-      setIdentityRole(draft.identityRole);
-      setFormStep(draft.formStep);
-      setMaxFormStep(draft.maxFormStep);
       setAvailStep(draft.availStep);
       setMaxAvailStep(draft.maxAvailStep);
       setBusyDates(new Set(draft.busyDates));
@@ -816,7 +796,7 @@ export function ResponseForm(props: Props) {
       setResponseDraftReady(true);
       return;
     }
-    let parsed: { participantId?: string; token?: string } | null = null;
+    let parsed: { participantId?: string; token?: string; name?: string } | null = null;
     try {
       parsed = JSON.parse(raw);
     } catch {
@@ -835,10 +815,8 @@ export function ResponseForm(props: Props) {
       .then((res) => {
         if (res.ok) {
           const found = participants.find((p) => p.id === identity.participantId);
-          setRole(found?.role ?? "");
-          setIdentityName(found?.name ?? "");
-          setIdentityRole(found?.role ?? "");
-          setStep("waiting");
+          setIdentityName(found?.name ?? parsed?.name ?? "");
+          setStep(res.responseStatus === "submitted" ? "waiting" : "availability");
         } else {
           window.localStorage.removeItem(storageKey(meetingId));
           clearResponseDraft(window.sessionStorage, meetingId);
@@ -866,11 +844,7 @@ export function ResponseForm(props: Props) {
       caseId,
       selectedId,
       token,
-      role,
       identityName,
-      identityRole,
-      formStep,
-      maxFormStep,
       availStep,
       maxAvailStep,
       busyDates: [...busyDates].sort(),
@@ -886,11 +860,7 @@ export function ResponseForm(props: Props) {
     caseId,
     selectedId,
     token,
-    role,
     identityName,
-    identityRole,
-    formStep,
-    maxFormStep,
     availStep,
     maxAvailStep,
     busyDates,
@@ -917,20 +887,11 @@ export function ResponseForm(props: Props) {
     });
   }, [meetingId, responseDraftReady, step]);
 
-  function persistIdentity(participantId: string, tok: string) {
+  function persistIdentity(participantId: string, tok: string, name: string) {
     window.localStorage.setItem(
       storageKey(meetingId),
-      JSON.stringify({ participantId, token: tok }),
+      JSON.stringify({ participantId, token: tok, name }),
     );
-  }
-
-  function storedIdentity() {
-    try {
-      const raw = window.localStorage.getItem(storageKey(meetingId));
-      return raw ? (JSON.parse(raw) as { participantId?: string; token?: string }) : null;
-    } catch {
-      return null;
-    }
   }
 
   const showToast = (message: string, icon = "⚠️") => {
@@ -1169,6 +1130,7 @@ export function ResponseForm(props: Props) {
             workStart={parseHm(workdayStart)}
             workEnd={parseHm(workdayEnd)}
             ariaLabel="종료 시간"
+            includeEndOfDay={parseHm(workdayEnd) === 24 * 60}
           />
         </div>
       </div>
@@ -1205,27 +1167,14 @@ export function ResponseForm(props: Props) {
     </div>
   );
 
-  const goToForm = (next: number) => {
-    setFormStep(next);
-    setMaxFormStep((m) => Math.max(m, next));
-  };
-
-  const editFormStep = (i: number) => setFormStep(i);
-
   const handleFormNext = () => {
-    if (formStep === IDENTITY_LAST_STEP) {
-      void handleVerifyIdentity();
-    } else {
-      // 모바일에서는 '다음'으로 넘어가도 다음 입력에 자동 포커스하지 않는다(직접 터치해야 활성화).
-      skipNextAutoFocus.current = window.matchMedia("(max-width: 639px)").matches;
-      goToForm(formStep + 1);
-    }
+    void handleJoinMeeting();
   };
 
   const onFormFieldKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      if (formValid(formStep)) handleFormNext();
+      if (identityName.trim()) handleFormNext();
     }
   };
 
@@ -1251,41 +1200,47 @@ export function ResponseForm(props: Props) {
       </EditValue>
     );
 
-  async function handleVerifyIdentity() {
-    setVerifying(true);
-    const saved = storedIdentity();
-    const res = await verifyParticipantIdentity({
-      meetingId,
-      name: identityName,
-      role: identityRole,
-      token: saved?.token,
-    });
-    setVerifying(false);
+  async function handleJoinMeeting() {
+    setJoining(true);
+    try {
+      const res = await joinMeeting({
+        meetingId,
+        name: identityName,
+      });
 
-    if (!res.ok) {
-      showToast(res.error); // 유효성 오류는 아이콘 토스트로
-      return;
+      if (!res.ok) {
+        showToast(res.error);
+        return;
+      }
+
+      setSelectedId(res.participantId);
+      setToken(res.token);
+      setIdentityName(res.name);
+      setParticipants((current) =>
+        current.some((participant) => participant.id === res.participantId)
+          ? current
+          : [
+              ...current,
+              {
+                id: res.participantId,
+                name: res.name,
+                role: res.role,
+                attendanceType: res.attendanceType,
+                responseStatus: res.responseStatus,
+              },
+            ],
+      );
+      persistIdentity(res.participantId, res.token, res.name);
+
+      setAvailStep(0);
+      setMaxAvailStep(0);
+      showToast("일정에 참여했어요", "✅");
+      setStep("availability");
+    } catch {
+      showToast("일정에 참여하지 못했어요. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setJoining(false);
     }
-
-    // 다른 사람으로 확인되면 입력값 초기화(가능 시간은 새로 받는다).
-    if (res.participantId !== selectedId) {
-      setBusyDates(new Set());
-      setDateTimeBusy({});
-      setDtDate(null);
-      setDraftStart(DEFAULT_DRAFT_START);
-      setDraftEnd(DEFAULT_DRAFT_END);
-    }
-
-    setSelectedId(res.participantId);
-    setToken(res.token);
-    setIdentityName(res.name);
-    setIdentityRole(res.role);
-    setRole(res.role);
-
-    setAvailStep(0);
-    setMaxAvailStep(0);
-    showToast("본인 확인 완료", "✅"); // 다음(가능 시간) 화면에서 잠깐 노출
-    setStep("availability"); // 본인확인 완료 → 다음 화면
   }
 
   async function handleSubmit() {
@@ -1296,7 +1251,6 @@ export function ResponseForm(props: Props) {
       meetingId,
       participantId: selectedId,
       token,
-      role,
       blocks,
     });
     setSubmitting(false);
@@ -1305,7 +1259,7 @@ export function ResponseForm(props: Props) {
       return;
     }
     setToken(res.token);
-    persistIdentity(res.participantId, res.token);
+    persistIdentity(res.participantId, res.token, identityName);
     setStep("waiting");
   }
 
@@ -1313,7 +1267,7 @@ export function ResponseForm(props: Props) {
     setCaseId(id);
   };
 
-  // 본인확인 단계가 바뀌면 입력에 포커스(최초 진입은 건너뜀, 스크롤 점프 방지).
+  // 이름 입력 화면에 들어오면 입력에 포커스한다(최초 진입은 스크롤 점프를 막기 위해 건너뜀).
   useEffect(() => {
     if (step !== "identity") return;
     if (skipFormFocus.current) {
@@ -1324,8 +1278,8 @@ export function ResponseForm(props: Props) {
       skipNextAutoFocus.current = false;
       return;
     }
-    document.getElementById(formStep === 0 ? "pName" : "pRole")?.focus({ preventScroll: true });
-  }, [formStep, step]);
+    document.getElementById("pName")?.focus({ preventScroll: true });
+  }, [step]);
 
   // 입력 확인(review): 문장 조각과 글자 채움 타이밍(글자 수 비례)을 계산한다.
   const goBusyDatesEdit = () => {
@@ -1349,17 +1303,17 @@ export function ResponseForm(props: Props) {
     [`${personName}님은`],
     busyDatesText
       ? allDatesBusy
-        ? [reviewValue("해당 기간에는 회의가 불가능해요.", "회의가 어려운 날짜", goBusyDatesEdit)]
+        ? [reviewValue("해당 기간에는 참여가 어려워요.", "참여가 어려운 날짜", goBusyDatesEdit)]
         : [
-            reviewValue(busyDatesText, "회의가 어려운 날짜", goBusyDatesEdit),
-            "에는 회의가 어렵고,",
+            reviewValue(busyDatesText, "참여가 어려운 날짜", goBusyDatesEdit),
+            "에는 참여가 어렵고,",
           ]
-      : [reviewValue("회의가 어려운 날짜는 없고,", "회의가 어려운 날짜", goBusyDatesEdit)],
+      : [reviewValue("참여가 어려운 날짜는 없고,", "참여가 어려운 날짜", goBusyDatesEdit)],
     dtText
       ? [
           "특별히 ",
           reviewValue(dtText, "특정 날짜 시간", goDateTimesEdit),
-          "에는 회의가 어려워요.",
+          "에는 참여가 어려워요.",
         ]
       : [reviewValue("특정 시간에 어려운 날은 없어요.", "특정 날짜 시간", goDateTimesEdit)],
   ];
@@ -1410,7 +1364,7 @@ export function ResponseForm(props: Props) {
     return (
       <div className="flex flex-1 items-center justify-center">
         <p className="flex items-center gap-1.5 text-sm text-slate-500">
-          <span>회의 내용 불러오는 중</span>
+          <span>일정 내용 불러오는 중</span>
           <DotWave />
         </p>
       </div>
@@ -1422,8 +1376,8 @@ export function ResponseForm(props: Props) {
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
         <div className="flex-1">
           {/* 응답 플로우의 첫 화면이라 뒤로 갈 곳이 없다 — 뒤로가기 버튼 없이 타이틀만. */}
-          <MobileHeaderTitle title="회의 안내" hideBack />
-          <p className="hidden text-sm font-medium text-slate-400 sm:block">회의 안내</p>
+          <MobileHeaderTitle title="일정 안내" hideBack />
+          <p className="hidden text-sm font-medium text-slate-400 sm:block">일정 안내</p>
           <MeetingSummarySentence
             className="sm:mt-3"
             fill
@@ -1446,9 +1400,7 @@ export function ResponseForm(props: Props) {
                 size="xl"
                 display="block"
                 onClick={() => {
-                  setFormStep(0);
-                  setMaxFormStep(0);
-                  setStep("identity");
+                  setStep(selectedId && token ? "availability" : "identity");
                 }}
               >
                 시간 정하러 가기
@@ -1560,115 +1512,65 @@ export function ResponseForm(props: Props) {
     );
   }
 
-  // step === "identity": 본인확인(이름 → 직무) 문장 빌더.
+  // step === "identity": 링크 접속자가 사용할 이름이나 별명을 입력해 참여한다.
   if (step === "identity") {
     return (
       <>
         <Toast open={toastOpen} message={toastMessage} icon={toastIcon} />
         <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
           <div className="flex-1">
-            {/* 뒤로가기: 직무 단계면 이름 단계로, 이름 단계면 회의 안내로 */}
             <MobileHeaderTitle
-              title="본인 확인"
+              title="일정 참여"
               onBack={() => {
-                // 뒤로가기 = 방금 입력하던 단계의 값 되돌리기(모바일 전용 동선).
-                if (formStep > 0) {
-                  skipNextAutoFocus.current = true;
-                  setIdentityRole("");
-                  setFormStep(formStep - 1);
-                } else {
-                  setIdentityName("");
-                  setStep("intro");
-                }
+                setIdentityName("");
+                setStep("intro");
               }}
             />
-            <p className="hidden text-sm font-medium text-slate-400">본인 확인</p>
+            <p className="hidden text-sm font-medium text-slate-400">일정 참여</p>
             <div
               aria-live="polite"
               className="break-keep text-left text-2xl leading-relaxed text-slate-800 sm:mt-3 sm:text-3xl sm:leading-relaxed"
             >
               <p>
-                {clauseVisible(0) && (
-                  <span className="relative animate-fade-up-blur motion-reduce:animate-none">
-                    저는{" "}
-                    {valueSlot(identityName.trim() === "", "이름", () => editFormStep(0), identityName)}
-                    이고,{" "}
-                  </span>
-                )}
-                {clauseVisible(1) && (
-                  <span className="relative animate-fade-up-blur motion-reduce:animate-none">
-                    직무는{" "}
-                    {valueSlot(identityRole.trim() === "", "직무", () => editFormStep(1), identityRole)}
-                    {hasBatchim(identityRole) ? "이에요." : "예요."}
-                  </span>
-                )}
+                <span className="relative animate-fade-up-blur motion-reduce:animate-none">
+                  저는{" "}
+                  {valueSlot(identityName.trim() === "", "이름이나 별명", () => {
+                    document.getElementById("pName")?.focus({ preventScroll: true });
+                  }, identityName)}{" "}
+                  이름으로 참여할게요.
+                </span>
               </p>
             </div>
           </div>
 
           <MobileStickyAction className="mt-8">
-            <div key={formStep}>
-              {formStep === 0 ? (
-                <>
-                  <div className="mb-1.5 flex items-center gap-1.5">
-                    <Label htmlFor="pName" className="mb-0 text-lg">
-                      이름을 입력해주세요
-                    </Label>
-                    <HelpTooltip text={IDENTITY_HELP_TEXT} />
-                  </div>
-                  <Input
-                    id="pName"
-                    value={identityName}
-                    onChange={(e) => setIdentityName(e.target.value)}
-                    onKeyDown={onFormFieldKeyDown}
-                    placeholder="이름 입력"
-                    autoComplete="name"
-                  />
-                </>
-              ) : (
-                <>
-                  <div className="mb-1.5 flex items-center gap-1.5">
-                    <Label htmlFor="pRole" className="mb-0 text-lg">
-                      직무를 선택해주세요
-                    </Label>
-                    <HelpTooltip text={IDENTITY_HELP_TEXT} />
-                  </div>
-                  <Select
-                    variant="menu"
-                    id="pRole"
-                    aria-label="직무"
-                    value={identityRole}
-                    onValueChange={setIdentityRole}
-                    options={[
-                      { value: "", label: "직무 선택" },
-                      ...roleOptions.map((option) => ({ value: option, label: option })),
-                    ]}
-                  />
-                </>
-              )}
+            <div>
+              <div className="mb-1.5 flex items-center gap-1.5">
+                <Label htmlFor="pName" className="mb-0 text-lg">
+                  사용할 이름이나 별명을 입력해주세요
+                </Label>
+                <HelpTooltip text={IDENTITY_HELP_TEXT} />
+              </div>
+              <Input
+                id="pName"
+                value={identityName}
+                onChange={(e) => setIdentityName(e.target.value)}
+                onKeyDown={onFormFieldKeyDown}
+                placeholder="예: 민지, 축구모임 민수"
+                autoComplete="name"
+              />
             </div>
 
             <div className="mt-4">
-              {formStep === IDENTITY_LAST_STEP ? (
-                <TDSButton
-                  size="xl"
-                  display="block"
-                  onClick={handleFormNext}
-                  disabled={!formValid(1) || verifying}
-                  loading={verifying}
-                >
-                  {verifying ? "확인 중..." : "확인하고 다음"}
-                </TDSButton>
-              ) : (
-                <TDSButton
-                  size="xl"
-                  display="block"
-                  onClick={handleFormNext}
-                  disabled={!formValid(formStep)}
-                >
-                  다음
-                </TDSButton>
-              )}
+              <TDSButton
+                size="xl"
+                display="block"
+                onClick={handleFormNext}
+                disabled={!identityName.trim() || joining}
+                loading={joining}
+              >
+                {joining ? "참여하는 중..." : "참여하고 다음"}
+              </TDSButton>
             </div>
           </MobileStickyAction>
         </div>
@@ -1682,7 +1584,7 @@ export function ResponseForm(props: Props) {
       <Toast open={toastOpen} message={toastMessage} icon={toastIcon} />
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
         {/* 상단: 답변이 쌓이는 문장 */}
-        {/* 뒤로가기: 특정 날짜+시간 단계면 불가 날짜 단계로, 그 전이면 본인 확인으로 */}
+        {/* 뒤로가기: 특정 날짜+시간 단계면 불가 날짜 단계로, 그 전이면 참여 시작 화면으로 */}
         <MobileHeaderTitle
           title="가능 시간"
           onBack={() => {
@@ -1693,7 +1595,7 @@ export function ResponseForm(props: Props) {
               editAvailStep(availStep - 1);
             } else {
               setBusyDates(new Set());
-              setStep("identity");
+              setStep("intro");
             }
           }}
         />
@@ -1707,26 +1609,26 @@ export function ResponseForm(props: Props) {
               저는{" "}
               {!availDetermined(0) ? (
                 <>
-                  {availDots("회의가 어려운 날짜", () => editAvailStep(0))}
-                  에는 회의가 어렵고,{" "}
+                  {availDots("참여가 어려운 날짜", () => editAvailStep(0))}
+                  에는 참여가 어렵고,{" "}
                 </>
               ) : busyDates.size > 0 ? (
                 allDatesBusy ? (
                   // 모든 날짜를 고른 경우 — 날짜를 전부 나열하지 않고 기간 전체로 말한다.
-                  <EditValue fieldLabel="회의가 어려운 날짜" tone="negative" onEdit={() => editAvailStep(0)}>
-                    해당 기간에는 회의가 불가능해요.
+                  <EditValue fieldLabel="참여가 어려운 날짜" tone="negative" onEdit={() => editAvailStep(0)}>
+                    해당 기간에는 참여가 어려워요.
                   </EditValue>
                 ) : (
                   <>
-                    <EditValue fieldLabel="회의가 어려운 날짜" tone="negative" onEdit={() => editAvailStep(0)}>
+                    <EditValue fieldLabel="참여가 어려운 날짜" tone="negative" onEdit={() => editAvailStep(0)}>
                       {[...busyDates].sort().map(fmtMD).join(", ")}
                     </EditValue>
-                    에는 회의가 어렵고,{" "}
+                    에는 참여가 어렵고,{" "}
                   </>
                 )
               ) : (
-                <EditValue fieldLabel="회의가 어려운 날짜" tone="negative" onEdit={() => editAvailStep(0)}>
-                  회의가 어려운 날짜는 없고,
+                <EditValue fieldLabel="참여가 어려운 날짜" tone="negative" onEdit={() => editAvailStep(0)}>
+                  참여가 어려운 날짜는 없고,
                 </EditValue>
               )}{" "}
             </span>
@@ -1736,7 +1638,7 @@ export function ResponseForm(props: Props) {
               {!availDetermined(1) ? (
                 <>
                   특별히 {availDots("특정 날짜 시간", () => editAvailStep(1))}
-                  에는 회의가 어려워요.
+                  에는 참여가 어려워요.
                 </>
               ) : Object.keys(dateTimeBusy).length > 0 ? (
                 <>
@@ -1747,7 +1649,7 @@ export function ResponseForm(props: Props) {
                       .map(([ds, rs]) => `${fmtMD(ds)} ${rs.map(fmtRange).join("·")}`)
                       .join(", ")}
                   </EditValue>
-                  에는 회의가 어려워요.
+                  에는 참여가 어려워요.
                 </>
               ) : (
                 <EditValue fieldLabel="특정 날짜 시간" tone="negative" onEdit={() => editAvailStep(1)}>
@@ -1768,7 +1670,7 @@ export function ResponseForm(props: Props) {
           <div>
             {availStep === 0 && (
               <CalendarModalField
-                title="회의가 어려운 날짜"
+                title="참여가 어려운 날짜"
                 placeholder="날짜 선택"
                 dates={dates}
                 selected={busyDates}
@@ -1802,7 +1704,7 @@ export function ResponseForm(props: Props) {
                 {!isMobile && dtDate && (
                   <div className="rounded-2xl bg-slate-50 p-3">
                     <p className="text-sm font-bold text-slate-700">
-                      {fmtMD(dtDate)} 회의가 어려운 시간
+                      {fmtMD(dtDate)} 참여가 어려운 시간
                     </p>
                     <div className="mt-2">
                       {renderTimeAdder(dateTimeBusy[dtDate] ?? [], (i) => removeRange(i, dtDate), false)}
@@ -1853,7 +1755,7 @@ export function ResponseForm(props: Props) {
                         ? dtDate
                           ? `${fmtMD(dtDate)}에 어려운 시간을 추가하세요`
                           : "날짜를 고르면 시간을 추가할 수 있어요"
-                        : "회의가 어려운 날짜를 골라주세요"
+                        : "참여가 어려운 날짜를 골라주세요"
                     }
                     isMobile={isMobile}
                     dates={dates}
@@ -1872,7 +1774,7 @@ export function ResponseForm(props: Props) {
                           {dtDate ? (
                             <div className="rounded-2xl bg-slate-50 p-3">
                               <p className="text-sm font-bold text-slate-700">
-                                {fmtMD(dtDate)} 회의가 어려운 시간
+                                {fmtMD(dtDate)} 참여가 어려운 시간
                               </p>
                               <div className="mt-2">
                                 {renderTimeAdder(dateTimeBusy[dtDate] ?? [], (i) => removeRange(i, dtDate), false)}
@@ -2054,7 +1956,7 @@ function FloatingCaseSelector({
                 <div>
                   <p className="text-sm font-bold text-slate-900">상황</p>
                   <p className="mt-0.5 break-keep text-xs text-slate-400">
-                    회의 조율에서 자주 생기는 상황을 빠르게 확인해보세요. 실제 사용 화면에는 보이지 않아요.
+                    일정 조율에서 자주 생기는 상황을 빠르게 확인해보세요. 실제 사용 화면에는 보이지 않아요.
                   </p>
                 </div>
                 <button
@@ -2149,7 +2051,7 @@ function WaitingScreen({
 }) {
   const WAIT_SECONDS = 7; // 실제 서비스에서는 응답 마감 시각까지의 남은 시간으로 대체.
   // 데모 안내 툴팁: 실제 응답 마감 시간 대신 짧은 카운트다운을 강제한다는 설명.
-  const WAITING_HELP_TEXT = `데모 버전에서는 빠른 확인을 위해 회의 만들기에서 정한 응답 마감 시간 대신 ${WAIT_SECONDS}초 카운트다운으로 넘어가요.`;
+  const WAITING_HELP_TEXT = `데모 버전에서는 빠른 확인을 위해 일정 만들기에서 정한 응답 마감 시간 대신 ${WAIT_SECONDS}초 카운트다운으로 넘어가요.`;
   const total = Math.max(1, totalParticipants);
   const [remaining, setRemaining] = useState(WAIT_SECONDS);
   // 응답률(데모): 내 응답 1건에서 시작해 마감 전에 전원 응답으로 수렴한다.
@@ -2504,12 +2406,6 @@ const QUALITY_DOT_CLASS: Record<CalendarDateQualityTier, string> = {
   medium: "bg-amber-300",
   low: "bg-rose-400",
 };
-
-function isWeekendDateStr(dateStr: string): boolean {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  return weekday === 0 || weekday === 6;
-}
 
 // (참석 명단 칩 UI 는 AvailabilitySearchResultPanel 의 NameGroup 으로 통합 —
 //  날짜 패널은 DateAvailabilitySummaryPanel 이 담당한다.)
@@ -2903,7 +2799,6 @@ function SubmittedCalendarScreenWide({
   const fallbackSummaryByDate = useMemo(() => {
     const map = new Map<string, ReturnType<typeof summarizeDateAvailability>>();
     calendarDates.forEach((date) => {
-      if (isWeekendDateStr(date)) return;
       map.set(
         date,
         summarizeDateAvailability({
@@ -2997,7 +2892,7 @@ function SubmittedCalendarScreenWide({
                 }}
                 aria-pressed={isSelected}
                 aria-label={`${month.m}월 ${cell.day}일${
-                  isDeadline ? " — 회의 마감일" : ""
+                  isDeadline ? " — 일정 후보 마지막 날" : ""
                 }${
                   info
                     ? `, ${info.quality.label}${
@@ -3018,7 +2913,7 @@ function SubmittedCalendarScreenWide({
                     <span className="whitespace-nowrap text-[8px] font-extrabold leading-none text-slate-500 sm:rounded-full sm:bg-slate-100 sm:px-1.5 sm:py-0.5 sm:text-[10px]">
                       {/* 모바일 좁은 셀에서 넘치지 않게 '마감'으로 축약, PC 는 '회의 마감일' 전체. */}
                       <span className="sm:hidden">마감</span>
-                      <span className="hidden sm:inline">회의 마감일</span>
+                      <span className="hidden sm:inline">마지막 날</span>
                     </span>
                   )}
                 </span>
@@ -3051,7 +2946,7 @@ function SubmittedCalendarScreenWide({
       />
     </div>
   ) : selectedDate === null ? (
-    <p className="text-sm text-slate-500">날짜를 누르면 참석자별 가능 여부를 볼 수 있어요.</p>
+    <p className="text-sm text-slate-500">날짜를 누르면 참여자별 가능 여부를 볼 수 있어요.</p>
   ) : (
     <>
       <p className="text-base font-bold text-slate-900">{formatKoreanDateLabel(selectedDate)}</p>

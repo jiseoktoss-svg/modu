@@ -18,7 +18,7 @@ import { formatKoreanTime, isoToEpoch, kstWallToIso, parseHm } from "@/lib/time"
 
 // 결과 캘린더의 '원하는 날짜·시간 확인' 입력 모듈 — 문법을 기억해 입력하는 검색창 대신
 // 날짜/시간을 직접 골라 확인한다. 선택 가능한 시간 목록은 generateSlots 를 재사용해
-// 근무시간·회의 길이·점심 제외 규칙이 추천 후보와 어긋나지 않게 한다.
+// 선택 가능 시간·진행 시간·휴식 시간 규칙이 추천 후보와 어긋나지 않게 한다.
 // 결과 카드는 부모가 본문에 렌더한다(이 모듈은 하단 고정 영역에 들어간다) — onResult 로 전달.
 // 조회 전용 — 확정도 투표도 아니다.
 
@@ -75,8 +75,8 @@ export function AvailabilityDateTimeLookup({
   const [date, setDate] = useState<string | null>(initialDate ?? sortedDates[0] ?? null);
   const [modalOpen, setModalOpen] = useState(false);
 
-  // 선택 가능한 시작 시간 — 추천 후보와 같은 규칙(근무시간 안, 30분 단위, 점심 제외,
-  // 회의 길이가 근무시간을 넘는 시작 시간 제외). 날짜와 무관하게 동일하다.
+  // 선택 가능한 시작 시간 — 추천 후보와 같은 규칙(하루 범위 안, 30분 단위,
+  // 진행 시간이 날짜 경계를 넘는 시작 시간 제외). 날짜와 무관하게 동일하다.
   const timeOptions = useMemo(() => {
     const templateDate = date ?? sortedDates[0];
     if (!templateDate) return [];
@@ -121,7 +121,7 @@ export function AvailabilityDateTimeLookup({
       <div>
         <p className="text-base font-bold text-slate-800">궁금한 날짜와 시간이 있나요?</p>
         <p className="break-keep text-xs text-slate-500">
-          날짜와 시간을 선택하면 누가 참석할 수 있는지 바로 확인할 수 있어요.
+          날짜와 시간을 선택하면 누가 참여할 수 있는지 바로 확인할 수 있어요.
         </p>
       </div>
 
@@ -140,7 +140,7 @@ export function AvailabilityDateTimeLookup({
           </span>
           <Emoji symbol="📅" size={16} />
         </button>
-        {/* 시간 선택 — 30분 단위, 근무시간·점심 규칙은 추천 후보와 동일. */}
+        {/* 시간 선택 — 30분 단위, 하루 범위 규칙은 추천 후보와 동일. */}
         <div className="min-w-0 flex-1">
           <Select
             variant="menu"

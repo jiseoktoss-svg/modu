@@ -135,7 +135,7 @@ export function buildRecommendationBrief(args: {
   if (summaries.length === 0) {
     return {
       headline: "아직 보여줄 추천이 없어요.",
-      primarySentence: "회의 기간 안에 고를 수 있는 시간이 없어요. 기간을 확인해 주세요.",
+      primarySentence: "일정 후보 기간 안에 고를 수 있는 시간이 없어요. 기간을 확인해 주세요.",
       primaryItems: [],
       avoidItems: [],
       nameBadges: [],
@@ -158,10 +158,10 @@ export function buildRecommendationBrief(args: {
     const requiredException = x.summary.exceptionRanges.find((e) => e.reason === "requiredBusy");
     const detail =
       x.severity >= 3
-        ? "필수참석자 여러 명이 참석하기 어려워요."
+        ? "꼭 함께할 사람 여러 명이 참여하기 어려워요."
         : x.severity === 2
-          ? `필수참석자${requiredException ? `인 ${formatNameList(requiredException.requiredNames)}` : ""}이 참석하기 어려워요.`
-          : "일부 인원이 참석하기 어려워요.";
+          ? `꼭 함께할 사람${requiredException ? `인 ${formatNameList(requiredException.requiredNames)}` : ""}이 참여하기 어려워요.`
+          : "일부 사람이 참여하기 어려워요.";
     return { date: x.summary.date, label: dateLabel(x.summary.date), detail, tone: "avoid" };
   });
 
@@ -203,7 +203,7 @@ export function buildRecommendationBrief(args: {
       primaryItems = tier1.slice(0, MAX_PRIMARY).map((s) => ({
         date: s.date,
         label: dateLabel(s.date),
-        detail: "회의 가능 시간대 전체에 모든 인원이 참석할 수 있어요.",
+        detail: "선택 가능한 모든 시간대에 모두가 참여할 수 있어요.",
         tone: "good" as const,
       }));
       // 예외 = 하루 전체를 피하는 게 나은 날짜만. 점심 직후처럼 '특정 시간만' 어려운 날은
@@ -219,12 +219,12 @@ export function buildRecommendationBrief(args: {
         const joinedEx = joinDateLabels(exceptionLabels);
         primarySentence =
           exceptionLabels.length <= 2
-            ? `${lead}${joinedEx}만 제외하면, 대부분 날짜에 모든 인원이 참석할 수 있어요.`
-            : `${lead}${joinedEx}을 제외하면 대부분 날짜에 모든 인원이 참석할 수 있어요.`;
+            ? `${lead}${joinedEx}만 제외하면, 대부분 날짜에 모두가 참여할 수 있어요.`
+            : `${lead}${joinedEx}을 제외하면 대부분 날짜에 모두가 참여할 수 있어요.`;
         exceptionCentricPrimary = true;
       } else {
         // 전체 제외로 말할 예외가 없거나 너무 많으면 개수 중심으로 — 편한 날을 고르라고 안내한다.
-        primarySentence = `${lead}전원이 참석할 수 있는 날짜가 ${tier1.length}개 있어요. 편한 날짜를 골라도 괜찮아요.`;
+        primarySentence = `${lead}모두가 참여할 수 있는 날짜가 ${tier1.length}개 있어요. 편한 날짜를 골라도 괜찮아요.`;
       }
     } else {
       const picked = primaryPool.slice(0, MAX_PRIMARY);
@@ -232,15 +232,15 @@ export function buildRecommendationBrief(args: {
         date: s.date,
         label: dateLabel(s.date),
         detail: s.allSlotsAllAvailable
-          ? "회의 가능 시간대 전체에 모든 인원이 참석할 수 있어요."
-          : "필수참석자는 모두 참석할 수 있어요.",
+          ? "선택 가능한 모든 시간대에 모두가 참여할 수 있어요."
+          : "꼭 함께할 사람은 모두 참여할 수 있어요.",
         tone: "good" as const,
       }));
       const joined = joinDateLabels(primaryItems.map((i) => i.label));
       primarySentence =
         tier1.length > 0
-          ? `${lead}${joined}을 먼저 확인해보세요. 회의 가능 시간대 전체에 모든 인원이 참석할 수 있어요.`
-          : `${lead}${joined}을 먼저 확인해보세요. 필수참석자는 모두 참석할 수 있어요.`;
+          ? `${lead}${joined}을 먼저 확인해보세요. 선택 가능한 모든 시간대에 모두가 참여할 수 있어요.`
+          : `${lead}${joined}을 먼저 확인해보세요. 꼭 함께할 사람은 모두 참여할 수 있어요.`;
     }
   } else {
     // 바쁜 기간/좋은 후보 없음 — 이때만 특정 시간을 노출한다(그나마 덜 어려운 시간이 정보다).
@@ -254,20 +254,20 @@ export function buildRecommendationBrief(args: {
           label: dateLabel(best.date),
           detail:
             slot.requiredBusyNames.length > 0
-              ? `${formatNameList(slot.requiredBusyNames)}이 참석하기 어려워요.`
-              : `전체 ${slot.totalParticipants}명 중 ${slot.totalAvailable}명이 참석할 수 있어요.`,
+              ? `${formatNameList(slot.requiredBusyNames)}이 참여하기 어려워요.`
+              : `전체 ${slot.totalParticipants}명 중 ${slot.totalAvailable}명이 참여할 수 있어요.`,
           tone: "neutral" as const,
         },
       ];
       if (slot.requiredBusyNames.length > 0) {
         recordNames(slot.requiredBusyNames, slot.requiredBusyNames); // 모두 필수참석자
-        primarySentence = `굳이 고르면 ${timeLabel}이 가장 덜 어려운 날짜예요. 다만 필수참석자인 ${formatNameList(slot.requiredBusyNames)}이 참석하기 어려워요.`;
+        primarySentence = `굳이 고르면 ${timeLabel}이 가장 덜 어려운 날짜예요. 다만 꼭 함께할 사람인 ${formatNameList(slot.requiredBusyNames)}이 참여하기 어려워요.`;
       } else {
-        primarySentence = `그래도 ${timeLabel}이 가장 나은 날짜예요. 전체 ${slot.totalParticipants}명 중 ${slot.totalAvailable}명이 참석할 수 있어요.`;
+        primarySentence = `그래도 ${timeLabel}이 가장 나은 날짜예요. 전체 ${slot.totalParticipants}명 중 ${slot.totalAvailable}명이 참여할 수 있어요.`;
       }
     } else {
       primaryItems = [];
-      primarySentence = "회의 기간 안에 고를 수 있는 시간이 없어요. 기간을 확인해 주세요.";
+      primarySentence = "일정 후보 기간 안에 고를 수 있는 시간이 없어요. 기간을 확인해 주세요.";
     }
   }
 
@@ -294,13 +294,13 @@ export function buildRecommendationBrief(args: {
       avoidSentence = `다만 ${worstAvoid.label} ${formatKoreanTimeRange(
         exception.startAt,
         exception.endAt,
-      )} 시간에는 ${formatNameList(exception.names)}이 참석하기 어려워요. 그 시간을 피해서 확인해보세요.`;
-    } else if (worstAvoid.detail.includes("필수참석자 여러 명")) {
-      avoidSentence = `${worstAvoid.label}은 필수참석자 여러 명이 참석하기 어려워 피하는 게 좋아요.`;
-    } else if (worstAvoid.detail.includes("필수참석자")) {
-      avoidSentence = `${worstAvoid.label}은 필수참석자가 참석하기 어려워 피하는 게 좋아요.`;
+      )} 시간에는 ${formatNameList(exception.names)}이 참여하기 어려워요. 그 시간을 피해서 확인해보세요.`;
+    } else if (worstAvoid.detail.includes("꼭 함께할 사람 여러 명")) {
+      avoidSentence = `${worstAvoid.label}은 꼭 함께할 사람 여러 명이 참여하기 어려워 피하는 게 좋아요.`;
+    } else if (worstAvoid.detail.includes("꼭 함께할 사람")) {
+      avoidSentence = `${worstAvoid.label}은 꼭 함께할 사람이 참여하기 어려워 피하는 게 좋아요.`;
     } else {
-      avoidSentence = `${worstAvoid.label}은 일부 인원이 참석하기 어려워 다른 날짜를 먼저 보는 게 좋아요.`;
+      avoidSentence = `${worstAvoid.label}은 일부 사람이 참여하기 어려워 다른 날짜를 먼저 보는 게 좋아요.`;
     }
   } else {
     // 피할 날짜는 없지만 특정 시간대만 어려운 날이 있으면 그 예외를 알려준다.
@@ -313,7 +313,7 @@ export function buildRecommendationBrief(args: {
       avoidSentence = `다만 ${dateLabel(withException.date)} ${formatKoreanTimeRange(
         exception.startAt,
         exception.endAt,
-      )} 시간에는 ${formatNameList(exception.names)}이 참석하기 어려워요. 그 시간을 피해서 확인해보세요.`;
+      )} 시간에는 ${formatNameList(exception.names)}이 참여하기 어려워요. 그 시간을 피해서 확인해보세요.`;
     }
   }
 

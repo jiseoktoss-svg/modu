@@ -7,6 +7,7 @@ import {
   type SchedulerParticipant,
 } from "@/lib/scheduler";
 import type { AttendanceType, AvailabilityStatus, ResponseStatus } from "@/lib/types";
+import { kstWallToIso } from "@/lib/time";
 
 const DATE = "2026-07-01"; // 수요일
 
@@ -148,5 +149,24 @@ describe("validateSubmittedBlocks (#3)", () => {
     }));
     const r = validateSubmittedBlocks(MEETING, many);
     expect(r.ok).toBe(false);
+  });
+
+  it("하루 전체 범위에서는 밤 11시부터 자정까지 응답할 수 있다", () => {
+    const fullDayMeeting: SchedulerMeeting = {
+      ...MEETING,
+      workdayStart: "00:00",
+      workdayEnd: "24:00",
+      lunchStart: "00:00",
+      lunchEnd: "00:01",
+    };
+    const r = validateSubmittedBlocks(fullDayMeeting, [
+      {
+        startAt: kstWallToIso(DATE, 23 * 60),
+        endAt: kstWallToIso(DATE, 24 * 60),
+        status: "busy",
+      },
+    ]);
+
+    expect(r.ok).toBe(true);
   });
 });

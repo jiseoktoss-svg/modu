@@ -308,14 +308,14 @@ export function classifyRankGroupKind(group: EvaluatedSlot[]): RankGroupKind {
 export function labelRankGroup(group: EvaluatedSlot[]): string {
   const first = group[0];
   if (first.isAllAvailable) {
-    return group.length > 1 ? "모두 참석할 수 있는 날짜" : "가장 무난한 날짜";
+    return group.length > 1 ? "모두 참여할 수 있는 날짜" : "가장 무난한 날짜";
   }
   if (first.isRequiredAllAvailable) {
     // 미응답자가 있으면 '필수참석자가 모두 가능'은 과장이다(필수 미응답이 섞여 있을 수 있음).
     if (first.pendingNames.length > 0) {
       return "지금까지의 응답 기준 추천 날짜";
     }
-    return group.length > 1 ? "필수참석자가 모두 가능한 날짜" : "추천 날짜";
+    return group.length > 1 ? "꼭 함께할 사람이 모두 가능한 날짜" : "추천 날짜";
   }
   if (first.requiredBusyCount === 1) {
     return "차선 날짜";
@@ -434,13 +434,13 @@ export function shouldMarkDateAvoid(daySlots: EvaluatedSlot[]): boolean {
 /** avoid 톤의 이유 — 절대적 위험(필수 불가)과 상대적 비추천(인원 부족)을 구분해 말한다. */
 function buildAvoidReason(slot: EvaluatedSlot): string {
   if (slot.requiredBusyCount >= 2) {
-    return "필수참석자 여러 명이 참석하기 어려워요.";
+    return "꼭 함께할 사람 여러 명이 참여하기 어려워요.";
   }
   if (slot.requiredBusyCount === 1) {
-    return "필수참석자 1명이 참석하기 어려워요.";
+    return "꼭 함께할 사람 1명이 참여하기 어려워요.";
   }
   if (slot.totalAvailable < slot.totalParticipants) {
-    return "다른 날짜보다 참석할 수 있는 인원이 적어요.";
+    return "다른 날짜보다 참여할 수 있는 인원이 적어요.";
   }
   return "이번 날짜 중에서는 우선순위가 낮은 시간이에요.";
 }
@@ -602,7 +602,7 @@ export function buildWarnings(
         names,
         level,
         everyDay: true,
-        message: `매일 ${range}은 필수참석자인 ${formatNameList(names)}이 참석하기 어려워요. 이 시간은 피해주세요.`,
+        message: `매일 ${range}은 꼭 함께할 사람인 ${formatNameList(names)}이 참여하기 어려워요. 이 시간은 피해주세요.`,
       });
     } else {
       for (const date of [...g.dates].sort()) {
@@ -613,7 +613,7 @@ export function buildWarnings(
           date,
           names,
           level,
-          message: `${m}월 ${d}일 ${range}에는 필수참석자인 ${formatNameList(names)}이 참석하기 어려워요. 이 시간은 피해주세요.`,
+          message: `${m}월 ${d}일 ${range}에는 꼭 함께할 사람인 ${formatNameList(names)}이 참여하기 어려워요. 이 시간은 피해주세요.`,
         });
       }
     }
@@ -641,7 +641,7 @@ export function buildNarrative(args: {
   if (slots.length === 0) {
     return {
       headline: "아직 보여줄 날짜가 없어요.",
-      comment: "회의 기간 안에 고를 수 있는 시간이 없어요. 기간을 확인해 주세요.",
+      comment: "일정 후보 기간 안에 고를 수 있는 시간이 없어요. 기간을 확인해 주세요.",
     };
   }
 
@@ -651,13 +651,13 @@ export function buildNarrative(args: {
   let overflowDates: string[] | undefined;
 
   if (context === "mostlyAvailable") {
-    headline = "대부분 날짜에 모든 인원이 참석할 수 있어요.";
+    headline = "대부분 날짜에 모두가 참여할 수 있어요.";
     const worst = warnings[0];
     if (worst && worst.everyDay) {
-      comment = `단, 매일 ${formatKoreanTime(worst.startAt)}~${formatKoreanTime(worst.endAt)}에는 필수참석자인 ${formatNameList(worst.names)}이 참석하기 어려우니 그 시간만 피하면 어느 날짜든 괜찮아요.`;
+      comment = `단, 매일 ${formatKoreanTime(worst.startAt)}~${formatKoreanTime(worst.endAt)}에는 꼭 함께할 사람인 ${formatNameList(worst.names)}이 참여하기 어려우니 그 시간만 피하면 어느 날짜든 괜찮아요.`;
     } else if (worst) {
       const [, m, d] = worst.date.split("-").map(Number);
-      comment = `단, ${m}월 ${d}일 ${formatKoreanTime(worst.startAt)}에는 필수참석자인 ${formatNameList(worst.names)}이 참석하기 어려우니 이 시간은 피해주세요.`;
+      comment = `단, ${m}월 ${d}일 ${formatKoreanTime(worst.startAt)}에는 꼭 함께할 사람인 ${formatNameList(worst.names)}이 참여하기 어려우니 이 시간은 피해주세요.`;
     } else if (redSlots.length > 0) {
       // 필수 경고는 없지만 상대적 빨강(일부 인원이 빠지는 날)이 있는 경우 —
       // 날짜는 최대 3개까지만 언급하고 나머지는 캘린더가 보여준다.
@@ -667,7 +667,7 @@ export function buildNarrative(args: {
         return `${m}월 ${d}일`;
       });
       const suffix = redDates.length > 3 ? " 등" : "";
-      comment = `${labels.join(", ")}${suffix}은 일부 인원이 참석하기 어려워요. 전원이 가능한 다른 날짜를 먼저 보는 게 좋아요.`;
+      comment = `${labels.join(", ")}${suffix}은 일부 사람이 참여하기 어려워요. 모두 가능한 다른 날짜를 먼저 보는 게 좋아요.`;
       // '등'에 마우스를 올리면 생략된 나머지 날짜를 툴팁으로 볼 수 있게 노출한다.
       if (redDates.length > 3) {
         overflowDates = redDates.slice(3).map((date) => {
@@ -684,11 +684,11 @@ export function buildNarrative(args: {
       // 필수참석자가 빠지는 날이 있으면 '피하면 좋은 날짜' 관점으로 안내한다(추천 문구 생략).
       // 화면의 별도 빨간 경고 문장을 제거했으므로, 보조 설명만으로도 이유가 이해되게 쓴다.
       headline = "피하면 좋은 날짜가 있어요.";
-      comment = "일부 날짜는 필수참석자가 참석하기 어려운 시간이 있어요. 날짜를 눌러 자세히 확인해 주세요.";
+      comment = "일부 날짜는 꼭 함께할 사람이 참여하기 어려운 시간이 있어요. 날짜를 눌러 자세히 확인해 주세요.";
     } else if (hasRelativeRed) {
       // 선택참석자만 빠지는 날도 캘린더에서 낮은 추천도로 드러나므로 같은 톤으로 안내한다.
       headline = "피하면 좋은 날짜가 있어요.";
-      comment = "일부 날짜는 다른 날짜보다 참석 가능한 인원이 적어요. 추천도가 높은 날짜를 먼저 확인해 주세요.";
+      comment = "일부 날짜는 다른 날짜보다 참여 가능한 인원이 적어요. 추천도가 높은 날짜를 먼저 확인해 주세요.";
     } else {
       // 피할 날짜가 딱히 없으면 기존 긍정 문구를 유지한다.
       headline = "몇 개의 좋은 날짜가 보여요.";
@@ -700,13 +700,13 @@ export function buildNarrative(args: {
   } else if (context === "busyPeriod") {
     headline = "이번 기간은 다들 바빠서 모든 인원이 맞는 시간이 많지 않아요.";
     if (best.isRequiredAllAvailable) {
-      comment = `그래도 ${formatSlotTimeLabel(best)}이 가장 나은 날짜예요. 필수참석자는 모두 참석할 수 있고, 전체 ${best.totalParticipants}명 중 ${best.totalAvailable}명이 참석할 수 있어요.`;
+      comment = `그래도 ${formatSlotTimeLabel(best)}이 가장 나은 날짜예요. 꼭 함께할 사람은 모두 참여할 수 있고, 전체 ${best.totalParticipants}명 중 ${best.totalAvailable}명이 참여할 수 있어요.`;
     } else {
-      comment = `아쉽지만 ${formatSlotTimeLabel(best)}이 가장 나은 차선 날짜예요. 다만 필수참석자인 ${formatNameList(best.requiredBusyNames)}이 참석하기 어려워요.`;
+      comment = `아쉽지만 ${formatSlotTimeLabel(best)}이 가장 나은 차선 날짜예요. 다만 꼭 함께할 사람인 ${formatNameList(best.requiredBusyNames)}이 참여하기 어려워요.`;
     }
   } else {
-    headline = "이번 기간에는 필수참석자가 모두 참석할 수 있는 시간이 없어요.";
-    comment = `기간을 조금 넓히는 게 좋아요. 아쉽지만 굳이 고르면 ${formatSlotTimeLabel(best)}이 가장 덜 어려운 날짜예요. 다만 필수참석자인 ${formatNameList(best.requiredBusyNames)}이 참석하기 어려워요.`;
+    headline = "이번 기간에는 꼭 함께할 사람이 모두 참여할 수 있는 시간이 없어요.";
+    comment = `기간을 조금 넓히는 게 좋아요. 아쉽지만 굳이 고르면 ${formatSlotTimeLabel(best)}이 가장 덜 어려운 날짜예요. 다만 꼭 함께할 사람인 ${formatNameList(best.requiredBusyNames)}이 참여하기 어려워요.`;
   }
 
   // 미응답은 컨텍스트가 아니라 잠정 결과 수식어로만 붙인다.

@@ -36,7 +36,7 @@ export function DatePicker({
   minReason,
   maxReason,
   placeholder = "날짜 선택",
-  dialogEyebrow = "회의 마감일",
+  dialogEyebrow = "일정 후보 마지막 날",
 }: DatePickerProps) {
   const [open, setOpen] = useState(false);
   const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null);

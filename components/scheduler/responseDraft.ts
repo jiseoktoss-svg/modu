@@ -1,5 +1,5 @@
 // v2: 투표 개념 제거로 resultSelectedIndex/resultVotedIndex 필드 삭제(구버전 드래프트는 폐기).
-export const RESPONSE_DRAFT_VERSION = 2;
+export const RESPONSE_DRAFT_VERSION = 3;
 
 export type ResponseDraftStep =
   | "intro"
@@ -22,11 +22,7 @@ export interface ResponseDraft {
   caseId: number;
   selectedId: string | null;
   token: string | null;
-  role: string;
   identityName: string;
-  identityRole: string;
-  formStep: number;
-  maxFormStep: number;
   availStep: number;
   maxAvailStep: number;
   busyDates: string[];
@@ -114,12 +110,7 @@ function parseResponseDraft(raw: string, meetingId: string): ResponseDraft | nul
   if (!isCaseId(parsed.caseId)) return null;
   if (!isNullableString(parsed.selectedId)) return null;
   if (!isNullableString(parsed.token)) return null;
-  if (!isString(parsed.role)) return null;
   if (!isString(parsed.identityName)) return null;
-  if (!isString(parsed.identityRole)) return null;
-  if (!isStepIndex(parsed.formStep)) return null;
-  if (!isStepIndex(parsed.maxFormStep)) return null;
-  if (parsed.maxFormStep < parsed.formStep) return null;
   if (!isStepIndex(parsed.availStep)) return null;
   if (!isStepIndex(parsed.maxAvailStep)) return null;
   if (parsed.maxAvailStep < parsed.availStep) return null;
@@ -137,11 +128,7 @@ function parseResponseDraft(raw: string, meetingId: string): ResponseDraft | nul
     caseId: parsed.caseId,
     selectedId: parsed.selectedId,
     token: parsed.token,
-    role: parsed.role,
     identityName: parsed.identityName,
-    identityRole: parsed.identityRole,
-    formStep: parsed.formStep,
-    maxFormStep: parsed.maxFormStep,
     availStep: parsed.availStep,
     maxAvailStep: parsed.maxAvailStep,
     busyDates: parsed.busyDates,

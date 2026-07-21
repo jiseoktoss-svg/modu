@@ -211,44 +211,44 @@ export function buildDateAvailabilitySummary(
   let comment = "";
 
   if (totalSlots === 0) {
-    headline = "이 날은 고를 수 있는 회의 시간이 없어요.";
-    comment = "회의 기간과 근무 시간을 확인해 주세요.";
+    headline = "이 날은 고를 수 있는 시간이 없어요.";
+    comment = "일정 후보 기간과 선택 가능 시간을 확인해 주세요.";
   } else {
     const pendingCount = results[0].totalPending;
     const noBusyAnywhere = results.every((r) => r.busyNames.length === 0);
 
     if (allSlotsAllAvailable) {
       // "하루 종일"(24시간처럼 읽힘)이나 "모든 시간" 대신 "회의 가능 시간대 전체"로 쓴다.
-      headline = "이 날은 회의 가능 시간대 전체에 모든 인원이 참석할 수 있어요.";
+      headline = "이 날은 선택 가능한 모든 시간대에 모두가 참여할 수 있어요.";
       comment = "어느 시간을 골라도 괜찮아요.";
     } else if (noBusyAnywhere && pendingCount > 0) {
-      headline = "이 날은 응답한 사람 기준으로 회의 가능 시간대 전체에 참석할 수 있어요.";
+      headline = "이 날은 응답한 사람 기준으로 선택 가능한 모든 시간대에 참여할 수 있어요.";
     } else if (requiredIssueSlots.length === totalSlots) {
       // 어느 시간을 골라도 필수참석자가 빠진다.
       headline = "이 날은 모든 인원이 맞는 시간이 없어요.";
-      comment = "필수참석자가 모두 가능한 시간대를 먼저 확인하는 게 좋아요.";
+      comment = "꼭 함께할 사람이 모두 가능한 시간대를 먼저 확인하는 게 좋아요.";
     } else if (requiredIssueSlots.length > 0) {
-      headline = "이 날은 일부 시간에 필수참석자가 참석하기 어려워요.";
+      headline = "이 날은 일부 시간에 꼭 함께할 사람이 참여하기 어려워요.";
       const worst = exceptionRanges.find((x) => x.reason === "requiredBusy");
       if (worst) {
         // 예외는 참석자의 실제 busy 시각이라 날짜·시간 검색 결과와 그대로 일치한다.
         comment = `${formatKoreanTimeRange(worst.startAt, worst.endAt)} 시간에는 ${formatNameList(
           worst.requiredNames,
-        )}이 참석하기 어려우니 회의는 피하는 게 좋아요.`;
+        )}이 참여하기 어려우니 이 시간은 피하는 게 좋아요.`;
       }
     } else if (allAvailableSlots.length > 0) {
-      headline = "이 날은 대부분 시간에 모든 인원이 참석할 수 있어요.";
+      headline = "이 날은 대부분 시간에 모두가 참여할 수 있어요.";
       const first = exceptionRanges[0];
       if (first) {
         comment = `다만 ${formatKoreanTimeRange(first.startAt, first.endAt)} 시간에는 ${formatNameList(
           first.names,
-        )}이 참석하기 어려워요.`;
+        )}이 참여하기 어려워요.`;
       }
     } else {
       headline = "이 날은 모든 인원이 맞는 시간이 없어요.";
       comment = allSlotsRequiredAvailable
-        ? "그래도 필수참석자는 모든 시간에 참석할 수 있어요. 일부 선택참석자가 참석하기 어려워요."
-        : "필수참석자가 모두 가능한 시간대를 먼저 확인하는 게 좋아요.";
+        ? "그래도 꼭 함께할 사람은 모든 시간에 참여할 수 있어요. 함께하면 좋은 사람 일부는 참여하기 어려워요."
+        : "꼭 함께할 사람이 모두 가능한 시간대를 먼저 확인하는 게 좋아요.";
     }
 
     // 미응답은 잠정 결과 수식어로만 붙인다(contextualResult 와 동일 원칙).

@@ -125,8 +125,8 @@ const MARK_STEP = 0.03;
 const FALL_BASE = 9.85; // 낙하 시작
 const FALL_STEP = 0.06;
 
-// 추천 후보 리스트 — 장면 4에서 노출. 오늘(KST) 이후의 평일에서
-// 주말과 장면 2의 '불가'로 보여준 날짜(탈락일)를 제외하고 순서대로 만든다.
+// 추천 후보 리스트 — 장면 4에서 노출. 오늘(KST) 이후 날짜 중
+// 장면 2의 '불가'로 보여준 날짜(탈락일)를 제외하고 순서대로 만든다.
 function buildCandidateDates(today: string, count = 12): string[] {
   const busy = new Set(CHIP_SLOTS.map((slot) => addDaysToDateStr(today, slot.offset)));
   const out: string[] = [];
@@ -135,7 +135,7 @@ function buildCandidateDates(today: string, count = 12): string[] {
   while (out.length < count && guard < 120) {
     const dateStr = addDaysToDateStr(today, offset);
     const { weekdayKo } = describeDateStr(dateStr);
-    if (weekdayKo !== "토" && weekdayKo !== "일" && !busy.has(dateStr)) {
+    if (!busy.has(dateStr)) {
       const [, m, d] = dateStr.split("-").map(Number);
       out.push(`${m}월 ${d}일 ${weekdayKo}요일`);
     }
@@ -238,7 +238,7 @@ function Wordmark() {
         MOA
       </div>
       <div style={{ marginTop: 10, fontSize: 22, fontWeight: 700, color: "#334155" }}>
-        고민할 시간에, 회의를.
+        고민할 시간에, 만나요.
       </div>
     </>
   );
@@ -295,7 +295,7 @@ function MotionScenes() {
                     boxShadow: "0 1px 2px rgba(49, 130, 246, 0.2)",
                   }}
                 >
-                  필수
+                  꼭 함께
                 </span>
                 김하늘
               </span>

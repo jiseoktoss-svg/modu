@@ -2,6 +2,7 @@ import "server-only";
 import { getDemoMeeting, getDemoParticipants, isDemoMeetingId } from "@/lib/demoMeeting";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { SchedulerInput, SchedulerMeeting } from "@/lib/scheduler";
+import { SCHEDULE_DAY_END, SCHEDULE_DAY_START } from "@/lib/schedulingPolicy";
 import {
   mapAvailabilityBlock,
   mapConfirmedSlot,
@@ -139,8 +140,9 @@ export function toSchedulerMeeting(meeting: Meeting): SchedulerMeeting {
     durationMinutes: meeting.durationMinutes,
     dateStart: meeting.dateStart,
     dateEnd: meeting.dateEnd,
-    workdayStart: meeting.workdayStart,
-    workdayEnd: meeting.workdayEnd,
+    // 현재 제품 정책은 기존에 만들어진 일정까지 요일 무관 하루 전체를 사용한다.
+    workdayStart: SCHEDULE_DAY_START,
+    workdayEnd: SCHEDULE_DAY_END,
     lunchStart: meeting.lunchStart,
     lunchEnd: meeting.lunchEnd,
   };
@@ -158,8 +160,8 @@ export function toSchedulerInput(
       durationMinutes: meeting.durationMinutes,
       dateStart: meeting.dateStart,
       dateEnd: meeting.dateEnd,
-      workdayStart: meeting.workdayStart,
-      workdayEnd: meeting.workdayEnd,
+      workdayStart: SCHEDULE_DAY_START,
+      workdayEnd: SCHEDULE_DAY_END,
       lunchStart: meeting.lunchStart,
       lunchEnd: meeting.lunchEnd,
     },

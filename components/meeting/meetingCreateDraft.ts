@@ -1,9 +1,7 @@
-import type { ParticipantDraft } from "@/components/meeting/ParticipantListEditor";
-
 export const MEETING_CREATE_DRAFT_STORAGE_KEY = "modu:meeting-create-draft:v1";
-export const MEETING_CREATE_DRAFT_LAST_STEP = 6;
+export const MEETING_CREATE_DRAFT_LAST_STEP = 5;
 
-const MEETING_CREATE_DRAFT_VERSION = 1;
+const MEETING_CREATE_DRAFT_VERSION = 2;
 
 export interface MeetingCreateDraft {
   version: typeof MEETING_CREATE_DRAFT_VERSION;
@@ -15,7 +13,6 @@ export interface MeetingCreateDraft {
   responseDeadlineTime: string;
   durationHours: string;
   durationMinute: string;
-  participants: ParticipantDraft[];
   step: number;
   maxStep: number;
   confirming: boolean;
@@ -41,15 +38,6 @@ function isValidStep(value: unknown): value is number {
   );
 }
 
-function isParticipantDraft(value: unknown): value is ParticipantDraft {
-  return (
-    isRecord(value) &&
-    isString(value.name) &&
-    isString(value.role) &&
-    (value.attendanceType === "required" || value.attendanceType === "optional")
-  );
-}
-
 function parseMeetingCreateDraft(raw: string): MeetingCreateDraft | null {
   let parsed: unknown;
   try {
@@ -68,9 +56,6 @@ function parseMeetingCreateDraft(raw: string): MeetingCreateDraft | null {
   if (!isString(parsed.responseDeadlineTime)) return null;
   if (!isString(parsed.durationHours)) return null;
   if (!isString(parsed.durationMinute)) return null;
-  if (!Array.isArray(parsed.participants) || !parsed.participants.every(isParticipantDraft)) {
-    return null;
-  }
   if (!isValidStep(parsed.step)) return null;
   if (!isValidStep(parsed.maxStep)) return null;
   if (parsed.maxStep < parsed.step) return null;
@@ -87,7 +72,6 @@ function parseMeetingCreateDraft(raw: string): MeetingCreateDraft | null {
     responseDeadlineTime: parsed.responseDeadlineTime,
     durationHours: parsed.durationHours,
     durationMinute: parsed.durationMinute,
-    participants: parsed.participants,
     step: parsed.step,
     maxStep: parsed.maxStep,
     confirming: parsed.confirming,

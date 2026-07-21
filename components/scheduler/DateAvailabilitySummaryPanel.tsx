@@ -24,18 +24,18 @@ function formatNameList(names: string[]): string {
 function bestSlotDetails(bestSlot: NonNullable<DateAvailabilitySummary["bestSlot"]>) {
   const attendance =
     !bestSlot.hasPending && bestSlot.totalAvailable === bestSlot.totalParticipants
-      ? "모든 인원이 참석할 수 있어요."
+      ? "모든 사람이 참여할 수 있어요."
       : bestSlot.hasPending
-        ? `응답한 사람 기준으로 ${bestSlot.totalAvailable}명이 참석할 수 있어요.`
-        : `전체 ${bestSlot.totalParticipants}명 중 ${bestSlot.totalAvailable}명이 참석할 수 있어요.`;
+        ? `응답한 사람 기준으로 ${bestSlot.totalAvailable}명이 참여할 수 있어요.`
+        : `전체 ${bestSlot.totalParticipants}명 중 ${bestSlot.totalAvailable}명이 참여할 수 있어요.`;
 
-  let required = "필수참석자는 모두 참석할 수 있어요.";
+  let required = "꼭 함께할 사람은 모두 참여할 수 있어요.";
   if (bestSlot.requiredBusyNames.length > 0) {
-    required = `다만 필수참석자인 ${formatNameList(
+    required = `다만 꼭 함께할 사람인 ${formatNameList(
       bestSlot.requiredBusyNames,
-    )}이 참석하기 어려워요.`;
+    )}이 참여하기 어려워요.`;
   } else if (bestSlot.requiredPendingNames.length > 0) {
-    required = `필수참석자 ${bestSlot.requiredPendingNames.length}명이 아직 응답하지 않았어요.`;
+    required = `꼭 함께할 사람 ${bestSlot.requiredPendingNames.length}명이 아직 응답하지 않았어요.`;
   }
 
   return { attendance, required };

@@ -94,20 +94,20 @@ export function AvailabilitySearchResultPanel({
 
   if (allAvailable) {
     summaryLines.push({
-      text: "모든 인원이 참석할 수 있어요.",
+      text: "모든 사람이 참여할 수 있어요.",
       className: "font-bold text-brand-600",
     });
   } else {
     summaryLines.push({
       text: result.hasPending
-        ? `응답한 사람 기준으로는 ${result.totalAvailable}명이 참석할 수 있어요.`
-        : `전체 ${result.totalParticipants}명 중 ${result.totalAvailable}명이 참석할 수 있어요.`,
+        ? `응답한 사람 기준으로는 ${result.totalAvailable}명이 참여할 수 있어요.`
+        : `전체 ${result.totalParticipants}명 중 ${result.totalAvailable}명이 참여할 수 있어요.`,
       className: "font-semibold text-slate-700",
     });
 
     if (result.requiredBusyNames.length >= 1) {
       summaryLines.push({
-        text: `필수참석자인 ${formatNameList(result.requiredBusyNames)}이 참석하기 어려워요.${
+        text: `꼭 함께할 사람인 ${formatNameList(result.requiredBusyNames)}이 참여하기 어려워요.${
           result.requiredBusyNames.length >= 2 ? " 이 시간은 피하는 게 좋아요." : ""
         }`,
         className: cn(
@@ -117,12 +117,12 @@ export function AvailabilitySearchResultPanel({
       });
     } else if (result.requiredPendingNames.length > 0) {
       summaryLines.push({
-        text: `필수참석자 중 ${result.requiredPendingNames.length}명이 아직 응답하지 않았어요.`,
+        text: `꼭 함께할 사람 중 ${result.requiredPendingNames.length}명이 아직 응답하지 않았어요.`,
         className: "text-slate-500",
       });
     } else {
       summaryLines.push({
-        text: "필수참석자는 모두 참석할 수 있어요.",
+        text: "꼭 함께할 사람은 모두 참여할 수 있어요.",
         className: "font-semibold text-slate-700",
       });
     }
@@ -156,7 +156,7 @@ export function AvailabilitySearchResultPanel({
       </div>
 
       <NameGroup tone="green" label="가능" names={result.availableNames} requiredNames={requiredNames} />
-      <NameGroup tone="red" label="참석하기 어려움" names={result.busyNames} requiredNames={requiredNames} />
+      <NameGroup tone="red" label="참여하기 어려움" names={result.busyNames} requiredNames={requiredNames} />
       <NameGroup tone="slate" label="미응답" names={result.pendingNames} requiredNames={requiredNames} />
 
       <p className="px-0.5 text-[11px] text-slate-400">

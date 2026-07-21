@@ -46,9 +46,8 @@ describe("meeting create draft storage", () => {
       responseDeadlineTime: "18:00",
       durationHours: "1",
       durationMinute: "30",
-      participants: [{ name: "김모두", role: "PM", attendanceType: "required" }],
-      step: 6,
-      maxStep: 6,
+      step: 5,
+      maxStep: 5,
       confirming: true,
     });
 
@@ -63,9 +62,8 @@ describe("meeting create draft storage", () => {
       responseDeadlineTime: "18:00",
       durationHours: "1",
       durationMinute: "30",
-      participants: [{ name: "김모두", role: "PM", attendanceType: "required" }],
-      step: 6,
-      maxStep: 6,
+      step: 5,
+      maxStep: 5,
       confirming: true,
     });
   });

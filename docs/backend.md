@@ -6,11 +6,11 @@ modu의 백엔드는 로그인 없는 링크 기반 알파 서비스에 맞춰, 
 
 핵심 목표:
 
-- 회의, 참석자, 응답, 확정 정보를 안정적으로 저장한다.
-- 참석자 링크와 참석자별 수정 토큰을 생성한다.
-- 참석자는 같은 브라우저에서만 본인 응답을 수정할 수 있다.
-- 회의 생성자는 참석자 중 한 명일 뿐이며, 별도 관리자 권한을 갖지 않는다.
-- **투표도 자동 확정도 없다.** modu는 회의 시간을 확정하지 않는다. 열람 조건이 충족되면 전체 응답을 해석해 캘린더와 판단 근거를 보여주고, 최종 회의 시간은 참여자들이 제품 밖에서 정한다.
+- 일정, 참여자, 응답, legacy 확정 정보를 안정적으로 저장한다.
+- 공용 링크에서 참여자를 등록하고 참여자별 수정 토큰을 생성한다.
+- 참여자는 같은 브라우저에서만 본인 응답을 수정할 수 있다.
+- 일정 생성자는 참여자 중 한 명일 뿐이며, 별도 관리자 권한을 갖지 않는다.
+- **투표도 자동 확정도 없다.** modu는 함께할 시간을 확정하지 않는다. 열람 조건이 충족되면 전체 응답을 해석해 캘린더와 판단 근거를 보여주고, 최종 시간은 참여자들이 제품 밖에서 정한다.
 - 후보 계산 알고리즘은 UI와 분리해 테스트 가능하게 만든다.
 
 ## 2. 기술 기준
@@ -64,8 +64,8 @@ DB 컬럼명은 Supabase/Postgres 기준으로 snake_case를 사용한다.
 | `duration_minutes` | 회의 길이 |
 | `date_start` | 생성일 기준 오늘 날짜 |
 | `date_end` | 회의 마감 날짜 |
-| `workday_start` | 내부 계산용 근무 시작 시간, 기본 `09:00` |
-| `workday_end` | 내부 계산용 근무 종료 시간, 기본 `18:00` |
+| `workday_start` | 내부 계산용 하루 시작 시간, 기본 `00:00` |
+| `workday_end` | 내부 계산용 하루 종료 시간, 기본 `24:00` |
 | `lunch_start` | 내부 계산값. 신규 회의는 점심 제외 비활성화를 위해 `00:00` 저장 |
 | `lunch_end` | 내부 계산값. 신규 회의는 점심 제외 비활성화를 위해 `00:01` 저장 |
 | `admin_token` | 기존 DB 호환을 위해 남긴 내부 저장 컬럼. 제품 권한이나 화면 노출에는 사용하지 않는다 |
@@ -160,8 +160,8 @@ create table if not exists meetings (
   duration_minutes integer not null default 60 check (duration_minutes > 0),
   date_start date not null,
   date_end date not null,
-  workday_start time not null default '09:00',
-  workday_end time not null default '18:00',
+  workday_start time not null default '00:00',
+  workday_end time not null default '24:00',
   lunch_start time not null default '12:00',
   lunch_end time not null default '13:00',
   admin_token text not null unique,
@@ -186,12 +186,17 @@ create table if not exists participants (
   attendance_type attendance_type not null default 'optional',
   response_status response_status not null default 'pending',
   participant_token text not null unique,
+  join_key text,
   memo text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 alter table participants add column if not exists memo text;
+alter table participants add column if not exists join_key text;
+create unique index if not exists participants_meeting_join_key_unique
+  on participants(meeting_id, join_key)
+  where join_key is not null;
 
 create table if not exists availability_blocks (
   id uuid primary key default gen_random_uuid(),
@@ -279,27 +284,26 @@ grant all on meeting_votes to service_role;
 권장 서버 기능:
 
 - `createMeeting`
-  - 회의명, 안건, 장소, 회의 마감 날짜, 응답 마감일, 회의 길이, 참석자를 생성한다.
-  - 모든 항목이 필수다. 회의명·안건·장소가 비어 있으면 각각 에러를 반환한다.
-  - 회의명은 공백 포함 최대 20글자, 안건은 공백 포함 최대 30글자, 장소는 공백 포함 최대 20글자까지 허용한다.
-  - 참석자는 최소 2명 이상, 최대 8명까지 허용한다.
-  - 회의 길이는 `durationHours`(시간)와 `durationMinutePart`(분) 입력값을 합산해 `duration_minutes`로 저장한다. 분은 0~59 정수여야 한다.
-  - 회의 마감 날짜(`deadlineDate`)는 `date_end`로 저장하고, `date_start`는 생성 시점의 오늘(KST) 날짜로 채운다. 마감 날짜가 **오늘부터 이틀 뒤(`오늘+2일`) 이전이면** 에러를 반환한다(응답 마감일이 회의 마감 2일 전까지여야 하므로 여유 확보).
-  - 응답 마감일(`responseDeadlineDate` + `responseDeadlineTime`, 분 없음 → 항상 `:00`)을 KST ISO로 합쳐 `response_deadline`에 저장한다. 오늘 이전이거나 **회의 마감 날짜 2일 전(`date_end −2일`)보다 늦으면** 에러를 반환한다(클라이언트가 미리 토스트로 자동 보정).
-  - 회의 생성자에게 근무 시작/종료 시간과 점심 시간은 받지 않고 서버 기본값을 저장한다.
-  - 참석자 기본 `attendance_type`은 클라이언트에서 `required`로 전달되며(필수참석), 서버는 `required`가 아니면 `optional`로 정규화한다.
-  - `meetingId`와 참석자별 `participantToken`을 생성한다.
-  - 회의 생성자도 참석자 명단에 포함된 한 명으로 취급한다.
+  - 일정 이름, 내용, 장소, 일정 후보 마지막 날, 응답 마감일, 소요 시간을 저장한다.
+  - 모든 항목이 필수다. 일정 이름·내용·장소가 비어 있으면 각각 에러를 반환한다.
+  - 일정 이름은 공백 포함 최대 20글자, 내용은 공백 포함 최대 30글자, 장소는 공백 포함 최대 20글자까지 허용한다.
+  - 소요 시간은 `durationHours`와 `durationMinutePart`를 합산해 `duration_minutes`로 저장한다. 분은 0~59 정수여야 한다.
+  - 일정 후보 마지막 날(`deadlineDate`)은 `date_end`로 저장하고, `date_start`는 생성 시점의 오늘(KST) 날짜로 채운다. 마지막 날이 **오늘부터 이틀 뒤 이전이면** 에러를 반환한다.
+  - 응답 마감일을 KST ISO로 합쳐 `response_deadline`에 저장한다. 오늘 이전이거나 **일정 후보 마지막 날 2일 전보다 늦으면** 에러를 반환한다.
+  - 일정 생성자에게 별도 운영 시간이나 점심 시간을 받지 않고, 주말을 포함한 00:00~24:00 전체를 후보 범위로 저장한다.
+  - 생성 단계에서는 참여자를 저장하지 않는다.
+  - `meetingId`를 생성하고 공용 링크를 만든다.
   - 생성 후 공유 화면으로 이동한다.
   - 배포 환경에서 Supabase 환경변수가 없으면 실제 DB 저장 대신 데모 회의 ID를 생성해 공유 화면으로 이동한다.
 
-- `verifyParticipantIdentity`
-  - 링크로 들어온 참석자의 이름과 직무가 실제 참석자 명단에 있는지 검증한다.
-  - 명단과 일치하지 않으면 응답 입력 화면으로 이동시키지 않는다.
-  - 이미 제출한 참석자는 같은 브라우저의 `participantToken`이 있을 때만 수정할 수 있다.
+- `joinMeeting`
+  - 공용 링크로 들어온 사람의 이름이나 별명을 참여자로 자동 등록한다.
+  - 정리된 이름 키(`join_key`)로 같은 일정 안의 중복 이름을 막고, 최대 8명까지 허용한다.
+  - 새 참여자는 기본 `optional`로 저장해 모두 같은 조건에서 시작한다.
+  - 등록 시 `participantToken`을 발급하고, 같은 브라우저에서 응답을 이어서 수정할 때 사용한다.
 
 - `submitAvailability`
-  - 참석자 응답을 저장한다.
+  - 참여자 응답을 저장한다.
   - 기존 응답 수정 시 `participantId`와 `participantToken`을 검증한다.
   - 확정된 회의에서는 응답을 수정할 수 없다.
   - 해당 참석자의 기존 `availability_blocks`를 교체한다.
@@ -341,10 +345,10 @@ lib/scheduler/
 ### 후보 생성
 
 - 회의 날짜 내에서 후보 슬롯을 생성한다.
-- 근무 시간 안에서만 생성한다.
+- 주말을 포함한 모든 날의 00:00~24:00 범위에서 생성한다.
 - 30분 단위로 시작 시간을 생성한다.
 - 회의 길이는 기본 60분이다.
-- 저장된 회의에 점심 제외 시간이 활성화되어 있으면 점심 시간과 겹치는 슬롯은 제외한다. 신규 회의는 점심 시간을 입력받지 않고 09:00~18:00 전체를 후보 범위로 쓴다.
+- 저장된 기존 회의에 점심 제외 시간이 활성화되어 있으면 점심 시간과 겹치는 슬롯은 제외한다. 신규 일정은 점심 시간을 제외하지 않고 00:00~24:00 전체를 후보 범위로 쓴다.
 
 ### 제외 규칙
 
@@ -352,7 +356,7 @@ lib/scheduler/
 
 - 필수 참석자의 `busy`와 겹치는 경우
 - 활성화된 점심 제외 시간과 겹치는 경우
-- 근무 시간 밖인 경우
+- 설정된 하루 시간 범위 밖인 경우
 
 ### 감점 규칙
 
@@ -403,7 +407,7 @@ lib/scheduler/
 
 - 참석자 링크를 가진 사람은 응답 화면에 접근할 수 있다.
 - 별도 관리자 화면이나 관리자 토큰은 두지 않는다.
-- 회의 생성자는 참석자 중 한 명이며, 다른 참석자보다 더 높은 관리 권한을 갖지 않는다.
+- 일정 생성자는 참여자 중 한 명이며, 다른 참여자보다 더 높은 관리 권한을 갖지 않는다.
 - 결과 캘린더와 날짜·시간 조회는 참석자 화면에서 제공한다.
 - 참석자 수정은 같은 브라우저에 저장된 `participantToken`이 있을 때만 허용한다.
 - Supabase secret/service role key는 서버에서만 사용한다.
@@ -476,8 +480,8 @@ Supabase 정책:
 
 | 함수 | 검증 | 핵심 동작 |
 | --- | --- | --- |
-| `createMeeting` | 입력 검증(필수·길이·인원 2~8·회의 마감일≥오늘+2일·응답 마감일≤마감일−2일) | 회의(`response_deadline` 포함)+참석자 insert, 참석자별 `participant_token` 발급, 공유 화면 redirect. **운영+env 없음** 시 `lib/demoMeeting` 데모 ID로 우회 |
-| `verifyParticipantIdentity` | 이름+직무 명단 대조 | `participant_token` 반환(기존 제출자는 토큰 일치 시 수정 허용) |
+| `createMeeting` | 입력 검증(필수·길이·일정 후보 마지막 날≥오늘+2일·응답 마감일≤마지막 날−2일) | 일정만 생성하고 공유 화면으로 이동한다. 참여자는 공용 링크에서 등록한다. **운영+env 없음** 시 `lib/demoMeeting` 데모 ID로 우회 |
+| `joinMeeting` | 이름·별명으로 참여자 자동 등록 | `participant_token` 반환, 중복 이름과 최대 인원 검증 |
 | `submitAvailability` | `participantId`+토큰, 미확정(legacy) | 기존 블록 교체(delete→insert), `response_status='submitted'` — **저장까지만**(투표·자동 확정 없음) |
 | `loadParticipantResponse` / `loadCalendarSnapshot` | participant 토큰 | 본인 응답 / 캘린더 집계용 최소 데이터(메모 원문 제외) |
 
@@ -500,7 +504,7 @@ Route Handler: `app/api/meetings/[meetingId]/ics/route.ts` — 확정 슬롯 있
 
 - 참석자별 `dominantStatus`: `busy > avoid > preferred > available`. 미응답자는 제외 안 하고 `pending` 표시.
 - 등급(내부값 → 라벨): `best`→가장 추천 / `recommended`→추천 / `conditional`→조건부 추천 / `caution`→주의 필요. 필수 일부 불확실이면 `caution`.
-- 파일: `generateSlots.ts`(09:00~18:00·30분·점심 겹침 제외), `validate.ts`(`isSlotConfirmable`/`validateSubmittedBlocks` — 스펙 미기재지만 존재), `explainRecommendation.ts`(점수 없이 사실 집계로 한국어 이유), `types.ts`.
+- 파일: `generateSlots.ts`(00:00~24:00·30분 단위), `validate.ts`(`isSlotConfirmable`/`validateSubmittedBlocks` — 스펙 미기재지만 존재), `explainRecommendation.ts`(점수 없이 사실 집계로 한국어 이유), `types.ts`.
 
 ### 11.4 데이터·영속 계층
 
